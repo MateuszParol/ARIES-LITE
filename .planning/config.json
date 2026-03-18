@@ -1,0 +1,32 @@
+{
+  "project": "ARIES-LITE",
+  "version": "1.4.0",
+  "type": "brownfield",
+  "workflow": {
+    "mode": "guided",
+    "granularity": "phase",
+    "auto_commit": true,
+    "require_verification": true,
+    "require_planning": true
+  },
+  "agents": {
+    "researcher": true,
+    "planner": true,
+    "executor": true,
+    "verifier": true,
+    "ui_researcher": false,
+    "ui_checker": false
+  },
+  "preferences": {
+    "language": "pl",
+    "commit_convention": "type(scope): description",
+    "test_framework": "none",
+    "linter": "none",
+    "formatter": "none"
+  },
+  "platform": {
+    "target": "raspberry-pi-4",
+    "dev": "windows-11",
+    "python": "3.x"
+  }
+}
