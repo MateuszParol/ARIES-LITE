@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Pan-Tilt Face Tracker</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --container-bg: #1e293b;
+            --text-color: #f8fafc;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border-radius: 12px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            background: var(--container-bg);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .stream-container {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #000;
+            position: relative;
+            aspect-ratio: 4/3;
+        }
+
+        .stream-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .status-bar {
+            background-color: #334155;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-badge {
+            font-weight: bold;
+            color: var(--success);
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .controls .full-width {
+            grid-column: 1 / -1;
+        }
+
+        button {
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            color: white;
+            font-size: 14px;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+
+        .btn-start { background-color: var(--success); }
+        .btn-stop { background-color: var(--danger); }
+        .btn-center { background-color: #64748b; }
+        .btn-upload { background-color: var(--primary); width: 100%; }
+
+        .upload-section {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #334155;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .file-label {
+            display: block;
+            background-color: #334155;
+            padding: 12px;
+            text-align: center;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+
+        #uploadMsg {
+            margin-top: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>Face Tracker Panel</h2>
+    </div>
+
+    <!-- Wideo MJPEG Stream -->
+    <div class="stream-container">
+        <img src="/video_feed" alt="Video Feed Offline">
+    </div>
+
+    <!-- Status -->
+    <div class="status-bar">
+        <span>Tracker Status:</span>
+        <span class="status-badge" id="stateLabel">LOADING...</span>
+    </div>
+
+    <!-- Przyciski Sterujace -->
+    <div class="controls">
+        <button class="btn-start" onclick="sendCommand('START')">START / SCAN</button>
+        <button class="btn-stop" onclick="sendCommand('STOP')">STOP (IDLE)</button>
+        <button class="btn-center full-width" onclick="sendCommand('CENTER')">POWRÓT DO CENTRUM (0,0)</button>
+    </div>
+
+    <!-- Wgrywanie nowego pliku przez smartfona i wymiana bezposrednio docelowego targetu-->
+    <div class="upload-section">
+        <h3>Zmień Obiekt (Wzorzec Twarzy)</h3>
+        <form id="uploadForm">
+            <label class="file-label">
+                <input type="file" id="fileInput" name="file" accept="image/*" required onchange="document.getElementById('fileName').innerText=this.files[0].name">
+                <span id="fileName">📁 Wybierz Zdjęcie (Aparat / Galeria)</span>
+            </label>
+            <button type="submit" class="btn-upload">WGRAJ CEL</button>
+        </form>
+        <div id="uploadMsg"></div>
+    </div>
+</div>
+
+<script>
+    // System automatycznego odświeżania opisu stanu logicznego z serwera na Froncie 
+    setInterval(async () => {
+        try {
+            let res = await fetch('/api/state');
+            let data = await res.json();
+            document.getElementById('stateLabel').innerText = data.state;
+        } catch(e) {}
+    }, 1000);
+
+    // Wysyłanie manualnych komend
+    async function sendCommand(cmd) {
+        await fetch('/api/command', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({cmd: cmd})
+        });
+    }
+
+    // Obsługa Formularza
+    document.getElementById('uploadForm').onsubmit = async (e) => {
+        e.preventDefault();
+        let formData = new FormData();
+        formData.append("file", document.getElementById('fileInput').files[0]);
+        
+        let msgEl = document.getElementById('uploadMsg');
+        msgEl.innerText = "Wgrywanie...";
+        msgEl.style.color = "var(--text-color)";
+        
+        try {
+            let res = await fetch('/api/upload_target', {
+                method: 'POST',
+                body: formData
+            });
+            let data = await res.json();
+            if(res.ok) {
+                msgEl.innerText = data.msg;
+                msgEl.style.color = "var(--success)";
+            } else {
+                msgEl.innerText = data.error;
+                msgEl.style.color = "var(--danger)";
+            }
+        } catch(e) {
+            msgEl.innerText = "Błąd Połączenia!";
+            msgEl.style.color = "var(--danger)";
+        }
+    };
+</script>
+
+</body>
+</html>
