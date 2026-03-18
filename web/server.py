@@ -1,6 +1,7 @@
 import time
 import cv2
 import threading
+import signal
 from typing import Generator
 from flask import Flask, render_template, Response, request, jsonify
 from werkzeug.utils import secure_filename
@@ -24,6 +25,24 @@ vision = None
 tracker = None
 shared_frame_lock = threading.Lock()
 shared_encoded_frame = None
+init_event = threading.Event()
+
+def require_init():
+    """Zwraca odpowiedz 503 jesli system nie jest jeszcze zainicjalizowany, None jesli gotowy."""
+    if not init_event.is_set():
+        return jsonify({"error": "System uruchamia sie..."}), 503
+    return None
+
+def shutdown():
+    """Graceful shutdown — zatrzymuje watki, zwalnia kamere, odlacza serwa."""
+    logger.info("Rozpoczynam graceful shutdown...")
+    if tracker is not None:
+        tracker.is_running = False
+    if stream is not None:
+        stream.stop()
+    if tracker is not None:
+        tracker.hardware.detach_servos()
+    logger.info("Shutdown zakończony.")
 
 def generate_frames() -> Generator[bytes, None, None]:
     """Generates JPEG boundaries for Multipart MJPEG stream"""
@@ -49,6 +68,9 @@ def video_feed():
 @app.route('/api/upload_target', methods=['POST'])
 def upload_target():
     """API dla wgrania nowego pliku"""
+    guard = require_init()
+    if guard is not None:
+        return guard
     if 'file' not in request.files:
         return jsonify({"error": "Brak pliku"}), 400
     file = request.files['file']
@@ -69,18 +91,22 @@ def upload_target():
 @app.route('/api/state')
 def get_state():
     """Pobieranie aktualnego stanu serwera do odswiezania zakladki HUD na zywo z frontu"""
-    if tracker is None:
-        return jsonify({"state": "OFFLINE"})
+    guard = require_init()
+    if guard is not None:
+        return guard
     return jsonify({"state": tracker.state})
 
 @app.route('/api/command', methods=['POST'])
 def handle_command():
+    guard = require_init()
+    if guard is not None:
+        return guard
     data = request.json
     cmd = data.get('cmd')
     if cmd == 'CENTER':
         logger.info("Powrot do Centrum")
         tracker.state = config.STATE_IDLE
-        tracker.hardware.smooth_move_to(0,0)
+        threading.Thread(target=tracker.hardware.smooth_move_to, args=(0, 0), daemon=True).start()
     elif cmd == 'START':
         tracker.state = config.STATE_SCANNING
     elif cmd == 'STOP':
@@ -95,7 +121,8 @@ def main_loop():
     # Start maszyn
     stream.start()
     tracker.start_pipeline()
-    
+    init_event.set()
+
     # Load default if exists
     default_img = os.path.join(app.config['UPLOAD_FOLDER'], config.DEFAULT_TARGET_IMAGE)
     if os.path.exists(default_img):
@@ -154,6 +181,13 @@ def start_server_and_logic():
     
     logic_thread = threading.Thread(target=main_loop, daemon=True)
     logic_thread.start()
-    
+
+    # Rejestracja signal handlers dla graceful shutdown
+    signal.signal(signal.SIGINT, lambda s, f: shutdown())
+    signal.signal(signal.SIGTERM, lambda s, f: shutdown())
+
     # Odpalamy strone we Flasku, to blokuje glowny watek (nasluch 0.0.0.0 pozwala dzialac po wifi RPi)
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    finally:
+        shutdown()
