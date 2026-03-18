@@ -5,11 +5,14 @@ from typing import Generator
 from flask import Flask, render_template, Response, request, jsonify
 from werkzeug.utils import secure_filename
 import os
+import logging
 
 from src.camera import VideoStream
 from src.vision import HybridVision
 from src.tracker import TrackerMachine
 from src import config
+
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = config.TEMP_FACES_DIR

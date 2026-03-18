@@ -85,7 +85,8 @@ class HybridVision:
         faces = self.face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
         
         if len(faces) > 0:
-            # Wez pierwsza/najwieksza i odpal tracker
+            # Wez najwieksza (sortuj po powierzchni) i odpal tracker
+            faces = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)
             (x, y, w, h) = faces[0]
             bbox = (x, y, w, h)
             self.init_tracker(frame, bbox)

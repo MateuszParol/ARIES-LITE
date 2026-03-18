@@ -22,6 +22,7 @@ class VideoStream:
         self.stream.set(cv2.CAP_PROP_FPS, config.CAMERA_FPS)
         
         (self.grabbed, self.frame) = self.stream.read()
+        self._frame_lock = threading.Lock()
         self.stopped = False
         
         if not self.grabbed:
@@ -38,11 +39,13 @@ class VideoStream:
         while True:
             if self.stopped:
                 return
-            (self.grabbed, self.frame) = self.stream.read()
+            with self._frame_lock:
+                (self.grabbed, self.frame) = self.stream.read()
 
     def read(self):
         """Pobiera najswiezsza frame"""
-        return self.frame
+        with self._frame_lock:
+            return self.frame
 
     def stop(self):
         """Zwalnia kamere"""
