@@ -1,8 +1,8 @@
 # PROJECT.md — ARIES-LITE
 
 > **Full Name**: Autonomous Real-time Intelligent Eye System — Lightweight Edition
-> **Status**: Brownfield (~85% complete)
-> **Current Version**: v1.4.0
+> **Status**: Stable (v1.5.0 shipped)
+> **Current Version**: v1.5.0
 > **Target Platform**: Raspberry Pi 4 Model B
 
 ## Vision
@@ -13,25 +13,23 @@ An autonomous real-time face tracking system that combines IoT hardware (pan/til
 
 Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR cascade) or frame rate (full dlib on every frame at 2-3 FPS). ARIES-LITE solves this with a hybrid approach: fast HAAR detection for 30fps responsiveness, CSRT tracker for smooth PID input, and async dlib verification for identity confirmation — all orchestrated through a 4-thread architecture.
 
-## What Exists (Brownfield)
+## Current State
 
-The core system is implemented and functional:
-- **Camera pipeline**: Async VideoStream with daemon thread capture
-- **Hybrid vision**: HAAR cascade + CSRT tracker + async dlib verification
-- **State machine**: SAFE_START → SCANNING → TRACKING → IDLE with PID control
-- **Hardware abstraction**: PanTiltSystem with pigpio H-PWM and mock mode
-- **Web interface**: Flask server with MJPEG streaming, target upload, command API
-- **Mobile-first UI**: Responsive dark-theme Polish interface
+**v1.5.0** stabilized the existing codebase:
+- All runtime bugs fixed (logger, face sorting, frame locking)
+- Graceful shutdown with signal handlers (servo detach, camera release)
+- Non-blocking CENTER command, startup race condition guard
+- Clean dependency tree (removed imutils), proper package exports
 
-## What Remains (~15%)
+**652 lines** of Python across 6 core modules + Flask server.
 
-Based on codebase analysis (see `.planning/codebase/CONCERNS.md`):
+## What Could Come Next
 
-1. **Bug fixes**: Missing logger in server.py, face sorting by area
-2. **Robustness**: Graceful shutdown, camera lock safety, startup race condition
-3. **Quality**: Automated tests, code cleanup, unused dependencies
-4. **Security**: Basic auth for API endpoints (network-accessible system)
-5. **Operations**: Systemd service, startup scripts, monitoring
+Potential areas for future milestones:
+1. **Security**: Basic auth for API endpoints (network-accessible system)
+2. **Operations**: Systemd service, startup scripts, monitoring
+3. **Testing**: Automated unit/integration tests
+4. **Features**: Multi-face tracking priority, recording, face database
 
 ## Technical Decisions (Locked)
 
@@ -43,9 +41,23 @@ These architectural choices are validated and should not change:
 - Single-page vanilla HTML/CSS/JS — no build toolchain needed
 - Polish-language comments and UI text
 
+## Key Decisions
+
+| Decision | Outcome | Milestone |
+|----------|---------|-----------|
+| Hybrid vision (HAAR fast + dlib async) | Good — 30 FPS maintained | Pre-v1.5 |
+| PID over Kalman for servos | Good — sufficient for hardware | Pre-v1.5 |
+| Flask over FastAPI | Good — lighter on RPi4 | Pre-v1.5 |
+| Signal handlers + try/finally for shutdown | Good — belt-and-suspenders | v1.5 |
+| threading.Event for init gate | Good — clean 503 during startup | v1.5 |
+| Background thread for CENTER smooth_move | Good — unblocks Flask thread | v1.5 |
+
 ## Team & Context
 
 - Solo developer project (research/IoT focus)
 - Development on Windows, deployment on Raspberry Pi 4
 - No CI/CD pipeline, empirical verification
 - GSD methodology for project management
+
+---
+*Last updated: 2026-03-18 after v1.5.0 milestone*
