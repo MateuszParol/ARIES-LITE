@@ -106,7 +106,7 @@
 - **Traces to**: CONCERNS.md #4
 
 ### REQ-17: Dependency Cleanup
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: Low
 - **Description**: Remove unused `imutils` from requirements.txt
 - **Traces to**: CONCERNS.md #8
@@ -133,4 +133,4 @@
 | REQ-14 | Phase 1 | Open |
 | REQ-15 | Phase 2 | Open |
 | REQ-16 | Phase 2 | Open |
-| REQ-17 | Phase 3 | Open |
+| REQ-17 | Phase 3 | Validated |
