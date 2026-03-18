@@ -70,39 +70,45 @@
 ## New Requirements (Remaining ~15%)
 
 ### REQ-11: Logger Fix in Server
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: Critical
 - **Description**: Add missing `logger` definition in `web/server.py` (currently crashes on CENTER command)
+- **Evidence**: `logger = logging.getLogger(__name__)` at module level in web/server.py
 - **Traces to**: CONCERNS.md #1
 
 ### REQ-12: Face Detection Sort by Area
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: Medium
 - **Description**: Sort HAAR detections by bounding box area, select largest (not first) face
+- **Evidence**: `sorted(faces, key=lambda f: f[2]*f[3], reverse=True)` in src/vision.py
 - **Traces to**: CONCERNS.md #6
 
 ### REQ-13: Graceful Shutdown
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: High
 - **Description**: Signal handler (SIGINT/SIGTERM) to detach servos, release camera, clean up threads
+- **Evidence**: `shutdown()` function + signal handlers in web/server.py
 - **Traces to**: CONCERNS.md #2
 
 ### REQ-14: Frame Read Thread Safety
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: Medium
 - **Description**: Add lock protection to VideoStream.read() for frame access between camera and logic threads
+- **Evidence**: `_frame_lock = threading.Lock()` in src/camera.py with lock in read()/update()
 - **Traces to**: CONCERNS.md #5
 
 ### REQ-15: Non-blocking CENTER Command
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: Medium
 - **Description**: Move smooth_move_to() call in CENTER handler to background thread to prevent Flask request blocking
+- **Evidence**: `threading.Thread(target=..., daemon=True).start()` in web/server.py handle_command()
 - **Traces to**: CONCERNS.md #7
 
 ### REQ-16: Startup Race Condition Fix
-- **Status**: Open
+- **Status**: Validated
 - **Priority**: Medium
 - **Description**: Ensure Flask routes wait for logic thread initialization before serving requests
+- **Evidence**: `init_event = threading.Event()` + `require_init()` guard on all API routes
 - **Traces to**: CONCERNS.md #4
 
 ### REQ-17: Dependency Cleanup
@@ -127,10 +133,10 @@
 | REQ-08 | — | Validated |
 | REQ-09 | — | Validated |
 | REQ-10 | — | Validated |
-| REQ-11 | Phase 1 | Open |
-| REQ-12 | Phase 1 | Open |
-| REQ-13 | Phase 2 | Open |
-| REQ-14 | Phase 1 | Open |
-| REQ-15 | Phase 2 | Open |
-| REQ-16 | Phase 2 | Open |
+| REQ-11 | Phase 1 | Validated |
+| REQ-12 | Phase 1 | Validated |
+| REQ-13 | Phase 2 | Validated |
+| REQ-14 | Phase 1 | Validated |
+| REQ-15 | Phase 2 | Validated |
+| REQ-16 | Phase 2 | Validated |
 | REQ-17 | Phase 3 | Validated |
