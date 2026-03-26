@@ -50,7 +50,7 @@ Plans:
   5. The HUD shows a green bounding box around the detected face, a state label, a center crosshair, and current servo angles — all update correctly at each state transition
 **Plans:** 1/1 plans complete
 Plans:
-- [ ] 05-01-PLAN.md — Patch 5 gaps in test_tracker.py (HAAR minSize, PID sample_time, streak reset, TARGET_LOST logic, FPS counter) + RPi4 hardware verification
+- [x] 05-01-PLAN.md — Patch 5 gaps in test_tracker.py (HAAR minSize, PID sample_time, streak reset, TARGET_LOST logic, FPS counter) + RPi4 hardware verification
 
 ## Progress
 
@@ -60,4 +60,4 @@ Plans:
 | 2. Robustness | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 4. Hardware Foundation & Camera Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
-| 5. State Machine, Vision & PID Integration | 1/1 | Complete   | 2026-03-26 | - |
+| 5. State Machine, Vision & PID Integration | 1/1 | Complete   | 2026-03-26 | 2026-03-26 |

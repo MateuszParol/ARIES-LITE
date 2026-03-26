@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Test Tracker
 status: planning
-stopped_at: "Checkpoint: Task 2 RPi4 hardware verification pending"
-last_updated: "2026-03-26T14:04:38.199Z"
+stopped_at: Completed 05-state-machine-vision-pid-integration/05-01-PLAN.md
+last_updated: "2026-03-26T14:20:39.322Z"
 last_activity: 2026-03-26 — Roadmap created for v1.6
 progress:
   total_phases: 2
@@ -49,6 +49,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 04 P01 | 18 | 3 tasks | 1 files |
 | Phase 05-state-machine-vision-pid-integration P01 | 2 | 1 tasks | 1 files |
+| Phase 05 P01 | 12 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,13 +70,15 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 05]: sample_time=0.033 on both PID instances prevents D-term spikes from variable HAAR frame timing
 - [Phase 05]: TARGET_LOST two-tick pattern: visible in HUD for one frame before SCANNING resumes
 - [Phase 05]: resetuj_streak() wired at TestTracker level (not MaszynaStanow) to avoid circular reference
+- [Phase 05]: Tilt sign convention verified correct on RPi4 hardware — no sign inversion needed in _sledz()
+- [Phase 05]: Tilt sign convention verified correct on RPi4 hardware — no sign inversion needed in _sledz()
 
 ### Blockers/Concerns
 
 - **Phase 4 entry:** Picamera2 import in `--system-site-packages` venv must be verified on actual RPi4 before any code is written. Run `python3 -c "from picamera2 import Picamera2; print('OK')"` first.
 - **Phase 4:** Verify `capture_array("main")` returns 3-channel BGR (not XRGB 4-channel) on target firmware.
 - **Phase 4:** Check Picamera2 + pigpio DMA coexistence — run both and check `dmesg` for DMAHEAP errors.
-- **Phase 5:** Smoke-test tilt sign convention before PID tuning — confirm face up = servo tilts up.
+- **Phase 5:** Tilt sign convention verified correct on RPi4 — no inversion needed. Resolved.
 
 ### Pending Todos
 
@@ -83,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T14:04:38.197Z
-Stopped at: Checkpoint: Task 2 RPi4 hardware verification pending
+Last session: 2026-03-26T14:20:39.319Z
+Stopped at: Completed 05-state-machine-vision-pid-integration/05-01-PLAN.md
 Resume file: None

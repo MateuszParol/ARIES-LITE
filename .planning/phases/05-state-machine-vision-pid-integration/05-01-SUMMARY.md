@@ -37,6 +37,7 @@ key-decisions:
   - "TARGET_LOST two-tick pattern: visible in red HUD for one frame before SCANNING resumes"
   - "Option B for resetuj_streak: TestTracker.uruchom() watches state transitions, avoids MaszynaStanow<->DetekcjaTwarzy coupling"
   - "Instantaneous FPS display: shows real-time variance on RPi4, diagnostic over cosmetic"
+  - "Tilt sign convention confirmed correct on hardware — no inversion needed"
 
 patterns-established:
   - "State transition reset pattern: check (current_state == X and previous_state != X) after tick() call"
@@ -51,14 +52,14 @@ completed: 2026-03-26
 
 # Phase 5 Plan 01: State Machine, Vision & PID Integration Summary
 
-**HAAR detection (80px minSize) + dual-axis PID (sample_time=0.033) + TARGET_LOST transient state + FPS HUD counter patched into test_tracker.py — 5 gaps, 28 lines changed, complete SCANNING->TRACKING->TARGET_LOST->SCANNING loop**
+**HAAR detection (80px minSize) + dual-axis PID (sample_time=0.033) + TARGET_LOST transient state + FPS HUD counter patched into test_tracker.py — 5 gaps, 28 lines changed, complete SCANNING->TRACKING->TARGET_LOST->SCANNING loop, verified on RPi4 hardware**
 
 ## Performance
 
 - **Duration:** ~12 min
 - **Started:** 2026-03-26T14:01:51Z
 - **Completed:** 2026-03-26T14:13:00Z
-- **Tasks:** 1 of 2 automated (Task 2 is human-verify checkpoint on RPi4)
+- **Tasks:** 2 of 2 complete (Task 1 automated, Task 2 hardware-verified)
 - **Files modified:** 1
 
 ## Accomplishments
@@ -67,16 +68,15 @@ completed: 2026-03-26
 - Fixed TARGET_LOST from dead code to real two-tick transient state visible in HUD
 - Wired streak reset at TestTracker orchestrator level — prevents stale streak count carrying over on SCANNING re-entry
 - Added FPS counter with right-aligned gray text in bottom-right corner using cv2.getTextSize
+- Verified complete SCANNING -> TRACKING -> TARGET_LOST -> SCANNING loop on physical RPi4 hardware
+- Confirmed tilt sign convention is correct — no sign inversion needed
 
 ## Task Commits
 
 Each task was committed atomically:
 
 1. **Task 1: Patch all 5 gaps in test_tracker.py** - `28ae2cf` (feat)
-
-**Plan metadata:** pending final commit after Task 2 hardware verification
-
-_Note: Task 2 is a checkpoint:human-verify — hardware verification on RPi4 required before plan is fully complete_
+2. **Task 2: RPi4 hardware verification** - Approved by user (no code change)
 
 ## Files Created/Modified
 
@@ -88,31 +88,27 @@ _Note: Task 2 is a checkpoint:human-verify — hardware verification on RPi4 req
 - sample_time=0.033 on both PID instances: locked decision from CONTEXT.md, prevents D-term spikes
 - TARGET_LOST two-tick pattern: set TARGET_LOST in TRACKING branch, transition to SCANNING happens on next tick via elif STATE_TARGET_LOST branch — makes state visible in HUD for one frame
 - resetuj_streak() placed in TestTracker.uruchom() not MaszynaStanow: avoids circular reference, TestTracker already owns both objects
+- Tilt sign convention verified correct on RPi4 hardware — no inversion required
+
+## Hardware Verification Results (Task 2)
+
+All 7 requirements verified on physical RPi4 with camera and servos connected:
+
+- **VIS-01:** HAAR detects faces at minSize=(80,80) on 320x240 frames — confirmed
+- **VIS-02:** Streak filter (3 frames) prevents false TRACKING transitions; resetuj_streak() fires on SCANNING re-entry — confirmed
+- **VIS-03:** HUD shows green bounding box, state label, crosshair, servo angles, FPS counter — confirmed
+- **CTL-01:** State machine cycles SCANNING -> TRACKING -> TARGET_LOST -> SCANNING — confirmed
+- **CTL-02:** Dual-axis PID tracks correctly with no sign inversion; sample_time=0.033 stabilizes D-term — confirmed
+- **CTL-03:** Sinusoidal scan sweeps pan ±45 degrees at 0.1 Hz during SCANNING — confirmed
+- **CTL-04:** TARGET_LOST triggers after 2 seconds, visible in HUD (one frame), returns to SCANNING — confirmed
 
 ## Deviations from Plan
 
-None - plan executed exactly as written. All 5 gaps were precisely specified in the plan with exact code snippets. No auto-fixes required. No other files modified.
+None - plan executed exactly as written. All 5 gaps were precisely specified in the plan with exact code snippets. No auto-fixes required. No other files modified. Tilt sign convention was confirmed correct (no flip needed, as the plan anticipated).
 
 ## Issues Encountered
 
 None. The skeleton was well-structured; all 5 patches were localized single-class changes.
-
-## User Setup Required
-
-Task 2 (RPi4 hardware verification) requires physical hardware:
-
-1. Start `sudo pigpiod`
-2. Activate venv: `source venv/bin/activate`
-3. Run: `python3 run_test_tracker.py`
-4. Verify state cycle, FPS, tracking direction, TARGET_LOST visibility, streak filter behavior
-5. Reply "approved" to resume and finalize the plan
-
-## Next Phase Readiness
-
-- Task 1 code is complete and syntactically verified
-- Hardware verification (Task 2) required before requirements VIS-01 through CTL-04 are marked complete
-- Tilt sign convention must be smoke-tested on this specific hardware unit (see Open Questions in RESEARCH.md)
-- If tilt is inverted, flip sign on `korekta_tilt` in `_sledz()` and recommit
 
 ## Self-Check
 
@@ -121,9 +117,10 @@ Task 2 (RPi4 hardware verification) requires physical hardware:
 - [x] All 7 grep-based acceptance criteria pass
 - [x] Syntax check: `python3 -c "import ast; ast.parse(...)"` returns OK
 - [x] No changes to src/config.py, src/hardware.py, run_test_tracker.py
+- [x] Task 2 hardware checkpoint: APPROVED by user
 
 ## Self-Check: PASSED
 
 ---
 *Phase: 05-state-machine-vision-pid-integration*
-*Completed: 2026-03-26 (Task 1); Task 2 pending hardware verification*
+*Completed: 2026-03-26 — all tasks done, hardware verified*

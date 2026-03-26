@@ -16,16 +16,16 @@ Requirements for Test Tracker milestone. Each maps to roadmap phases.
 
 ### Vision
 
-- [ ] **VIS-01**: HAAR cascade detects any face in grayscale frame (no identity recognition)
-- [ ] **VIS-02**: Detection streak filter requires 3 consecutive frames before triggering TRACKING transition
-- [ ] **VIS-03**: HUD overlay shows face bounding box (green), state label, center crosshair, and servo angles
+- [x] **VIS-01**: HAAR cascade detects any face in grayscale frame (no identity recognition)
+- [x] **VIS-02**: Detection streak filter requires 3 consecutive frames before triggering TRACKING transition
+- [x] **VIS-03**: HUD overlay shows face bounding box (green), state label, center crosshair, and servo angles
 
 ### Control
 
-- [ ] **CTL-01**: State machine cycles: SCANNING → TRACKING → TARGET_LOST → SCANNING
-- [ ] **CTL-02**: Dual-axis PID (pan + tilt) drives servos from face centroid error, with reset on SCANNING entry
-- [ ] **CTL-03**: SCANNING state sweeps sinusoidally (±45° pan, 0.1 Hz)
-- [ ] **CTL-04**: TARGET_LOST triggers after 2 seconds without face detection, returns to SCANNING
+- [x] **CTL-01**: State machine cycles: SCANNING → TRACKING → TARGET_LOST → SCANNING
+- [x] **CTL-02**: Dual-axis PID (pan + tilt) drives servos from face centroid error, with reset on SCANNING entry
+- [x] **CTL-03**: SCANNING state sweeps sinusoidally (±45° pan, 0.1 Hz)
+- [x] **CTL-04**: TARGET_LOST triggers after 2 seconds without face detection, returns to SCANNING
 
 ## Future Requirements
 
@@ -65,13 +65,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | HW-02 | Phase 4 | Complete |
 | HW-03 | Phase 4 | Complete |
 | HW-04 | Phase 4 | Complete |
-| VIS-01 | Phase 5 | Pending |
-| VIS-02 | Phase 5 | Pending |
-| VIS-03 | Phase 5 | Pending |
-| CTL-01 | Phase 5 | Pending |
-| CTL-02 | Phase 5 | Pending |
-| CTL-03 | Phase 5 | Pending |
-| CTL-04 | Phase 5 | Pending |
+| VIS-01 | Phase 5 | Complete |
+| VIS-02 | Phase 5 | Complete |
+| VIS-03 | Phase 5 | Complete |
+| CTL-01 | Phase 5 | Complete |
+| CTL-02 | Phase 5 | Complete |
+| CTL-03 | Phase 5 | Complete |
+| CTL-04 | Phase 5 | Complete |
 
 **Coverage:**
 - v1.6 requirements: 11 total
