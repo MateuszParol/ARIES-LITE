@@ -21,7 +21,7 @@
 **Milestone Goal:** Izolowany moduł testowy z czystą pętlą sterowania (Scan → Detect → PID Track → Target Lost), udowadniający płynne działanie hardware (pigpio + PID) z Picamera2 na RPi OS Bookworm.
 
 - [x] **Phase 4: Hardware Foundation & Camera Integration** - Servo safe startup, Picamera2 frame capture, and graceful shutdown proven on real hardware (completed 2026-03-26)
-- [ ] **Phase 5: State Machine, Vision & PID Integration** - Complete SCANNING → TRACKING → TARGET_LOST control loop with face detection and HUD
+- [x] **Phase 5: State Machine, Vision & PID Integration** - Complete SCANNING → TRACKING → TARGET_LOST control loop with face detection and HUD (completed 2026-03-26)
 
 ## Phase Details
 
@@ -48,7 +48,7 @@ Plans:
   3. Moving a face left/right causes the pan servo to track in the correct direction; moving it up/down causes the tilt servo to track correctly — no sign inversion errors
   4. During SCANNING, the pan servo sweeps sinusoidally between ±45° without accumulating error on repeated TRACKING → SCANNING transitions — servo does not snap or overshoot on the first frame after a transition
   5. The HUD shows a green bounding box around the detected face, a state label, a center crosshair, and current servo angles — all update correctly at each state transition
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 05-01-PLAN.md — Patch 5 gaps in test_tracker.py (HAAR minSize, PID sample_time, streak reset, TARGET_LOST logic, FPS counter) + RPi4 hardware verification
 
@@ -60,4 +60,4 @@ Plans:
 | 2. Robustness | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 4. Hardware Foundation & Camera Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
-| 5. State Machine, Vision & PID Integration | v1.6 | 0/1 | Not started | - |
+| 5. State Machine, Vision & PID Integration | 1/1 | Complete   | 2026-03-26 | - |

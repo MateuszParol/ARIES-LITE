@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Test Tracker
 status: planning
-stopped_at: Phase 5 context gathered
-last_updated: "2026-03-26T13:41:00.075Z"
+stopped_at: "Checkpoint: Task 2 RPi4 hardware verification pending"
+last_updated: "2026-03-26T14:04:38.199Z"
 last_activity: 2026-03-26 — Roadmap created for v1.6
 progress:
   total_phases: 2
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
   percent: 0
 ---
 
@@ -48,6 +48,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 04 P01 | 18 | 3 tasks | 1 files |
+| Phase 05-state-machine-vision-pid-integration P01 | 2 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,10 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 04]: No mock camera mode — Picamera2 unavailable = sys.exit(1) with actionable install instructions
 - [Phase 04]: Camera retry limited to 3 attempts (CAMERA_MAX_RETRIES) with 1s delay before clean shutdown
 - [Phase 04]: Display upscaled 2x (320x240 to 640x480) using cv2.INTER_NEAREST; headless mode auto-detected via cv2.error
+- [Phase 05]: HAAR_MIN_SIZE=(80,80): 50px too small for stable PID centroid tracking at 320x240
+- [Phase 05]: sample_time=0.033 on both PID instances prevents D-term spikes from variable HAAR frame timing
+- [Phase 05]: TARGET_LOST two-tick pattern: visible in HUD for one frame before SCANNING resumes
+- [Phase 05]: resetuj_streak() wired at TestTracker level (not MaszynaStanow) to avoid circular reference
 
 ### Blockers/Concerns
 
@@ -78,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T13:41:00.072Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-state-machine-vision-pid-integration/05-CONTEXT.md
+Last session: 2026-03-26T14:04:38.197Z
+Stopped at: Checkpoint: Task 2 RPi4 hardware verification pending
+Resume file: None
