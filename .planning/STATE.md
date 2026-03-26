@@ -4,7 +4,7 @@ milestone: v1.6
 milestone_name: Test Tracker
 status: planning
 stopped_at: Completed 04-01-PLAN.md — all tasks done, RPi4 hardware verified
-last_updated: "2026-03-26T12:56:52.497Z"
+last_updated: "2026-03-26T13:35:05.159Z"
 last_activity: 2026-03-26 — Roadmap created for v1.6
 progress:
   total_phases: 2
