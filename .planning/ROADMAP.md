@@ -34,7 +34,9 @@
   2. Picamera2 captures BGR frames at 320x240 and the terminal prints FPS without errors — no "Camera already in use" error on launch
   3. Pressing Ctrl+C exits cleanly: servos return to neutral, camera releases, process terminates — no leftover libcamera process requiring `sudo killall`
   4. The entry point `run_test_tracker.py` runs without importing Flask or modifying any file in `src/` (except reading `src/hardware.py` and `src/config.py`) — `git diff src/` shows no changes after execution
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 04-01-PLAN.md — Patch test_tracker.py skeleton: fail-fast Picamera2, 2x upscale + headless, camera retry, safe shutdown
 
 ### Phase 5: State Machine, Vision & PID Integration
 **Goal**: The complete isolated test tracker is running — HAAR detects any face, PID drives servos to center it, sinusoidal scan resumes when face is lost, and the HUD makes every state transition empirically observable
@@ -55,5 +57,5 @@
 | 1. Bug Fixes | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 2. Robustness | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
-| 4. Hardware Foundation & Camera Integration | v1.6 | 0/? | Not started | - |
+| 4. Hardware Foundation & Camera Integration | v1.6 | 0/1 | Planning complete | - |
 | 5. State Machine, Vision & PID Integration | v1.6 | 0/? | Not started | - |
