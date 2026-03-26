@@ -20,7 +20,7 @@
 
 **Milestone Goal:** Izolowany moduł testowy z czystą pętlą sterowania (Scan → Detect → PID Track → Target Lost), udowadniający płynne działanie hardware (pigpio + PID) z Picamera2 na RPi OS Bookworm.
 
-- [ ] **Phase 4: Hardware Foundation & Camera Integration** - Servo safe startup, Picamera2 frame capture, and graceful shutdown proven on real hardware
+- [x] **Phase 4: Hardware Foundation & Camera Integration** - Servo safe startup, Picamera2 frame capture, and graceful shutdown proven on real hardware (completed 2026-03-26)
 - [ ] **Phase 5: State Machine, Vision & PID Integration** - Complete SCANNING → TRACKING → TARGET_LOST control loop with face detection and HUD
 
 ## Phase Details
@@ -34,7 +34,7 @@
   2. Picamera2 captures BGR frames at 320x240 and the terminal prints FPS without errors — no "Camera already in use" error on launch
   3. Pressing Ctrl+C exits cleanly: servos return to neutral, camera releases, process terminates — no leftover libcamera process requiring `sudo killall`
   4. The entry point `run_test_tracker.py` runs without importing Flask or modifying any file in `src/` (except reading `src/hardware.py` and `src/config.py`) — `git diff src/` shows no changes after execution
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 04-01-PLAN.md — Patch test_tracker.py skeleton: fail-fast Picamera2, 2x upscale + headless, camera retry, safe shutdown
 
@@ -57,5 +57,5 @@ Plans:
 | 1. Bug Fixes | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 2. Robustness | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
-| 4. Hardware Foundation & Camera Integration | v1.6 | 0/1 | Planning complete | - |
+| 4. Hardware Foundation & Camera Integration | 1/1 | Complete   | 2026-03-26 | - |
 | 5. State Machine, Vision & PID Integration | v1.6 | 0/? | Not started | - |

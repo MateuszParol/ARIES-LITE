@@ -9,10 +9,10 @@ Requirements for Test Tracker milestone. Each maps to roadmap phases.
 
 ### Hardware
 
-- [ ] **HW-01**: System performs safe startup — servos move incrementally to neutral (0,0) via smooth_move_to before any loop begins
-- [ ] **HW-02**: Picamera2 captures frames at 320x240 BGR888 via native libcamera on Bookworm 64-bit
-- [ ] **HW-03**: System shuts down gracefully on Ctrl+C / SIGTERM — camera released, servos detached, no resource leaks
-- [ ] **HW-04**: Test tracker runs as standalone script (run_test_tracker.py) — no Flask, no modification to existing src/ files
+- [x] **HW-01**: System performs safe startup — servos move incrementally to neutral (0,0) via smooth_move_to before any loop begins
+- [x] **HW-02**: Picamera2 captures frames at 320x240 BGR888 via native libcamera on Bookworm 64-bit
+- [x] **HW-03**: System shuts down gracefully on Ctrl+C / SIGTERM — camera released, servos detached, no resource leaks
+- [x] **HW-04**: Test tracker runs as standalone script (run_test_tracker.py) — no Flask, no modification to existing src/ files
 
 ### Vision
 
@@ -61,10 +61,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HW-01 | Phase 4 | Pending |
-| HW-02 | Phase 4 | Pending |
-| HW-03 | Phase 4 | Pending |
-| HW-04 | Phase 4 | Pending |
+| HW-01 | Phase 4 | Complete |
+| HW-02 | Phase 4 | Complete |
+| HW-03 | Phase 4 | Complete |
+| HW-04 | Phase 4 | Complete |
 | VIS-01 | Phase 5 | Pending |
 | VIS-02 | Phase 5 | Pending |
 | VIS-03 | Phase 5 | Pending |

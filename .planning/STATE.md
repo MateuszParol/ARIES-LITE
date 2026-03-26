@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Test Tracker
 status: planning
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-26T11:12:37.797Z"
+stopped_at: "Phase 4 Plan 01 — paused at Task 3 checkpoint:human-verify (RPi4 hardware test)"
+last_updated: "2026-03-26T12:07:35.991Z"
 last_activity: 2026-03-26 — Roadmap created for v1.6
 progress:
   total_phases: 2
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 0
 ---
 
@@ -57,6 +57,9 @@ Progress: [░░░░░░░░░░] 0%
 - Face detection only — no identity recognition, HAAR any-face approach
 - Isolated entry point `run_test_tracker.py` — no Flask, no modification to existing `src/`
 - Polish language convention maintained throughout
+- [Phase 04]: No mock camera mode — Picamera2 unavailable = sys.exit(1) with actionable install instructions
+- [Phase 04]: Camera retry limited to 3 attempts (CAMERA_MAX_RETRIES) with 1s delay before clean shutdown
+- [Phase 04]: Display upscaled 2x (320x240 to 640x480) using cv2.INTER_NEAREST; headless mode auto-detected via cv2.error
 
 ### Blockers/Concerns
 
@@ -71,6 +74,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T11:12:37.793Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-hardware-foundation-camera-integration/04-CONTEXT.md
+Last session: 2026-03-26T12:07:27.196Z
+Stopped at: Phase 4 Plan 01 — paused at Task 3 checkpoint:human-verify (RPi4 hardware test)
+Resume file: None
