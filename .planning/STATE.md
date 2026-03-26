@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Test Tracker
 status: planning
-stopped_at: "Phase 4 Plan 01 — paused at Task 3 checkpoint:human-verify (RPi4 hardware test)"
-last_updated: "2026-03-26T12:07:35.991Z"
+stopped_at: Completed 04-01-PLAN.md — all tasks done, RPi4 hardware verified
+last_updated: "2026-03-26T12:56:52.497Z"
 last_activity: 2026-03-26 — Roadmap created for v1.6
 progress:
   total_phases: 2
@@ -47,6 +47,7 @@ Progress: [░░░░░░░░░░] 0%
 | 5. State Machine + Vision | TBD | — | — |
 
 *Updated after each plan completion*
+| Phase 04 P01 | 18 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -57,6 +58,9 @@ Progress: [░░░░░░░░░░] 0%
 - Face detection only — no identity recognition, HAAR any-face approach
 - Isolated entry point `run_test_tracker.py` — no Flask, no modification to existing `src/`
 - Polish language convention maintained throughout
+- [Phase 04]: No mock camera mode — Picamera2 unavailable = sys.exit(1) with actionable install instructions
+- [Phase 04]: Camera retry limited to 3 attempts (CAMERA_MAX_RETRIES) with 1s delay before clean shutdown
+- [Phase 04]: Display upscaled 2x (320x240 to 640x480) using cv2.INTER_NEAREST; headless mode auto-detected via cv2.error
 - [Phase 04]: No mock camera mode — Picamera2 unavailable = sys.exit(1) with actionable install instructions
 - [Phase 04]: Camera retry limited to 3 attempts (CAMERA_MAX_RETRIES) with 1s delay before clean shutdown
 - [Phase 04]: Display upscaled 2x (320x240 to 640x480) using cv2.INTER_NEAREST; headless mode auto-detected via cv2.error
@@ -74,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T12:07:27.196Z
-Stopped at: Phase 4 Plan 01 — paused at Task 3 checkpoint:human-verify (RPi4 hardware test)
+Last session: 2026-03-26T12:56:52.494Z
+Stopped at: Completed 04-01-PLAN.md — all tasks done, RPi4 hardware verified
 Resume file: None

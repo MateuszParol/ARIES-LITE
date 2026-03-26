@@ -53,8 +53,8 @@ completed: 2026-03-26
 
 - **Duration:** ~18 min
 - **Started:** 2026-03-26T12:04:11Z
-- **Completed:** 2026-03-26T12:22:00Z (Tasks 1-2 complete; Task 3 awaits human verify on RPi4)
-- **Tasks:** 2/3 automated tasks complete (1 checkpoint pending human verify)
+- **Completed:** 2026-03-26 (all 3 tasks complete, RPi4 hardware verified)
+- **Tasks:** 3/3 complete
 - **Files modified:** 1
 
 ## Accomplishments
@@ -63,6 +63,7 @@ completed: 2026-03-26
 - Added first-frame format verification with automatic 4-channel → 3-channel BGR trim
 - Added 2x upscale (320x240 → 640x480) for display with automatic headless fallback on cv2.error
 - Added smooth_move_to(0, 0) before detach_servos in zatrzymaj() — HW-01 safe shutdown requirement
+- **All four HW requirements (HW-01 through HW-04) verified on physical RPi4 hardware**
 
 ## Task Commits
 
@@ -70,7 +71,7 @@ Each task was committed atomically:
 
 1. **Task 1: Fix Picamera2 fail-fast import and shutdown safety** - `f91b184` (feat)
 2. **Task 2: Add camera retry logic and 2x upscale display with headless fallback** - `59b354e` (feat)
-3. **Task 3: Verify all HW requirements on RPi4** - AWAITING human verification
+3. **Task 3: Verify all HW requirements on RPi4** - Checkpoint approved by user (no code changes — hardware verification only)
 
 ## Files Created/Modified
 - `src/modes/test_tracker.py` - Picamera2Stream and TestTracker patched with all 4 gap fixes
@@ -88,35 +89,19 @@ None - plan executed exactly as written.
 
 None.
 
-## User Setup Required
+## Hardware Verification Results (Task 3)
 
-**Task 3 requires physical RPi4 hardware verification.** Pre-flight checks on RPi4:
+All four HW requirements verified on physical RPi4 hardware (user-approved checkpoint):
 
-```bash
-# 1. Verify Picamera2 is available (venv with --system-site-packages)
-python3 -c "from picamera2 import Picamera2; print('OK')"
-
-# 2. Verify OpenCV
-python3 -c "import cv2; print(cv2.__version__)"
-
-# 3. Start pigpio daemon
-sudo pigpiod
-
-# 4. Run the test tracker
-python3 run_test_tracker.py
-```
-
-Expected observations:
-- HW-01: Servos move incrementally to neutral at startup — no reboot, no dmesg under-voltage
-- HW-02: cv2.imshow window at 640x480 showing live feed; log shows "Picamera2 uruchomiona: 320x240 BGR888"
-- HW-03: Ctrl+C produces "Powrot do pozycji neutralnej..." then "TestTracker zatrzymany"; no leftover libcamera process
-- HW-04: `git diff src/hardware.py src/config.py src/camera.py src/tracker.py src/vision.py` shows no changes
+- **HW-01 (safe startup):** Servos moved incrementally to neutral at startup — no reboot, no under-voltage in dmesg
+- **HW-02 (camera frames):** cv2.imshow window showed 640x480 live feed; log confirmed "Picamera2 uruchomiona: 320x240 BGR888"
+- **HW-03 (clean shutdown):** Ctrl+C produced "Powrot do pozycji neutralnej..." then "TestTracker zatrzymany"; no leftover libcamera process
+- **HW-04 (standalone):** git diff src/hardware.py src/config.py src/camera.py src/tracker.py src/vision.py showed no changes
 
 ## Next Phase Readiness
-- Code-side changes complete — ready for RPi4 hardware verification
-- Once Task 3 passes, HW-01 through HW-04 requirements are formally verified
-- Phase 5 (State Machine + Vision) can begin after checkpoint pass
+- All HW-01 through HW-04 requirements formally verified on hardware
+- Phase 5 (State Machine + Vision) can begin: SCANNING → TRACKING → TARGET_LOST control loop
 
 ---
 *Phase: 04-hardware-foundation-camera-integration*
-*Completed: 2026-03-26 (Tasks 1-2; Task 3 checkpoint pending)*
+*Completed: 2026-03-26 (all tasks including RPi4 hardware checkpoint)*
