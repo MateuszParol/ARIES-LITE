@@ -30,6 +30,8 @@ STREAK_REQUIRED = 3
 SCAN_AMPLITUDE = 45.0       # stopnie
 SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
 PID_OUTPUT_LIMIT = 10.0
+CAMERA_MAX_RETRIES = 3
+CAMERA_RETRY_DELAY = 1.0  # sekundy miedzy probami ponownej inicjalizacji
 
 # Stan TARGET_LOST (przejściowy, wizualny)
 STATE_TARGET_LOST = "TARGET_LOST"
@@ -73,9 +75,49 @@ class Picamera2Stream:
         self._thread.start()
 
     def _petla_przechwytywania(self) -> None:
-        """Watek daemon: przechwytuje klatki w petli."""
+        """Watek daemon: przechwytuje klatki w petli z ponowna inicjalizacja przy bledzie."""
+        _retry_count = 0
+        _format_zweryfikowany = False
+
         while self._running:
-            klatka = self._picam2.capture_array("lores")
+            try:
+                klatka = self._picam2.capture_array("lores")
+                _retry_count = 0  # reset po udanym przechwyceniu
+
+                # Weryfikacja formatu na pierwszej klatce
+                if not _format_zweryfikowany:
+                    logger.info(f"Format klatki: shape={klatka.shape}, dtype={klatka.dtype}")
+                    if klatka.ndim == 3 and klatka.shape[2] == 4:
+                        logger.warning("4-kanalowy format wykryty — przycinam do BGR")
+                        klatka = klatka[:, :, :3]
+                    _format_zweryfikowany = True
+
+            except Exception as e:
+                _retry_count += 1
+                logger.error(f"Blad kamery ({_retry_count}/{CAMERA_MAX_RETRIES}): {e}")
+                if _retry_count >= CAMERA_MAX_RETRIES:
+                    logger.error("Kamera niedostepna — zatrzymanie systemu")
+                    self._running = False
+                    break
+                # Proba ponownej inicjalizacji
+                try:
+                    self._picam2.stop()
+                    self._picam2.close()
+                except Exception:
+                    pass
+                time.sleep(CAMERA_RETRY_DELAY)
+                try:
+                    self._picam2 = Picamera2()
+                    video_config = self._picam2.create_video_configuration(
+                        lores={"size": (self._width, self._height), "format": "BGR888"}
+                    )
+                    self._picam2.configure(video_config)
+                    self._picam2.start()
+                    logger.info("Kamera ponownie uruchomiona po bledzie")
+                except Exception as reinit_err:
+                    logger.error(f"Ponowna inicjalizacja nieudana: {reinit_err}")
+                continue
+
             with self._lock:
                 self._frame = klatka
             time.sleep(0.01)
@@ -240,6 +282,7 @@ class TestTracker:
         self.detekcja = DetekcjaTwarzy()
         self.maszyna = MaszynaStanow()
         self._running = False
+        self._headless = False
 
     def uruchom(self) -> None:
         """Główna pętla: start kamery → safe start → capture → detect → tick → HUD → display."""
@@ -266,11 +309,21 @@ class TestTracker:
             # Rysuj HUD
             self._rysuj_hud(klatka, bbox, stan)
 
-            # Wyświetl
-            cv2.imshow("ARIES-LITE Test Tracker", klatka)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                logger.info("Klawisz 'q' — zatrzymanie.")
-                break
+            # Wyswietlanie z upscale 2x i fallback headless
+            if not self._headless:
+                wyswietlana = cv2.resize(klatka, (640, 480), interpolation=cv2.INTER_NEAREST)
+                try:
+                    cv2.imshow("ARIES-LITE Test Tracker", wyswietlana)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        logger.info("Klawisz 'q' — zatrzymanie.")
+                        break
+                except cv2.error:
+                    logger.info("Brak wyswietlacza (cv2.error) — przelaczam na tryb headless")
+                    self._headless = True
+                    cv2.destroyAllWindows()
+            else:
+                # Tryb headless — loguj stan co zmiane
+                pass  # Logi stanow sa juz w MaszynaStanow._przejdz_do()
 
         self.zatrzymaj()
 
