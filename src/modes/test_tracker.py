@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 LORES_WIDTH = 320
 LORES_HEIGHT = 240
 HAAR_MIN_NEIGHBORS = 8
-HAAR_MIN_SIZE = (50, 50)
+HAAR_MIN_SIZE = (80, 80)
 STREAK_REQUIRED = 3
 SCAN_AMPLITUDE = 45.0       # stopnie
 SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
@@ -189,10 +189,12 @@ class MaszynaStanow:
         self.stan = config.STATE_SCANNING
 
         # Dwa kontrolery PID (z config)
-        self.pid_pan = PID(config.PID_PAN_P, config.PID_PAN_I, config.PID_PAN_D, setpoint=0)
+        self.pid_pan = PID(config.PID_PAN_P, config.PID_PAN_I, config.PID_PAN_D,
+                           setpoint=0, sample_time=0.033)
         self.pid_pan.output_limits = (-PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT)
 
-        self.pid_tilt = PID(config.PID_TILT_P, config.PID_TILT_I, config.PID_TILT_D, setpoint=0)
+        self.pid_tilt = PID(config.PID_TILT_P, config.PID_TILT_I, config.PID_TILT_D,
+                            setpoint=0, sample_time=0.033)
         self.pid_tilt.output_limits = (-PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT)
 
         self._czas_ostatniego_celu = time.time()
@@ -226,13 +228,11 @@ class MaszynaStanow:
             else:
                 # Brak twarzy — sprawdź timeout
                 if time.time() - self._czas_ostatniego_celu >= config.TIME_TO_LOST_SEC:
-                    self.stan = STATE_TARGET_LOST
-                    logger.info("Target Lost — przejście do SCANNING")
-                    self._przejdz_do(config.STATE_SCANNING)
+                    self._przejdz_do(STATE_TARGET_LOST)
                 # else: trzymaj pozycję (hold)
 
         elif self.stan == STATE_TARGET_LOST:
-            # Natychmiastowe przejście do SCANNING (obsłużone powyżej)
+            # Przejście do SCANNING w następnym ticku (TARGET_LOST widoczny w HUD przez jedną klatkę)
             self._przejdz_do(config.STATE_SCANNING)
 
         return self.stan
@@ -283,6 +283,8 @@ class TestTracker:
         self.maszyna = MaszynaStanow()
         self._running = False
         self._headless = False
+        self._czas_klatki_poprzedniej = time.time()
+        self._fps_aktualny = 0.0
 
     def uruchom(self) -> None:
         """Główna pętla: start kamery → safe start → capture → detect → tick → HUD → display."""
@@ -292,6 +294,8 @@ class TestTracker:
 
         logger.info("TestTracker uruchomiony. Naciśnij 'q' lub Ctrl+C aby zakończyć.")
 
+        poprzedni_stan = config.STATE_SCANNING
+
         while self._running:
             klatka = self.kamera.odczytaj()
             if klatka is None:
@@ -300,11 +304,22 @@ class TestTracker:
 
             h, w = klatka.shape[:2]
 
+            # Oblicz FPS (przed detekcją i tickiem)
+            teraz = time.time()
+            dt = teraz - self._czas_klatki_poprzedniej
+            self._czas_klatki_poprzedniej = teraz
+            self._fps_aktualny = 1.0 / dt if dt > 0 else 0.0
+
             # Detekcja twarzy
             bbox = self.detekcja.wykryj(klatka)
 
             # Tick maszyny stanów
             stan = self.maszyna.tick(bbox, w, h)
+
+            # Reset streak przy powrocie do SCANNING
+            if stan == config.STATE_SCANNING and poprzedni_stan != config.STATE_SCANNING:
+                self.detekcja.resetuj_streak()
+            poprzedni_stan = stan
 
             # Rysuj HUD
             self._rysuj_hud(klatka, bbox, stan)
@@ -357,6 +372,12 @@ class TestTracker:
         tilt = self.maszyna.hardware.tilt_angle
         cv2.putText(klatka, f"Pan:{pan:+.1f} Tilt:{tilt:+.1f}", (10, h - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+
+        # FPS (prawy-dolny rog, szary)
+        fps_tekst = f"FPS:{self._fps_aktualny:.1f}"
+        (tw, th), _ = cv2.getTextSize(fps_tekst, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+        cv2.putText(klatka, fps_tekst, (w - tw - 5, h - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
 
     def zatrzymaj(self) -> None:
         """Cleanup: zatrzymanie petli, powrot serw do neutralnej, zwolnienie kamery."""
