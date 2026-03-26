@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs\\(phase-4\\): complete phase execution\" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md \".planning/phases/04-hardware-foundation-camera-integration/04-VERIFICATION.md\")",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" state advance-plan)",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" state update-progress)",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" state record-metric --phase \"05\" --plan \"01\" --duration \"12\" --tasks \"2\" --files \"1\")",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" state add-decision --phase \"05\" --summary \"Tilt sign convention verified correct on RPi4 hardware — no sign inversion needed in _sledz\\(\\)\")",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" state record-session --stopped-at \"Completed 05-state-machine-vision-pid-integration/05-01-PLAN.md\")",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" roadmap update-plan-progress \"5\")",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" requirements mark-complete VIS-01 VIS-02 VIS-03 CTL-01 CTL-02 CTL-03 CTL-04)",
+      "Bash(python3:*)",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" phase complete \"05\")",
+      "Bash(node \"C:/Users/mparol/.claude/get-shit-done/bin/gsd-tools.cjs\" commit \"docs\\(phase-5\\): complete phase execution\" --files .planning/ROADMAP.md .planning/STATE.md .planning/REQUIREMENTS.md \".planning/phases/05-state-machine-vision-pid-integration/05-VERIFICATION.md\")"
+    ]
+  }
+}
