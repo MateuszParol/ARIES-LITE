@@ -61,23 +61,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HW-01 | — | Pending |
-| HW-02 | — | Pending |
-| HW-03 | — | Pending |
-| HW-04 | — | Pending |
-| VIS-01 | — | Pending |
-| VIS-02 | — | Pending |
-| VIS-03 | — | Pending |
-| CTL-01 | — | Pending |
-| CTL-02 | — | Pending |
-| CTL-03 | — | Pending |
-| CTL-04 | — | Pending |
+| HW-01 | Phase 4 | Pending |
+| HW-02 | Phase 4 | Pending |
+| HW-03 | Phase 4 | Pending |
+| HW-04 | Phase 4 | Pending |
+| VIS-01 | Phase 5 | Pending |
+| VIS-02 | Phase 5 | Pending |
+| VIS-03 | Phase 5 | Pending |
+| CTL-01 | Phase 5 | Pending |
+| CTL-02 | Phase 5 | Pending |
+| CTL-03 | Phase 5 | Pending |
+| CTL-04 | Phase 5 | Pending |
 
 **Coverage:**
 - v1.6 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11
+- Mapped to phases: 11
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 after initial definition*
+*Last updated: 2026-03-26 — traceability filled after roadmap creation*
