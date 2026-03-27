@@ -7,4 +7,4 @@ dlib==19.24.2
 gpiozero==2.0
 pigpio==1.78
 numpy==1.26.0
-simple-pid==2.0.0
+simple-pid>=2.0.1
