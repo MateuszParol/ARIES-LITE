@@ -64,11 +64,11 @@ class Picamera2Stream:
         """Inicjalizuje kamere i uruchamia watek przechwytywania."""
         self._picam2 = Picamera2()
         video_config = self._picam2.create_video_configuration(
-            lores={"size": (self._width, self._height), "format": "BGR888"}
+            lores={"size": (self._width, self._height), "format": "YUV420"}
         )
         self._picam2.configure(video_config)
         self._picam2.start()
-        logger.info(f"Picamera2 uruchomiona: {self._width}x{self._height} BGR888")
+        logger.info(f"Picamera2 uruchomiona: {self._width}x{self._height} YUV420 (konwersja do BGR)")
 
         self._running = True
         self._thread = threading.Thread(target=self._petla_przechwytywania, daemon=True)
@@ -81,15 +81,15 @@ class Picamera2Stream:
 
         while self._running:
             try:
-                klatka = self._picam2.capture_array("lores")
+                klatka_yuv = self._picam2.capture_array("lores")
                 _retry_count = 0  # reset po udanym przechwyceniu
+
+                # Konwersja YUV420 → BGR
+                klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)
 
                 # Weryfikacja formatu na pierwszej klatce
                 if not _format_zweryfikowany:
                     logger.info(f"Format klatki: shape={klatka.shape}, dtype={klatka.dtype}")
-                    if klatka.ndim == 3 and klatka.shape[2] == 4:
-                        logger.warning("4-kanalowy format wykryty — przycinam do BGR")
-                        klatka = klatka[:, :, :3]
                     _format_zweryfikowany = True
 
             except Exception as e:
@@ -109,7 +109,7 @@ class Picamera2Stream:
                 try:
                     self._picam2 = Picamera2()
                     video_config = self._picam2.create_video_configuration(
-                        lores={"size": (self._width, self._height), "format": "BGR888"}
+                        lores={"size": (self._width, self._height), "format": "YUV420"}
                     )
                     self._picam2.configure(video_config)
                     self._picam2.start()
@@ -144,7 +144,10 @@ class DetekcjaTwarzy:
     """Detekcja twarzy HAAR z filtrem streak (fałszywe pozytywy)."""
 
     def __init__(self):
-        haar_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        if hasattr(cv2, "data") and cv2.data.haarcascades:
+            haar_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        else:
+            haar_path = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
         self._klasyfikator = cv2.CascadeClassifier(haar_path)
         if self._klasyfikator.empty():
             raise RuntimeError(f"Nie udało się załadować kaskady HAAR: {haar_path}")
