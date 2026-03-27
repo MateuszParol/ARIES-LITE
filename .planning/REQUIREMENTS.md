@@ -101,20 +101,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CTL-02 | Phase 5 | Complete |
 | CTL-03 | Phase 5 | Complete |
 | CTL-04 | Phase 5 | Complete |
-| PID-01 | — | Pending |
-| PID-02 | — | Pending |
-| PID-03 | — | Pending |
-| CAM-01 | — | Pending |
-| CAM-02 | — | Pending |
-| SCAN-01 | — | Pending |
-| SCAN-02 | — | Pending |
-| DIAG-01 | — | Pending |
+| PID-01 | Phase 7 | Pending |
+| PID-02 | Phase 7 | Pending |
+| PID-03 | Phase 7 | Pending |
+| CAM-01 | Phase 6 | Pending |
+| CAM-02 | Phase 6 | Pending |
+| SCAN-01 | Phase 8 | Pending |
+| SCAN-02 | Phase 8 | Pending |
+| DIAG-01 | Phase 6 | Pending |
 
 **Coverage:**
 - v1.6 requirements: 11 total (all complete)
 - v1.7 requirements: 8 total (all pending)
-- Unmapped: 8 (awaiting roadmap)
+- Unmapped: 0 (all 8 v1.7 requirements mapped to Phases 6-8)
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 — v1.7 requirements added*
+*Last updated: 2026-03-27 — v1.7 traceability filled (Phases 6-8)*

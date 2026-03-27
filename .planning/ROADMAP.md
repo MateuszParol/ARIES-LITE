@@ -3,7 +3,8 @@
 ## Milestones
 
 - ✅ **v1.5.0 Stabilization & Hardening** — Phases 1-3 (shipped 2026-03-18)
-- 🚧 **v1.6 Test Tracker** — Phases 4-5 (in progress)
+- ✅ **v1.6 Test Tracker** — Phases 4-5 (shipped 2026-03-26)
+- 🚧 **v1.7 Debugging & Optimization** — Phases 6-8 (in progress)
 
 ## Phases
 
@@ -16,12 +17,21 @@
 
 </details>
 
-### 🚧 v1.6 Test Tracker (In Progress)
-
-**Milestone Goal:** Izolowany moduł testowy z czystą pętlą sterowania (Scan → Detect → PID Track → Target Lost), udowadniający płynne działanie hardware (pigpio + PID) z Picamera2 na RPi OS Bookworm.
+<details>
+<summary>✅ v1.6 Test Tracker (Phases 4-5) — SHIPPED 2026-03-26</summary>
 
 - [x] **Phase 4: Hardware Foundation & Camera Integration** - Servo safe startup, Picamera2 frame capture, and graceful shutdown proven on real hardware (completed 2026-03-26)
 - [x] **Phase 5: State Machine, Vision & PID Integration** - Complete SCANNING → TRACKING → TARGET_LOST control loop with face detection and HUD (completed 2026-03-26)
+
+</details>
+
+### 🚧 v1.7 Debugging & Optimization (In Progress)
+
+**Milestone Goal:** Naprawić krytyczne bugi w test_tracker.py wykryte podczas testów na hardware RPi4 — tilt nie rusza, runaway camera (błąd znaku PID), blue tint AWB, logika przejść stanów.
+
+- [ ] **Phase 6: Diagnostics & Camera** - Clamp logging in hardware.py and Picamera2 AWB warm-up lock — baseline visibility and correct color rendering before any motion tests
+- [ ] **Phase 7: PID Sign Correctness** - Tilt axis sign fix and pan verification — control loop converges to face-centered position in both axes
+- [ ] **Phase 8: Scanning Logic** - Scan phase continuity and streak reset timing — clean state transitions with no servo jerk or premature detection
 
 ## Phase Details
 
@@ -52,6 +62,36 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md — Patch 5 gaps in test_tracker.py (HAAR minSize, PID sample_time, streak reset, TARGET_LOST logic, FPS counter) + RPi4 hardware verification
 
+### Phase 6: Diagnostics & Camera
+**Goal**: Hardware clamping is observable in logs and the camera delivers neutral color rendering — every subsequent test can be trusted visually and every servo limit event is traceable
+**Depends on**: Phase 5
+**Requirements**: DIAG-01, CAM-01, CAM-02
+**Success Criteria** (what must be TRUE):
+  1. When `set_angles()` receives a value outside pan ±60° or tilt ±30°, a WARNING line appears in terminal output identifying the axis and the clamped value — no silent saturation
+  2. After startup, the live video feed shows neutral skin tones within 3 seconds — no persistent blue cast across frames
+  3. `capture_metadata()["ColourGains"]` returns a non-None tuple after the 2s warm-up and the gains are locked via `set_controls({"ColourGains": ...})` — AWB does not re-converge during operation
+  4. If `ColourGains` from metadata is None, the fallback values (2.5, 1.9) are applied and the image remains plausible — no crash or uncorrected blue tint on first run
+**Plans**: TBD
+
+### Phase 7: PID Sign Correctness
+**Goal**: The tilt axis drives the camera toward the face and neither axis runs away — the control loop converges to a face-centered steady state in both pan and tilt
+**Depends on**: Phase 6
+**Requirements**: PID-01, PID-02, PID-03
+**Success Criteria** (what must be TRUE):
+  1. Holding a face below the frame center causes the HUD `Tilt:` value to increase and the camera to tilt downward until the face reaches vertical center — tilt does not snap to the soft limit
+  2. Holding a face to the right of frame center causes the HUD `Pan:` value to increase and the camera to pan right until the face reaches horizontal center — pan direction is unchanged from v1.6 behavior
+  3. After a TRACKING → SCANNING → TRACKING transition cycle, neither the pan nor tilt PID integral accumulates a jump — the first correction frame after re-entering TRACKING is proportional to the actual error, not inflated by a residual integral term
+**Plans**: TBD
+
+### Phase 8: Scanning Logic
+**Goal**: State transitions between SCANNING and TRACKING are clean — no servo jerk on scan resumption, no stale detection streak when re-entering SCANNING
+**Depends on**: Phase 7
+**Requirements**: SCAN-01, SCAN-02
+**Success Criteria** (what must be TRUE):
+  1. When a face is lost and the system returns from TRACKING to SCANNING, the pan servo resumes the sinusoidal sweep from its current position — no visible snap or step change in the first scan frame
+  2. After entering TARGET_LOST state, the detection streak counter is reset to zero immediately — a face appearing within the TARGET_LOST window requires a full 3-consecutive-frame streak before TRACKING is re-entered, not fewer
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -60,4 +100,7 @@ Plans:
 | 2. Robustness | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 4. Hardware Foundation & Camera Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
-| 5. State Machine, Vision & PID Integration | 1/1 | Complete   | 2026-03-26 | 2026-03-26 |
+| 5. State Machine, Vision & PID Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
+| 6. Diagnostics & Camera | v1.7 | 0/? | Not started | - |
+| 7. PID Sign Correctness | v1.7 | 0/? | Not started | - |
+| 8. Scanning Logic | v1.7 | 0/? | Not started | - |

@@ -3,11 +3,11 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Debugging & Optimization
 status: planning
-stopped_at: Defining requirements
+stopped_at: Roadmap created — Phase 6 not started
 last_updated: "2026-03-27"
-last_activity: 2026-03-27 — Milestone v1.7 started
+last_activity: 2026-03-27 — Roadmap created for v1.7 (Phases 6-8)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Naprawić krytyczne bugi w test_tracker.py — tilt, runaway camera, AWB, logika stanów
-**Current focus:** Defining requirements
+**Current focus:** Ready to plan Phase 6
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 6 (not started)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-03-27 — Milestone v1.7 started
+Status: Awaiting `/gsd:plan-phase 6`
+Last activity: 2026-03-27 — Roadmap v1.7 created (Phases 6-8)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -45,26 +45,34 @@ Progress: [░░░░░░░░░░] 0%
 
 ### Decisions
 
-- v1.7 scope: debugging & optimization test_tracker.py (nie nowe funkcje)
+- v1.7 scope: surgical bug fixes in test_tracker.py only — no architectural changes
+- Phase order: DIAG+AWB first (observability + visual baseline), PID sign second (highest impact), scan logic last (requires working tracking to verify)
 - Montaż standardowy potwierdzony: pan+ = prawo, tilt+ = dół
-- TRACKING stan stabilny — tilt po prostu się nie rusza (nie flickeruje)
-- Podejrzenie: brak negacji znaku tilt w _sledz() powoduje ruch w złym kierunku (snap do limitu)
+- TRACKING stan stabilny — tilt nie rusza z powodu brakującej negacji (snap do soft-limitu w 2-3 klatkach)
+- Tilt fix is 1 character: `korekta_tilt = -self.pid_tilt(blad_tilt)` in `MaszynaStanow._sledz()`
+- AWB fix: `set_controls({"ColourGains": gains})` MUST follow `picam2.start()` + `time.sleep(2.0)` — controls before start() are silently ignored
+- PID reset: `_przejdz_do()` already calls reset — no change needed, only verification
+- Streak reset: move from SCANNING entry to TARGET_LOST entry in `TestTracker.uruchom()`
+- Do NOT add `AwbEnable: False` alongside `ColourGains` — causes ISP sequencing conflict
+- Do NOT change `cv2.COLOR_YUV420p2BGR` constant — correct for Picamera2 I420 output
+- Do NOT change Kp/Ki/Kd values — sign bug mimics gain problem but is distinct
 - [z v1.6] Picamera2 over OpenCV VideoCapture — Bookworm native libcamera
-- [z v1.6] Face detection only — no identity recognition, HAAR any-face
 - [z v1.6] HAAR_MIN_SIZE=(80,80), sample_time=0.033 na PID
 - [z v1.6] TARGET_LOST two-tick pattern: widoczny w HUD na jedną klatkę
 
 ### Blockers/Concerns
 
-- Analiza znaku PID wymaga weryfikacji z biblioteką simple_pid (setpoint=0, error = setpoint - input)
-- AWB fix wymaga testów na żywym hardware z sensorem IMX219
+- AWB fallback gains (2.5, 1.9) may need empirical adjustment for specific indoor lighting
+- simple_pid version: verify `pip show simple-pid` on device — need >=2.0.0 for reliable anti-windup
+- SCAN-01 (phase offset for scan continuity) deferred by research — implement only if servo jerk confirmed visible after Phase 7 fixes
 
 ### Pending Todos
 
-None yet.
+- Verify `pip show simple-pid` version on RPi4 device before Phase 7
+- Read back `capture_metadata()["ColourGains"]` after warm-up in Phase 6 to tune fallback if needed
 
 ## Session Continuity
 
 Last session: 2026-03-27
-Stopped at: Defining requirements for v1.7
+Stopped at: Roadmap created — ready for `/gsd:plan-phase 6`
 Resume file: None
