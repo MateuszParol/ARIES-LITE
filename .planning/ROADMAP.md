@@ -83,9 +83,10 @@ Plans:
   1. Holding a face below the frame center causes the HUD `Tilt:` value to increase and the camera to tilt downward until the face reaches vertical center — tilt does not snap to the soft limit
   2. Holding a face to the right of frame center causes the HUD `Pan:` value to increase and the camera to pan right until the face reaches horizontal center — pan direction is unchanged from v1.6 behavior
   3. After a TRACKING → SCANNING → TRACKING transition cycle, neither the pan nor tilt PID integral accumulates a jump — the first correction frame after re-entering TRACKING is proportional to the actual error, not inflated by a residual integral term
-**Plans:** 1 plan
+**Plans:** 2 plans
 Plans:
-- [ ] 06-01-PLAN.md — Clamp logging in hardware.py + AWB warm-up lock in Picamera2Stream.start()
+- [ ] 07-01-PLAN.md — simple-pid version check/upgrade + tilt sign fix (korekta_tilt = -pid_tilt) + smoke test
+- [ ] 07-02-PLAN.md — RPi4 hardware checkpoint: verify tilt convergence, pan unchanged, no integral jump on re-entry
 
 ### Phase 8: Scanning Logic
 **Goal**: State transitions between SCANNING and TRACKING are clean — no servo jerk on scan resumption, no stale detection streak when re-entering SCANNING
@@ -96,7 +97,7 @@ Plans:
   2. After entering TARGET_LOST state, the detection streak counter is reset to zero immediately — a face appearing within the TARGET_LOST window requires a full 3-consecutive-frame streak before TRACKING is re-entered, not fewer
 **Plans:** 1 plan
 Plans:
-- [ ] 06-01-PLAN.md — Clamp logging in hardware.py + AWB warm-up lock in Picamera2Stream.start()
+- [ ] 08-01-PLAN.md — TBD
 
 ## Progress
 
@@ -107,6 +108,6 @@ Plans:
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 4. Hardware Foundation & Camera Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
 | 5. State Machine, Vision & PID Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
-| 6. Diagnostics & Camera | 1/1 | Complete   | 2026-03-27 | - |
-| 7. PID Sign Correctness | v1.7 | 0/? | Not started | - |
+| 6. Diagnostics & Camera | v1.7 | 1/1 | Complete | 2026-03-27 |
+| 7. PID Sign Correctness | v1.7 | 0/2 | Not started | - |
 | 8. Scanning Logic | v1.7 | 0/? | Not started | - |
