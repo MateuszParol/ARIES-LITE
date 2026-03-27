@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Debugging & Optimization
 status: "Awaiting `/gsd:plan-phase 6`"
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-27T15:23:36.611Z"
+stopped_at: Completed 07-02-PLAN.md (Phase 7 complete)
+last_updated: "2026-03-27T15:27:15.398Z"
 last_activity: 2026-03-27 — Roadmap v1.7 created (Phases 6-8)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -63,6 +63,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 06]: AWB lock: set_controls ColourGains after start()+sleep(2.0); AwbEnable omitted (ISP conflict)
 - [Phase 07-pid-sign-correctness]: Tilt negation is 1-character fix: add minus sign to korekta_tilt in MaszynaStanow._sledz()
 - [Phase 07-pid-sign-correctness]: simple-pid pinned to >=2.0.1 (not ==) to allow patch releases while ensuring _last_error reset fix
+- [Phase 07-pid-sign-correctness]: Hardware verification approved: all three PID criteria (PID-01 tilt convergence, PID-02 pan direction, PID-03 no integrator jump) confirmed on RPi4 — Phase 7 closed
 
 ### Blockers/Concerns
 
@@ -77,6 +78,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-27T15:23:36.606Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-27T15:27:15.394Z
+Stopped at: Completed 07-02-PLAN.md (Phase 7 complete)
 Resume file: None
