@@ -270,9 +270,9 @@ class MaszynaStanow:
         blad_pan = srodek_x - ramka_cx
         blad_tilt = srodek_y - ramka_cy
 
-        # Pan negowany (jak w tracker.py:77)
+        # Obie korekty negowane — inwersja osi pixel→servo
         korekta_pan = -self.pid_pan(blad_pan)
-        korekta_tilt = self.pid_tilt(blad_tilt)
+        korekta_tilt = -self.pid_tilt(blad_tilt)  # negacja — oś tilt działa jak pan
 
         nowy_pan = self.hardware.pan_angle + korekta_pan
         nowy_tilt = self.hardware.tilt_angle + korekta_tilt
