@@ -47,8 +47,8 @@ Wymagania dla milestone Debugging & Optimization. Naprawy krytycznych bugów wyk
 
 ### Scanning
 
-- [ ] **SCAN-01**: Powrót z TRACKING do SCANNING nie powoduje skoku serwa — sinusoida startuje od aktualnej pozycji (phase offset)
-- [ ] **SCAN-02**: Streak filter resetowany przy wejściu w TARGET_LOST (nie czeka do SCANNING)
+- [x] **SCAN-01**: Powrót z TRACKING do SCANNING nie powoduje skoku serwa — sinusoida startuje od aktualnej pozycji (phase offset)
+- [x] **SCAN-02**: Streak filter resetowany przy wejściu w TARGET_LOST (nie czeka do SCANNING)
 
 ### Diagnostyka
 
@@ -106,8 +106,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PID-03 | Phase 7 | Complete |
 | CAM-01 | Phase 6 | Complete |
 | CAM-02 | Phase 6 | Complete |
-| SCAN-01 | Phase 8 | Pending |
-| SCAN-02 | Phase 8 | Pending |
+| SCAN-01 | Phase 8 | Complete |
+| SCAN-02 | Phase 8 | Complete |
 | DIAG-01 | Phase 6 | Complete |
 
 **Coverage:**

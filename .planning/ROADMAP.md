@@ -31,7 +31,7 @@
 
 - [x] **Phase 6: Diagnostics & Camera** - Clamp logging in hardware.py and Picamera2 AWB warm-up lock — baseline visibility and correct color rendering before any motion tests (completed 2026-03-27)
 - [x] **Phase 7: PID Sign Correctness** - Tilt axis sign fix and pan verification — control loop converges to face-centered position in both axes (completed 2026-03-27)
-- [ ] **Phase 8: Scanning Logic** - Scan phase continuity and streak reset timing — clean state transitions with no servo jerk or premature detection
+- [x] **Phase 8: Scanning Logic** - Scan phase continuity and streak reset timing — clean state transitions with no servo jerk or premature detection (completed 2026-03-27)
 
 ## Phase Details
 
@@ -95,7 +95,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. When a face is lost and the system returns from TRACKING to SCANNING, the pan servo resumes the sinusoidal sweep from its current position — no visible snap or step change in the first scan frame
   2. After entering TARGET_LOST state, the detection streak counter is reset to zero immediately — a face appearing within the TARGET_LOST window requires a full 3-consecutive-frame streak before TRACKING is re-entered, not fewer
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 08-01-PLAN.md — Phase offset sinusoidy (SCAN-01) + streak reset przy TARGET_LOST (SCAN-02)
 
@@ -110,4 +110,4 @@ Plans:
 | 5. State Machine, Vision & PID Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
 | 6. Diagnostics & Camera | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 7. PID Sign Correctness | 2/2 | Complete   | 2026-03-27 | - |
-| 8. Scanning Logic | v1.7 | 0/? | Not started | - |
+| 8. Scanning Logic | 1/1 | Complete   | 2026-03-27 | - |
