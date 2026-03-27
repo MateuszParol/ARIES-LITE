@@ -3,9 +3,10 @@
 **Defined:** 2026-03-26
 **Core Value:** Prove hardware+PID control loop works smoothly with Picamera2 on RPi OS Bookworm 64-bit
 
-## v1.6 Requirements
+## v1.6 Requirements (Completed)
 
-Requirements for Test Tracker milestone. Each maps to roadmap phases.
+<details>
+<summary>All 11 requirements completed — click to expand</summary>
 
 ### Hardware
 
@@ -26,6 +27,32 @@ Requirements for Test Tracker milestone. Each maps to roadmap phases.
 - [x] **CTL-02**: Dual-axis PID (pan + tilt) drives servos from face centroid error, with reset on SCANNING entry
 - [x] **CTL-03**: SCANNING state sweeps sinusoidally (±45° pan, 0.1 Hz)
 - [x] **CTL-04**: TARGET_LOST triggers after 2 seconds without face detection, returns to SCANNING
+
+</details>
+
+## v1.7 Requirements
+
+Wymagania dla milestone Debugging & Optimization. Naprawy krytycznych bugów wykrytych na hardware RPi4.
+
+### PID Control
+
+- [ ] **PID-01**: Korekta tilt jest negowana (-pid_tilt) — kamera podąża za twarzą w pionie w poprawnym kierunku
+- [ ] **PID-02**: Korekta pan zachowuje istniejącą negację — weryfikacja że oś X nadal działa poprawnie po zmianach
+- [ ] **PID-03**: Oba PID resetowane (integral+derivative) przy wejściu w SCANNING — brak skoku po zmianie stanu
+
+### Camera (AWB)
+
+- [ ] **CAM-01**: Picamera2 wykonuje 2s warm-up po start() i lockuje ColourGains — obraz bez niebieskiej dominanty
+- [ ] **CAM-02**: Jeśli ColourGains lock nie eliminuje blue tint, sprawdzony format konwersji YUV (NV12 vs planar)
+
+### Scanning
+
+- [ ] **SCAN-01**: Powrót z TRACKING do SCANNING nie powoduje skoku serwa — sinusoida startuje od aktualnej pozycji (phase offset)
+- [ ] **SCAN-02**: Streak filter resetowany przy wejściu w TARGET_LOST (nie czeka do SCANNING)
+
+### Diagnostyka
+
+- [ ] **DIAG-01**: set_angles() loguje ostrzeżenie gdy wartość jest clampowana do soft-limitu (pan ±60°, tilt ±30°)
 
 ## Future Requirements
 
@@ -54,6 +81,8 @@ Explicitly excluded. Documented to prevent scope creep.
 | IDLE state | Test runs until Ctrl+C; SCANNING is the resting state |
 | Kalman filter | PID is the proven choice (locked architectural decision) |
 | Persistent config / YAML | Overkill for test module; constants at top of file |
+| Zmiana stałych PID (Kp/Ki/Kd) | Obecne wartości nie były problemem — bug to znak, nie gain |
+| Refaktoring architektury test_tracker | Minimalne zmiany — chirurgiczne fixy, nie przebudowa |
 
 ## Traceability
 
@@ -72,12 +101,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CTL-02 | Phase 5 | Complete |
 | CTL-03 | Phase 5 | Complete |
 | CTL-04 | Phase 5 | Complete |
+| PID-01 | — | Pending |
+| PID-02 | — | Pending |
+| PID-03 | — | Pending |
+| CAM-01 | — | Pending |
+| CAM-02 | — | Pending |
+| SCAN-01 | — | Pending |
+| SCAN-02 | — | Pending |
+| DIAG-01 | — | Pending |
 
 **Coverage:**
-- v1.6 requirements: 11 total
-- Mapped to phases: 11
-- Unmapped: 0
+- v1.6 requirements: 11 total (all complete)
+- v1.7 requirements: 8 total (all pending)
+- Unmapped: 8 (awaiting roadmap)
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 — traceability filled after roadmap creation*
+*Last updated: 2026-03-27 — v1.7 requirements added*
