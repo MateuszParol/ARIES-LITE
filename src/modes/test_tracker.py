@@ -213,6 +213,7 @@ class MaszynaStanow:
         self.pid_tilt.output_limits = (-PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT)
 
         self._czas_ostatniego_celu = time.time()
+        self._scan_phase_offset: float = 0.0
 
     def inicjalizuj(self) -> None:
         """Safe Start — płynny ruch do pozycji neutralnej (HW-01)."""
@@ -255,7 +256,7 @@ class MaszynaStanow:
     def _skanuj(self) -> None:
         """Skanowanie sinusoidalne: pan = A * sin(2π * f * t), tilt = 0."""
         t = time.time()
-        pan = SCAN_AMPLITUDE * math.sin(2.0 * math.pi * SCAN_FREQUENCY * t)
+        pan = SCAN_AMPLITUDE * math.sin(2.0 * math.pi * SCAN_FREQUENCY * t + self._scan_phase_offset)
         self.hardware.set_angles(pan, 0.0)
 
     def _sledz(self, bbox: Tuple[int, int, int, int], w: int, h: int) -> None:
@@ -287,6 +288,8 @@ class MaszynaStanow:
         if nowy_stan == config.STATE_SCANNING:
             self.pid_pan.reset()
             self.pid_tilt.reset()
+            raw = self.hardware.pan_angle / SCAN_AMPLITUDE
+            self._scan_phase_offset = math.asin(max(-1.0, min(1.0, raw)))
 
 
 class TestTracker:
@@ -331,8 +334,8 @@ class TestTracker:
             # Tick maszyny stanów
             stan = self.maszyna.tick(bbox, w, h)
 
-            # Reset streak przy powrocie do SCANNING
-            if stan == config.STATE_SCANNING and poprzedni_stan != config.STATE_SCANNING:
+            # Reset streak przy wejściu w TARGET_LOST (nie przy SCANNING entry)
+            if stan == STATE_TARGET_LOST and poprzedni_stan != STATE_TARGET_LOST:
                 self.detekcja.resetuj_streak()
             poprzedni_stan = stan
 
