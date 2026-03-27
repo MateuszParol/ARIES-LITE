@@ -42,8 +42,8 @@ Wymagania dla milestone Debugging & Optimization. Naprawy krytycznych bugów wyk
 
 ### Camera (AWB)
 
-- [ ] **CAM-01**: Picamera2 wykonuje 2s warm-up po start() i lockuje ColourGains — obraz bez niebieskiej dominanty
-- [ ] **CAM-02**: Jeśli ColourGains lock nie eliminuje blue tint, sprawdzony format konwersji YUV (NV12 vs planar)
+- [x] **CAM-01**: Picamera2 wykonuje 2s warm-up po start() i lockuje ColourGains — obraz bez niebieskiej dominanty
+- [x] **CAM-02**: Jeśli ColourGains lock nie eliminuje blue tint, sprawdzony format konwersji YUV (NV12 vs planar)
 
 ### Scanning
 
@@ -52,7 +52,7 @@ Wymagania dla milestone Debugging & Optimization. Naprawy krytycznych bugów wyk
 
 ### Diagnostyka
 
-- [ ] **DIAG-01**: set_angles() loguje ostrzeżenie gdy wartość jest clampowana do soft-limitu (pan ±60°, tilt ±30°)
+- [x] **DIAG-01**: set_angles() loguje ostrzeżenie gdy wartość jest clampowana do soft-limitu (pan ±60°, tilt ±30°)
 
 ## Future Requirements
 
@@ -104,11 +104,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PID-01 | Phase 7 | Pending |
 | PID-02 | Phase 7 | Pending |
 | PID-03 | Phase 7 | Pending |
-| CAM-01 | Phase 6 | Pending |
-| CAM-02 | Phase 6 | Pending |
+| CAM-01 | Phase 6 | Complete |
+| CAM-02 | Phase 6 | Complete |
 | SCAN-01 | Phase 8 | Pending |
 | SCAN-02 | Phase 8 | Pending |
-| DIAG-01 | Phase 6 | Pending |
+| DIAG-01 | Phase 6 | Complete |
 
 **Coverage:**
 - v1.6 requirements: 11 total (all complete)

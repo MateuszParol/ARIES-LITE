@@ -29,7 +29,7 @@
 
 **Milestone Goal:** Naprawić krytyczne bugi w test_tracker.py wykryte podczas testów na hardware RPi4 — tilt nie rusza, runaway camera (błąd znaku PID), blue tint AWB, logika przejść stanów.
 
-- [ ] **Phase 6: Diagnostics & Camera** - Clamp logging in hardware.py and Picamera2 AWB warm-up lock — baseline visibility and correct color rendering before any motion tests
+- [x] **Phase 6: Diagnostics & Camera** - Clamp logging in hardware.py and Picamera2 AWB warm-up lock — baseline visibility and correct color rendering before any motion tests (completed 2026-03-27)
 - [ ] **Phase 7: PID Sign Correctness** - Tilt axis sign fix and pan verification — control loop converges to face-centered position in both axes
 - [ ] **Phase 8: Scanning Logic** - Scan phase continuity and streak reset timing — clean state transitions with no servo jerk or premature detection
 
@@ -71,7 +71,7 @@ Plans:
   2. After startup, the live video feed shows neutral skin tones within 3 seconds — no persistent blue cast across frames
   3. `capture_metadata()["ColourGains"]` returns a non-None tuple after the 2s warm-up and the gains are locked via `set_controls({"ColourGains": ...})` — AWB does not re-converge during operation
   4. If `ColourGains` from metadata is None, the fallback values (2.5, 1.9) are applied and the image remains plausible — no crash or uncorrected blue tint on first run
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 Plans:
 - [ ] 06-01-PLAN.md — Clamp logging in hardware.py + AWB warm-up lock in Picamera2Stream.start()
 
@@ -107,6 +107,6 @@ Plans:
 | 3. Cleanup | v1.5 | 1/1 | Complete | 2026-03-18 |
 | 4. Hardware Foundation & Camera Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
 | 5. State Machine, Vision & PID Integration | v1.6 | 1/1 | Complete | 2026-03-26 |
-| 6. Diagnostics & Camera | v1.7 | 0/? | Not started | - |
+| 6. Diagnostics & Camera | 1/1 | Complete   | 2026-03-27 | - |
 | 7. PID Sign Correctness | v1.7 | 0/? | Not started | - |
 | 8. Scanning Logic | v1.7 | 0/? | Not started | - |

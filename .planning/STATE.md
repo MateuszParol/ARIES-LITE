@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Debugging & Optimization
 status: "Awaiting `/gsd:plan-phase 6`"
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-27T14:33:29.771Z"
+stopped_at: "Completed 06-01-PLAN.md (checkpoint: awaiting hardware verify)"
+last_updated: "2026-03-27T14:52:15.518Z"
 last_activity: 2026-03-27 — Roadmap v1.7 created (Phases 6-8)
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
   percent: 0
 ---
 
@@ -59,6 +59,8 @@ Progress: [░░░░░░░░░░] 0%
 - [z v1.6] Picamera2 over OpenCV VideoCapture — Bookworm native libcamera
 - [z v1.6] HAAR_MIN_SIZE=(80,80), sample_time=0.033 na PID
 - [z v1.6] TARGET_LOST two-tick pattern: widoczny w HUD na jedną klatkę
+- [Phase 06]: Clamp WARNING fires before mock_mode check — active in both modes
+- [Phase 06]: AWB lock: set_controls ColourGains after start()+sleep(2.0); AwbEnable omitted (ISP conflict)
 
 ### Blockers/Concerns
 
@@ -73,6 +75,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-27T14:33:29.753Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-diagnostics-camera/06-CONTEXT.md
+Last session: 2026-03-27T14:52:15.078Z
+Stopped at: Completed 06-01-PLAN.md (checkpoint: awaiting hardware verify)
+Resume file: None
