@@ -46,8 +46,16 @@ class PanTiltSystem:
         :param tilt: Docelowy kąt Y (wertykalnie)
         """
         # Obetnij wartości do zadeklarowanych bezpiecznych stref dla kamery RPi
-        self.pan_angle = max(config.PAN_LIMIT_MIN, min(config.PAN_LIMIT_MAX, pan))
-        self.tilt_angle = max(config.TILT_LIMIT_MIN, min(config.TILT_LIMIT_MAX, tilt))
+        pan_clamped = max(config.PAN_LIMIT_MIN, min(config.PAN_LIMIT_MAX, pan))
+        tilt_clamped = max(config.TILT_LIMIT_MIN, min(config.TILT_LIMIT_MAX, tilt))
+
+        if pan_clamped != pan:
+            logger.warning(f"Clamp pan: {pan:.1f} → {pan_clamped:.1f} (limit)")
+        if tilt_clamped != tilt:
+            logger.warning(f"Clamp tilt: {tilt:.1f} → {tilt_clamped:.1f} (limit)")
+
+        self.pan_angle = pan_clamped
+        self.tilt_angle = tilt_clamped
         
         if not self._mock_mode and self.pan_servo and self.tilt_servo:
             self.pan_servo.angle = self.pan_angle
