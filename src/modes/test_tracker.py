@@ -32,6 +32,7 @@ SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
 PID_OUTPUT_LIMIT = 10.0
 CAMERA_MAX_RETRIES = 3
 CAMERA_RETRY_DELAY = 1.0  # sekundy miedzy probami ponownej inicjalizacji
+AWB_FALLBACK_GAINS = (2.5, 1.9)  # (Red, Blue) — fallback gdy sensor nie zwróci gains
 
 # Stan TARGET_LOST (przejściowy, wizualny)
 STATE_TARGET_LOST = "TARGET_LOST"
@@ -73,6 +74,17 @@ class Picamera2Stream:
         self._running = True
         self._thread = threading.Thread(target=self._petla_przechwytywania, daemon=True)
         self._thread.start()
+
+        logger.info("Czekam na stabilizację AWB (2s)...")
+        time.sleep(2.0)
+        metadata = self._picam2.capture_metadata()
+        gains = metadata.get("ColourGains")
+        if gains is None:
+            logger.warning("ColourGains niedostępne, używam fallback (2.5, 1.9)")
+            gains = AWB_FALLBACK_GAINS
+        self._picam2.set_controls({"ColourGains": gains})
+        r, b = gains
+        logger.info(f"ColourGains zablokowane: (R={r:.2f}, B={b:.2f})")
 
     def _petla_przechwytywania(self) -> None:
         """Watek daemon: przechwytuje klatki w petli z ponowna inicjalizacja przy bledzie."""
