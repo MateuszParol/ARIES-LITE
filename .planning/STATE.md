@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 
 ## Current Position
 
-Phase: Phase 6 (not started)
-Plan: —
-Status: Awaiting `/gsd:plan-phase 6`
-Last activity: 2026-03-27 — Roadmap v1.7 created (Phases 6-8)
+Phase: Phase 8 (in progress)
+Plan: 08-01 (Task 1 complete, Task 2 awaiting hardware verification)
+Status: **CHECKPOINT** — awaiting RPi4 hardware test results
+Last activity: 2026-03-27 — Phase 8 code implemented (commit 4d623cb), awaiting verification
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -80,6 +80,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-27T16:01:50.762Z
-Stopped at: Completed 08-01-PLAN.md — awaiting hardware checkpoint
-Resume file: None
+Last session: 2026-03-27
+Stopped at: Phase 8, plan 08-01 — Task 1 committed (4d623cb), Task 2 awaiting hardware verification on RPi4
+Resume file: .planning/phases/08-scanning-logic/08-CHECKPOINT.md
