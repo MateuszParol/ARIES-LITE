@@ -71,7 +71,9 @@ Plans:
   2. After startup, the live video feed shows neutral skin tones within 3 seconds — no persistent blue cast across frames
   3. `capture_metadata()["ColourGains"]` returns a non-None tuple after the 2s warm-up and the gains are locked via `set_controls({"ColourGains": ...})` — AWB does not re-converge during operation
   4. If `ColourGains` from metadata is None, the fallback values (2.5, 1.9) are applied and the image remains plausible — no crash or uncorrected blue tint on first run
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Clamp logging in hardware.py + AWB warm-up lock in Picamera2Stream.start()
 
 ### Phase 7: PID Sign Correctness
 **Goal**: The tilt axis drives the camera toward the face and neither axis runs away — the control loop converges to a face-centered steady state in both pan and tilt
@@ -81,7 +83,9 @@ Plans:
   1. Holding a face below the frame center causes the HUD `Tilt:` value to increase and the camera to tilt downward until the face reaches vertical center — tilt does not snap to the soft limit
   2. Holding a face to the right of frame center causes the HUD `Pan:` value to increase and the camera to pan right until the face reaches horizontal center — pan direction is unchanged from v1.6 behavior
   3. After a TRACKING → SCANNING → TRACKING transition cycle, neither the pan nor tilt PID integral accumulates a jump — the first correction frame after re-entering TRACKING is proportional to the actual error, not inflated by a residual integral term
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Clamp logging in hardware.py + AWB warm-up lock in Picamera2Stream.start()
 
 ### Phase 8: Scanning Logic
 **Goal**: State transitions between SCANNING and TRACKING are clean — no servo jerk on scan resumption, no stale detection streak when re-entering SCANNING
@@ -90,7 +94,9 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. When a face is lost and the system returns from TRACKING to SCANNING, the pan servo resumes the sinusoidal sweep from its current position — no visible snap or step change in the first scan frame
   2. After entering TARGET_LOST state, the detection streak counter is reset to zero immediately — a face appearing within the TARGET_LOST window requires a full 3-consecutive-frame streak before TRACKING is re-entered, not fewer
-**Plans**: TBD
+**Plans:** 1 plan
+Plans:
+- [ ] 06-01-PLAN.md — Clamp logging in hardware.py + AWB warm-up lock in Picamera2Stream.start()
 
 ## Progress
 
