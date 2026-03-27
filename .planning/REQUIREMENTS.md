@@ -36,9 +36,9 @@ Wymagania dla milestone Debugging & Optimization. Naprawy krytycznych bugów wyk
 
 ### PID Control
 
-- [ ] **PID-01**: Korekta tilt jest negowana (-pid_tilt) — kamera podąża za twarzą w pionie w poprawnym kierunku
-- [ ] **PID-02**: Korekta pan zachowuje istniejącą negację — weryfikacja że oś X nadal działa poprawnie po zmianach
-- [ ] **PID-03**: Oba PID resetowane (integral+derivative) przy wejściu w SCANNING — brak skoku po zmianie stanu
+- [x] **PID-01**: Korekta tilt jest negowana (-pid_tilt) — kamera podąża za twarzą w pionie w poprawnym kierunku
+- [x] **PID-02**: Korekta pan zachowuje istniejącą negację — weryfikacja że oś X nadal działa poprawnie po zmianach
+- [x] **PID-03**: Oba PID resetowane (integral+derivative) przy wejściu w SCANNING — brak skoku po zmianie stanu
 
 ### Camera (AWB)
 
@@ -101,9 +101,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CTL-02 | Phase 5 | Complete |
 | CTL-03 | Phase 5 | Complete |
 | CTL-04 | Phase 5 | Complete |
-| PID-01 | Phase 7 | Pending |
-| PID-02 | Phase 7 | Pending |
-| PID-03 | Phase 7 | Pending |
+| PID-01 | Phase 7 | Complete |
+| PID-02 | Phase 7 | Complete |
+| PID-03 | Phase 7 | Complete |
 | CAM-01 | Phase 6 | Complete |
 | CAM-02 | Phase 6 | Complete |
 | SCAN-01 | Phase 8 | Pending |

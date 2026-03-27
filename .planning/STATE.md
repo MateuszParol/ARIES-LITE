@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Debugging & Optimization
 status: "Awaiting `/gsd:plan-phase 6`"
-stopped_at: "Completed 06-01-PLAN.md (checkpoint: awaiting hardware verify)"
-last_updated: "2026-03-27T15:18:41.149Z"
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-27T15:23:36.611Z"
 last_activity: 2026-03-27 — Roadmap v1.7 created (Phases 6-8)
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -61,6 +61,8 @@ Progress: [░░░░░░░░░░] 0%
 - [z v1.6] TARGET_LOST two-tick pattern: widoczny w HUD na jedną klatkę
 - [Phase 06]: Clamp WARNING fires before mock_mode check — active in both modes
 - [Phase 06]: AWB lock: set_controls ColourGains after start()+sleep(2.0); AwbEnable omitted (ISP conflict)
+- [Phase 07-pid-sign-correctness]: Tilt negation is 1-character fix: add minus sign to korekta_tilt in MaszynaStanow._sledz()
+- [Phase 07-pid-sign-correctness]: simple-pid pinned to >=2.0.1 (not ==) to allow patch releases while ensuring _last_error reset fix
 
 ### Blockers/Concerns
 
@@ -75,6 +77,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-03-27T14:52:15.078Z
-Stopped at: Completed 06-01-PLAN.md (checkpoint: awaiting hardware verify)
+Last session: 2026-03-27T15:23:36.606Z
+Stopped at: Completed 07-01-PLAN.md
 Resume file: None
