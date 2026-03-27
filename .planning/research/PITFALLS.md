@@ -1,137 +1,422 @@
-# Domain Pitfalls
+# Domain Pitfalls — v1.7 Bug Fix Milestone
 
-**Domain:** Adding Picamera2-based isolated test tracker to existing RPi4 ARIES-LITE system
-**Researched:** 2026-03-26
-**Confidence:** MEDIUM — grounded in existing codebase analysis and training knowledge; web search unavailable for verification
+**Domain:** Fixing critical bugs in `src/modes/test_tracker.py` on RPi4 hardware
+**Researched:** 2026-03-27
+**Confidence:** HIGH — all pitfalls grounded in direct code analysis of `test_tracker.py`,
+`src/hardware.py`, `src/config.py`, `simple_pid` source, and verified Picamera2 community
+documentation.
+
+---
+
+## Scope
+
+This document covers pitfalls specific to the four v1.7 fixes:
+
+1. PID sign inversion (runaway camera, tilt non-movement)
+2. AWB / color correction (blue tint on IMX219)
+3. PID reset on state transition (anti-windup at TRACKING → SCANNING)
+4. Servo limit masking PID output (correction silently clamped)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause reboots, hardware damage, or require a full rewrite.
-
 ---
 
-### Pitfall 1: Direct Servo Jump at Module Startup (Brownout/Reboot)
+### Pitfall 1: Fixing One PID Axis Sign and Introducing Double-Negation on the Other
 
 **What goes wrong:**
-The test tracker initializes `PanTiltSystem`, reads `pan_angle = 0.0` and `tilt_angle = 0.0` as the logical starting position, then immediately sends a PWM command to move to (0, 0). If the servo is physically sitting at an extreme position (e.g., pan = +55° from a previous run), this triggers a hard mechanical jump that draws a current spike of 500–700 mA from the shared 5V/6V rail. The RPi4 under-voltage detector fires and reboots the board.
-
-**Why it happens:**
-`PanTiltSystem` tracks `pan_angle` and `tilt_angle` as software state, not as a reflection of the actual physical servo position. There is no encoder feedback. At startup, those values are initialised to `0.0` regardless of physical position. If the test tracker skips `smooth_move_to()` or calls `set_angles()` directly before the incremental ramp, the servo sees the full angular delta in a single PWM update cycle (~20 ms).
-
-**Consequences:**
-- RPi4 hard reboot during startup
-- Camera ribbon cable stress if the jump is large on the tilt axis
-- gpiozero/pigpio PWM state is undefined after unexpected reboot — next launch may re-enter the same failure
-
-**Prevention:**
-Always call `smooth_move_to(0, 0)` as the very first hardware operation in the test tracker, before any state machine transitions. Use the existing `delay=0.03` (30 ms between 1° steps). Do not call `set_angles()` directly from `__init__` or from any constructor path.
-
-**Detection:**
-- Board reboots ~1–3 seconds after test tracker launch
-- Audible servo "slam" sound before reboot
-- `/var/log/syslog` shows `Under-voltage detected`
-
-**Phase note:** Must be addressed in Phase 1 (Safe Startup implementation). The existing `smooth_move_to()` in `src/hardware.py` is correct — the test tracker must call it unconditionally on first start.
-
----
-
-### Pitfall 2: Picamera2 Not Released — "Camera already in use" on Subsequent Runs
-
-**What goes wrong:**
-The test tracker creates a `Picamera2` instance and calls `picam2.start()`. If the process exits without calling `picam2.stop()` and `picam2.close()`, the libcamera pipeline stays open at the kernel level. The next run immediately raises `RuntimeError: Camera is already in use` or hangs at `Picamera2.start()`. On Bookworm 64-bit, this is more common because libcamera's IPC uses a Unix socket that is not automatically released on process exit in some kernel versions.
-
-**Why it happens:**
-Unlike OpenCV's `VideoCapture.release()`, Picamera2 requires an explicit two-step teardown: `stop()` (stops the capture loop) then `close()` (releases the libcamera pipeline and the `/dev/video0` file descriptor). Raising an unhandled exception between `start()` and `stop()` skips the cleanup. Python's garbage collector does not reliably call `__del__` in daemon threads.
-
-**Consequences:**
-- Subsequent test runs fail immediately
-- Requires `sudo killall libcamera-vid` or reboot to recover
-- Makes iterative development extremely slow on real hardware
-
-**Prevention:**
-Wrap the entire camera lifecycle in a `try/finally` block:
+`_sledz()` in `test_tracker.py` lines 261–263 uses asymmetric negation:
 ```python
-picam2 = Picamera2()
-picam2.configure(...)
-picam2.start()
-try:
-    run_loop(picam2)
-finally:
-    picam2.stop()
-    picam2.close()
+korekta_pan  = -self.pid_pan(blad_pan)   # pan negated
+korekta_tilt =  self.pid_tilt(blad_tilt) # tilt NOT negated
 ```
-Additionally register a `signal.signal(signal.SIGINT, handler)` and `signal.signal(signal.SIGTERM, handler)` that set a stop event, so `KeyboardInterrupt` and systemd stop both trigger the `finally` block.
+The tilt axis is currently observed to produce no movement. The reflex fix is to add
+`-self.pid_tilt(...)` to mirror pan. This is wrong if the physical cause is something
+else (clamped output, wrong error formula, zero gain). If tilt truly needs negation,
+applying it is correct. But if pan's negation is also wrong (it drives the face away
+from center instead of toward it), then negating pan again to "fix" it creates a
+double-negation: both axes drive away from center simultaneously.
 
-**Detection:**
-- `RuntimeError: Camera is already in use` on second launch
-- `lsof /dev/video0` shows the previous PID still holds the fd
-- `ls /proc/<PID>/fd` after apparent process exit
+**Why it happens:**
+The sign of the correction depends on **two independent choices** that must be consistent:
 
-**Phase note:** Must be addressed in Phase 1 (camera init) alongside graceful shutdown. Mirror the `stopped` flag pattern already used in `src/camera.py`.
+1. Error direction: `blad_pan = srodek_x - ramka_cx` (positive when face is right of
+   center). This is correct for standard image coordinates (x increases left-to-right).
+
+2. Servo direction: for the standard mounting confirmed in PROJECT.md (`pan+ = right`),
+   moving the camera right (pan+) when the face is right of center makes the error
+   larger, not smaller. Therefore the correction must be negated: `korekta = -pid(error)`.
+
+The existing pan negation `korekta_pan = -self.pid_pan(blad_pan)` is correct for the
+stated mounting. The tilt axis: `blad_tilt = srodek_y - ramka_cy` is positive when the
+face is below center. For standard mounting (`tilt+ = down`), moving tilt down when the
+face is below center also increases error — so tilt correction also needs negation.
+
+The current code does NOT negate tilt. Adding `-self.pid_tilt(blad_tilt)` is therefore
+the correct fix — but only after verifying the error calculation is correct.
+
+**Double-negation scenario (the actual trap):**
+Developer sees runaway camera on pan AND tilt non-movement. Concludes pan sign is wrong,
+adds a second negation to pan: `korekta_pan = self.pid_pan(blad_pan)` (removing the
+existing minus). Now pan has no negation and drives away from center. Developer adds
+negation to tilt, getting `korekta_tilt = -self.pid_tilt(...)`. Result: pan is wrong,
+tilt is right, but the pan runaway was caused by something else entirely (e.g., servo
+limit being reached silently, see Pitfall 4).
+
+**Consequences:**
+- Pan diverges: camera runs to limit and stays there
+- System appears to track but always moves face further from center
+- Very hard to diagnose because the servo does move — just in the wrong direction
+
+**Prevention:**
+Before touching any sign:
+1. Verify error formula independently: print `blad_pan` when face is known to be right of
+   center. It must be positive.
+2. Verify servo direction independently: command `set_angles(+10, 0)` directly and
+   observe if camera pans right. Confirm PROJECT.md claim `pan+ = right`.
+3. From those two facts, derive required sign mathematically rather than by trial and error.
+4. Change one axis at a time. Verify each axis in isolation before touching the other.
+
+**Detection (warning signs):**
+- After fix, face moves further from center on one or both axes
+- `blad_pan` logs show sign is correct, but correction moves servo toward larger error
+- Servo reaches limit within 2–3 frames of acquiring a target
+
+**Phase:** Task targeting runaway camera / tilt non-movement. Verify error signs before
+modifying any negation.
 
 ---
 
-### Pitfall 3: Picamera2 + OpenCV Frame Format Mismatch (BGR vs RGB)
+### Pitfall 2: Tilt Non-Movement Misdiagnosed as Sign Error When Root Cause Is Clamped Output
 
 **What goes wrong:**
-`Picamera2.capture_array()` returns frames in **RGB** order by default (format `"RGB888"`). OpenCV functions — including `cv2.CascadeClassifier.detectMultiScale()` and `cv2.imshow()` — expect **BGR** order. Running HAAR detection on an RGB frame does not crash; it silently reduces detection accuracy because the cascade was trained on BGR images. Face bounding boxes may be missed or have higher false-negative rates.
+Tilt does not move at all during tracking. The reflex conclusion is "tilt PID sign is
+wrong." But the actual cause may be that `korekta_tilt` is computed correctly yet the
+commanded `nowy_tilt` always equals `self.hardware.tilt_angle` after clamping in
+`set_angles()`.
+
+Specifically, if tilt starts at 0° and the PID correction is, say, +2°, the new tilt
+is 2° — well within the ±30° soft limit. That is fine. But if tilt is already at 0°
+and the correction computed is actually 0.0 because `pid_tilt` has not been called with
+a non-zero error yet (e.g., `blad_tilt` is near zero because the face happens to be
+vertically centered), then there is no movement regardless of sign.
+
+The more dangerous scenario: `pid_tilt` gains in `config.py` are the same as pan
+(`PID_TILT_P = 0.05`), which produces a correction of `0.05 * error_pixels`. For a
+vertical error of 10 pixels (face 10px above center), the correction is 0.5°. After
+clamping to tilt soft limits (±30°), this is applied. But `set_angles()` calls
+`max(config.TILT_LIMIT_MIN, min(config.TILT_LIMIT_MAX, tilt))` — if the current
+`tilt_angle` tracked in software diverged from hardware state (e.g., due to a previous
+test run that did not complete cleanly), this clamp operates on a wrong base value.
 
 **Why it happens:**
-The existing `VideoStream` (OpenCV backend) produces BGR frames naturally. The new Picamera2 backend changes this contract. The difference is invisible unless explicitly checked — HAAR cascades are robust enough to still detect some faces, masking the problem during initial testing.
+`PanTiltSystem.tilt_angle` is a software variable, not an encoder readback. If the
+hardware servo moved but the software state was not updated (e.g., mock mode was
+inadvertently active, or `set_angles` was called in mock mode), `tilt_angle` stays at 0
+while the physical servo is at +20°. PID corrections are then applied to the wrong base,
+and the resulting commanded angle after clamping may equal the current `tilt_angle`
+(no apparent movement in logs even though the servo should have moved).
 
 **Consequences:**
-- Reduced face detection rate (false negatives increase)
-- Subtle bug that is hard to diagnose — system appears to work but misses faces
-- Any downstream component that receives frames and assumes BGR (e.g., `cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)`) produces incorrect grayscale
+- Developer chases a sign problem that does not exist
+- Wastes debug cycles on the wrong fix
+- May introduce an actual sign bug while trying to "fix" a non-existent one
 
 **Prevention:**
-Explicitly configure Picamera2 to output BGR:
-```python
-config = picam2.create_preview_configuration(
-    main={"format": "BGR888", "size": (640, 480)}
-)
-picam2.configure(config)
-```
-Or add a single conversion after every `capture_array()` call:
-```python
-frame = picam2.capture_array()
-frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-```
-The explicit format configuration is preferable — it is cheaper (no per-frame copy) and documents the contract.
+Before diagnosing sign errors for tilt non-movement:
+1. Check `PIGPIO_AVAILABLE` and `_mock_mode` at startup. If pigpiod is not running,
+   `PanTiltSystem` silently falls back to mock mode — no servo movement, no error.
+   Verify with: `systemctl is-active pigpiod` on the RPi4.
+2. Log `korekta_tilt` values in `_sledz()` for 10 consecutive frames. If the values are
+   all zero or near-zero, the PID is computing correctly but there is no tilt error to
+   correct (face is vertically centered, or HAAR bbox is inaccurate on the Y axis).
+3. Issue a direct `set_angles(0, 10)` call to confirm the tilt servo physically moves.
+   If it does, the servo is functional and the PID path is the issue.
+4. Only then investigate PID sign.
 
-**Detection:**
-- Face detection works sometimes but misses obvious faces
-- `frame.shape` is `(480, 640, 3)` — correct — but pixel channel ordering is wrong
-- Add assertion: `assert picam2.camera_configuration()["main"]["format"] == "BGR888"`
+**Detection (warning signs):**
+- `maszyna.hardware._mock_mode` is `True` (check at startup)
+- `korekta_tilt` logs show values near 0 consistently
+- `blad_tilt` logs show values near 0 (face is always near vertical center)
+- Direct `set_angles(0, 10)` works, tilt servo moves — problem is in PID path not hardware
 
-**Phase note:** Phase 1 (camera init). Add a format sanity check to the test tracker's startup log output.
+**Phase:** Tilt non-movement investigation. Rule out mock mode and zero-error before
+any sign change.
 
 ---
 
-### Pitfall 4: Picamera2 and cv2.VideoCapture Both Opening Camera Simultaneously
+### Pitfall 3: AWB set_controls Called Before Camera Starts — Silently Ignored
 
 **What goes wrong:**
-The test tracker is isolated (`src/modes/test_tracker.py`) but runs in the same Python process as the Flask server that uses the existing `VideoStream` (OpenCV `cv2.VideoCapture`). If both are active simultaneously — or if the test tracker is started while the Flask server is running — both try to open `/dev/video0`. On Bookworm with libcamera, `cv2.VideoCapture(0)` uses the V4L2 libcamera bridge, which is the same pipeline Picamera2 uses. The second opener gets a blank stream or an error.
+`Picamera2Stream.start()` calls `self._picam2.configure(video_config)` then
+`self._picam2.start()`. There is no AWB configuration anywhere in the current code.
+To fix the blue tint, the natural place to add it is in `start()` before calling
+`self._picam2.start()`. This does not work.
+
+Picamera2 requires `set_controls()` to be called **after** `start()`. Calling it after
+`configure()` but before `start()` either raises a runtime error or is silently ignored —
+the camera starts with its default AWB algorithm active and the blue tint persists.
 
 **Why it happens:**
-On RPi OS Bookworm, `/dev/video0` is a V4L2-compat device backed by libcamera. Both Picamera2 and OpenCV's V4L2 backend attempt to acquire the same libcamera session. Unlike USB webcams, the Raspberry Pi camera module does not support multiple concurrent openers.
+Picamera2's control pipeline is established when `start()` is called. `configure()` sets
+the stream format and buffer allocation, not the ISP algorithm parameters. Setting ISP
+controls (AWB, exposure, colour gains) before the ISP is running has no effect. The
+Picamera2 maintainer has explicitly confirmed this ordering requirement in GitHub issue
+#825 and the RPi forums thread on locking AWB.
 
 **Consequences:**
-- Test tracker captures black frames silently
-- Existing Flask MJPEG stream may drop to 0 FPS
-- No exception raised — failure is silent and confusing
+- Blue tint persists even though AWB configuration code appears correct
+- Developer concludes the gain values are wrong and keeps changing them
+- Never finds correct gains because the configuration is never applied
 
 **Prevention:**
-The test tracker must run as a standalone script (`python3 -m src.modes.test_tracker`) that does NOT import or start the Flask server. Document clearly in the module header that it is mutually exclusive with the main application. Add a runtime guard: check if port 5000 is bound before starting, and refuse to start if so.
+Set AWB controls in the capture thread (`_petla_przechwytywania`) **after** the first
+successful `capture_array()` call, or in `start()` after `self._picam2.start()` with a
+brief warm-up delay (1–2 frames). The safest pattern for the current architecture:
 
-**Detection:**
-- All captured frames are black (numpy array of zeros)
-- `v4l2-ctl --list-devices` shows device busy
-- `fuser /dev/video0` shows two PIDs
+```python
+self._picam2.start()
+# Allow camera to start ISP pipeline
+time.sleep(0.1)
+self._picam2.set_controls({"ColourGains": (red_gain, blue_gain)})
+# Setting ColourGains implicitly disables AWB — do NOT also set AwbEnable=False
+# as the Picamera2 maintainer warns this can cause sequencing issues
+```
 
-**Phase note:** Phase 1 (isolation contract). Enforce via documentation and a startup check, not just convention.
+Do NOT call `set_controls({"AwbEnable": False})` explicitly alongside `ColourGains`.
+Setting `ColourGains` already disables AWB. Adding `AwbEnable: False` separately can
+cause control sequencing conflicts in some Picamera2 versions.
+
+**Detection (warning signs):**
+- Blue tint persists after adding AWB configuration
+- No error or warning in logs from Picamera2
+- `picam2.capture_metadata()` after start shows `ColourGains` as the auto-computed value,
+  not the manually set one
+
+**Phase:** AWB fix. Always add the `time.sleep(0.1)` guard after `start()` before
+setting any ISP controls.
+
+---
+
+### Pitfall 4: AWB Warm-Up Flicker — First N Frames Ignore Manual Gains
+
+**What goes wrong:**
+Even with correct `set_controls({"ColourGains": (r, b)})` called after `start()`, the
+first 3–10 frames from the camera may still show blue tint or color fluctuation. The
+capture thread stores these early frames in `self._frame` and the main loop processes
+them normally. If the HUD or debug capture happens to screenshot during this warm-up
+window, the AWB "fix" appears to have failed.
+
+**Why it happens:**
+Picamera2 has an internal frame pipeline with latency. Controls set via `set_controls()`
+take effect 2–3 frames after being issued (the control must pass through the kernel
+driver's request queue). During this 2–3 frame window, the old AWB values are still
+active.
+
+**Consequences:**
+- Developer thinks AWB configuration is wrong, starts changing gain values
+- Gains get tuned against the warm-up artifact instead of the steady-state image
+- Result: overcorrected warm gains that look correct during initialization but wrong in
+  steady state
+
+**Prevention:**
+In `_petla_przechwytywania`, skip the first 5 frames before storing into `self._frame`.
+Or alternatively, read `picam2.capture_metadata()["ColourGains"]` and only store frames
+once the reported gains match the commanded values.
+
+Simple approach that fits the existing code structure:
+```python
+# In _petla_przechwytywania, add a warm-up counter:
+_warmup_frames = 0
+_WARMUP_REQUIRED = 5
+
+# Inside the loop:
+if _warmup_frames < _WARMUP_REQUIRED:
+    _warmup_frames += 1
+    continue  # discard early frames
+
+with self._lock:
+    self._frame = klatka
+```
+
+**Detection (warning signs):**
+- Color is correct after ~1 second of running, wrong in the first second
+- Screenshot taken immediately after start shows blue tint, later screenshots are correct
+- Adding `time.sleep(1.0)` before first screenshot makes the problem disappear
+
+**Phase:** AWB fix. Add warm-up skip as part of the same change that adds ColourGains.
+
+---
+
+### Pitfall 5: PID reset() Clears Derivative State — Causes Derivative Spike on First Post-Reset Tick
+
+**What goes wrong:**
+`_przejdz_do()` calls `self.pid_pan.reset()` and `self.pid_tilt.reset()` when
+transitioning into SCANNING state (line 276–277). `simple_pid`'s `reset()` clears ALL
+internal state: `_proportional`, `_integral`, `_derivative`, `_last_output`,
+`_last_input`, and `_last_time`.
+
+On the first call to `pid_pan(blad_pan)` after reset (when a face is re-acquired and
+the state machine transitions SCANNING → TRACKING → first `_sledz()` call), `_last_input`
+is `None`. `simple_pid` handles `None` last_input by skipping the derivative term on
+the first tick, which is correct.
+
+However, the transition sequence in `tick()` is:
+1. `_przejdz_do(STATE_TRACKING)` — state changes to TRACKING
+2. `_sledz(bbox, w, h)` — called immediately in the same tick
+
+This means the PID is called for the first time in the same frame that triggered the
+state transition. `_last_time` was reset to `time.time()` inside `reset()`, and the
+immediately following PID call happens within microseconds. `simple_pid` uses
+`sample_time=0.033` — if `dt < sample_time`, the PID returns the last output (which
+is `None` after reset) and produces `0` correction. This is actually benign for the
+derivative spike concern.
+
+The real issue is the opposite: if `reset()` is called at the wrong moment (e.g., inside
+TRACKING state when tracking is re-acquired after a brief miss, not just at
+TRACKING → SCANNING), the integral accumulated during successful tracking is discarded,
+causing the servo to drift away from center until the integral rebuilds.
+
+**Why it happens:**
+The current code only resets on transition to SCANNING, which is correct. But if a
+developer adds a "re-acquire" reset (thinking "start fresh on each face acquisition"),
+they will reset during active TRACKING, losing the integral correction needed to hold
+the servo on target.
+
+**Consequences:**
+- Servo drifts from center when face is briefly re-acquired after occlusion
+- PID takes 2–5 seconds to re-accumulate integral and re-center
+- Appears as "tracking instability" rather than "reset too frequently"
+
+**Prevention:**
+Call `pid.reset()` only in `_przejdz_do()` when `nowy_stan == config.STATE_SCANNING`.
+Never reset PID inside TRACKING state, even on face re-acquisition after brief occlusion.
+The existing code does this correctly — do not add any additional reset points.
+
+Additionally: do not call `pid.reset()` on the SCANNING → TRACKING transition itself.
+The integral and derivative state should be zero already (reset happened when entering
+SCANNING), but explicitly not resetting on TRACKING entry ensures a brief scan
+interruption (face visible for 1 frame, then lost, then visible) does not cause an
+unnecessary reset.
+
+**Detection (warning signs):**
+- Servo centers correctly then drifts ~1–2 seconds after face reappears from occlusion
+- Log shows `_integral` near 0 immediately after face re-acquisition during TRACKING
+- If `pid.reset()` is called inside TRACKING logic, it appears in the call stack
+
+**Phase:** PID reset fix / state machine transition review. Add reset() only in the
+one correct location; document why other locations are intentionally excluded.
+
+---
+
+### Pitfall 6: Integral Cleared but Previous Derivative State Stale — Reset Does Not Guarantee Clean Start
+
+**What goes wrong:**
+`simple_pid.PID.reset()` clears `_last_input = None`. On the first tick after reset,
+the derivative term is skipped (because `_last_input is None`). On the second tick,
+`_last_input` has a real value and the derivative is computed normally.
+
+The danger is if `reset()` is NOT called on TRACKING → SCANNING (e.g., a developer
+removes the reset thinking "the output_limits handle windup anyway"). The integral
+accumulates during SCANNING if `_sledz()` is mistakenly called while in SCANNING state
+(the current code guards against this with the `if self.stan == config.STATE_TRACKING`
+check, but if that check were removed or bypassed during refactoring, the integrator
+winds up silently).
+
+Separately, `output_limits = (-10, 10)` in `test_tracker.py` line 197 caps the PID
+output but `simple_pid`'s anti-windup clamping of the integral depends on version.
+In `simple_pid >= 2.0`, when `output_limits` are set, the integral is clamped to stay
+within those limits. In `simple_pid < 2.0`, the integral can exceed limits even though
+the output is capped.
+
+**Why it happens:**
+`pip install simple-pid` without a version pin may install either 1.x or 2.x depending
+on the environment. The anti-windup behavior differs between versions.
+
+**Prevention:**
+1. Pin `simple-pid>=2.0.0` in `requirements.txt` to get reliable anti-windup clamping.
+2. Keep the `pid.reset()` call in `_przejdz_do()` for SCANNING transition — even with
+   output_limits and anti-windup clamping, an explicit reset guarantees a clean start.
+3. Verify installed version: `pip show simple-pid | grep Version`.
+
+**Detection (warning signs):**
+- Servo overshoots significantly on first tracking tick after a long scan period
+- Log `pid_pan._integral` value at SCANNING → TRACKING transition: should be 0 or near 0
+- `pip show simple-pid` reports version < 2.0
+
+**Phase:** PID reset / anti-windup fix. Version-pin `simple-pid` as part of this task.
+
+---
+
+### Pitfall 7: Correction Silently Eaten by Soft Limits — Servo Appears Broken When It Is at the Boundary
+
+**What goes wrong:**
+`hardware.py` `set_angles()` clamps pan to `[-60, +60]` and tilt to `[-30, +30]`.
+`_sledz()` computes:
+```python
+nowy_pan  = self.hardware.pan_angle + korekta_pan
+nowy_tilt = self.hardware.tilt_angle + korekta_tilt
+self.hardware.set_angles(nowy_pan, nowy_tilt)
+```
+
+If `self.hardware.pan_angle` is already at +60° (limit), and `korekta_pan = +2°`, then
+`nowy_pan = 62°`, which `set_angles()` clamps back to 60°. The servo does not move. The
+PID correctly computes a correction, the code appears correct, but there is no observable
+movement. This is indistinguishable from "PID is computing zero correction" or "servo is
+broken" during debugging.
+
+The specific trap for tilt: tilt starts at 0°. Correction is computed as +2° (face below
+center). `nowy_tilt = 2°`. Fine, within limits. But if the scan function `_skanuj()`
+calls `set_angles(pan, 0.0)` directly — hardcoding tilt to 0 — and then `_sledz()` runs
+in the same tick (due to a race in the state machine), `tilt_angle` gets reset to 0
+before the correction is applied. The correction is applied to the 0 base, works
+correctly, but the next scan call zeros it out. Net effect: tilt oscillates around 0
+instead of tracking.
+
+**Why it happens:**
+In `MaszynaStanow.tick()` (lines 220–241), the SCANNING path calls `_skanuj()` which
+calls `set_angles(pan, 0.0)`. The TRACKING path calls `_sledz()`. These are mutually
+exclusive via the state machine, so under normal operation there is no race. However,
+in the SCANNING→TRACKING transition tick (lines 221–223):
+```python
+if bbox is not None:
+    self._przejdz_do(config.STATE_TRACKING)
+    self._sledz(bbox, w, h)
+```
+The transition happens first, then `_sledz()` is called. `_skanuj()` is NOT called on
+this tick. This is correct. The race scenario only matters if the state machine logic
+is modified.
+
+The limit-masking concern is real for any axis at its boundary. If runaway camera is the
+bug (wrong sign), the pan servo hits the limit within 2–3 frames, then appears "stuck"
+— which is not a sign problem but a consequence of it.
+
+**Prevention:**
+Add a diagnostic log when `set_angles()` applies clamping. In `hardware.py`:
+```python
+def set_angles(self, pan: float, tilt: float) -> None:
+    clamped_pan  = max(config.PAN_LIMIT_MIN,  min(config.PAN_LIMIT_MAX,  pan))
+    clamped_tilt = max(config.TILT_LIMIT_MIN, min(config.TILT_LIMIT_MAX, tilt))
+    if abs(clamped_pan - pan) > 0.1 or abs(clamped_tilt - tilt) > 0.1:
+        logger.debug(
+            f"Soft limit applied: pan {pan:.1f}→{clamped_pan:.1f}, "
+            f"tilt {tilt:.1f}→{clamped_tilt:.1f}"
+        )
+    self.pan_angle  = clamped_pan
+    self.tilt_angle = clamped_tilt
+    ...
+```
+This makes limit-hitting visible in logs immediately.
+
+**Detection (warning signs):**
+- Servo appears to stop responding after initial movement
+- `pan_angle` or `tilt_angle` stays at the limit value for many consecutive frames
+- `korekta_pan` / `korekta_tilt` logs show non-zero values while `pan_angle` does not change
+- Adding soft-limit logging shows continuous clamping events
+
+**Phase:** Runaway camera / tilt non-movement investigation. Add soft-limit logging as
+first diagnostic step before any code changes.
 
 ---
 
@@ -139,218 +424,98 @@ The test tracker must run as a standalone script (`python3 -m src.modes.test_tra
 
 ---
 
-### Pitfall 5: PID Integral Windup During Scanning State
+### Pitfall 8: YUV420 capture_array Shape — cv2.COLOR_YUV420p2BGR vs COLOR_YUV2BGR_I420
 
 **What goes wrong:**
-The PID controllers (`pid_pan`, `pid_tilt`) accumulate integral error whenever there is a non-zero error signal. During the SCANNING state, no face is tracked but the PID objects still exist and may receive error values if `do_tracking()` is accidentally called, or if the integral is not reset when transitioning from TRACKING back to SCANNING. When a face is found after a scan, the wound-up integral causes a large initial correction overshoot — the servo snaps past the face position before settling.
+The existing code uses `cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)`. Picamera2 in
+lores YUV420 mode returns an array of shape `(height * 3 // 2, width)` — a single-channel
+planar YUV array, NOT a 3-channel array. `cv2.COLOR_YUV420p2BGR` (also spelled
+`COLOR_YUV2BGR_YV12`) expects YV12 planar format. Picamera2 outputs I420 (YUV420p)
+which has U and V planes in the opposite order.
+
+If the wrong constant is used, the output BGR frame has U and V planes swapped, producing
+a color artifact that is distinct from the AWB blue tint: it appears as a green-magenta
+shift on skin tones rather than an overall blue cast.
 
 **Why it happens:**
-`simple_pid.PID` accumulates `_integral` continuously. The existing `TrackerMachine` uses `output_limits = (-10, 10)` which caps the *output* but not the internal integral accumulator. Windup occurs silently while the integrator accumulates beyond what the output limits would normally allow.
+OpenCV has multiple YUV420 conversion constants with similar names that differ in Cb/Cr
+plane ordering:
+- `COLOR_YUV420p2BGR` = I420 (Y + U + V, this is what Picamera2 produces)
+- `COLOR_YUV2BGR_YV12` = YV12 (Y + V + U, planes reversed)
 
-**Consequences:**
-- Servo overshoots face position on first tracking tick after scan
-- System oscillates around face center for 1–3 seconds before settling
-- On MG-90S servos at 6V, oscillation can cause the servo to buzz/chatter
+These are actually the same constant value in current OpenCV (both map to I420), but in
+some OpenCV versions built differently they differ. The existing code's
+`COLOR_YUV420p2BGR` is correct for Picamera2's output — do not change it while fixing
+the AWB issue, as the AWB problem is ISP-level, not format-conversion-level.
 
 **Prevention:**
-Call `pid_pan.reset()` and `pid_tilt.reset()` on every transition into SCANNING state. `simple_pid` also supports `auto_mode = False` to freeze the controller. Additionally, enable `simple_pid`'s built-in windup clamping:
-```python
-self.pid_pan = PID(..., output_limits=(-10, 10))
-# simple_pid clamps integral automatically when output_limits is set
-# but verify the version — older versions required explicit anti_windup flag
-```
-Verify the installed `simple_pid` version supports integral clamping by checking `pip show simple-pid`.
+Do not touch the `cv2.cvtColor` line when fixing AWB. The two problems are independent:
+- AWB blue tint: fix with `set_controls({"ColourGains": (r, b)})` after camera start
+- YUV conversion: already correct, leave it alone
 
-**Detection:**
-- Servo makes a sharp initial move when target is first acquired after scanning
-- Servo oscillates around center before stabilising
-- Log `pid_pan._integral` value at transition point
+If the YUV constant needs to be investigated, verify by inspecting `klatka_yuv.shape`
+in the format verification log (line 92): must be `(360, 320)` for 320x240 YUV420
+(height * 1.5 = 360 rows, 320 columns, single channel).
 
-**Phase note:** Phase 2 (PID loop). Test by covering the camera for 10+ seconds (to accumulate windup) then uncovering.
+**Detection (warning signs):**
+- Green-magenta skin tone cast (not blue) = wrong YUV constant
+- Blue overall cast = AWB issue (different problem)
+- `klatka_yuv.shape` has 3 channels = wrong Picamera2 capture format configuration
+
+**Phase:** AWB fix. Treat AWB and YUV conversion as independent; fix only AWB.
 
 ---
 
-### Pitfall 6: PID Sample Time Mismatch with Frame Rate
+### Pitfall 9: State Transition Timing — TARGET_LOST One-Frame Latency Causes PID Reset Delay
 
 **What goes wrong:**
-`simple_pid.PID` uses a `sample_time` parameter (default: `None`, meaning "run every call"). If the control loop runs at variable frame rates — common when HAAR detection is slow on some frames — the derivative term `Kd * d(error)/dt` becomes unstable. A frame that takes 80 ms instead of the expected 33 ms (30 FPS) produces a derivative spike three times larger than expected, causing servo jitter.
+The `_przejdz_do(STATE_TARGET_LOST)` path (lines 234–238) transitions to TARGET_LOST on
+timeout, then on the next tick transitions directly to SCANNING. PID reset happens in
+`_przejdz_do()` only when `nowy_stan == config.STATE_SCANNING`. So the reset happens
+on the second tick after the timeout.
 
-**Why it happens:**
-The existing PID gains `Kp=0.05, Kd=0.005` are tuned for approximately 30 FPS. The D term is computed as `Kd * (error - last_error) / dt`. When `dt` varies from 33 ms to 200 ms (heavy HAAR frame), the D term ratio changes 6x, producing erratic corrections.
+Between the two ticks, the state is TARGET_LOST and `_sledz()` is not called. The PID
+receives no new input. `simple_pid` with `sample_time=0.033` will not update if no call
+is made. So the integral holds its value for one extra tick. This is not a bug — the
+effect is a ~33 ms delay before reset, which is imperceptible.
 
-**Consequences:**
-- Servo jitter at irregular intervals
-- System appears tuned correctly in tests but jitters during real use when HAAR takes longer
-- MG-90S at 6V will audibly buzz during jitter events
+However, if a developer adds `self.pid_pan.reset()` in the TARGET_LOST branch directly
+(trying to reset "earlier"), they break the invariant that the reset happens exactly at
+SCANNING entry. If SCANNING is entered via a path that does NOT go through TARGET_LOST
+(e.g., direct TRACKING → SCANNING for a future feature), the reset in the TARGET_LOST
+branch would not execute.
 
 **Prevention:**
-Set `sample_time` on the PID controllers to match the target loop period:
-```python
-self.pid_pan = PID(..., sample_time=0.033)  # 30 FPS = 33ms
-```
-With `sample_time` set, `simple_pid` skips updates that arrive faster than `sample_time` and caps dt to a reasonable value. Alternatively, implement the control loop with a fixed-period `time.sleep()` and measure actual dt to log when frames are late.
+Keep PID reset exclusively in `_przejdz_do()` with the `if nowy_stan == STATE_SCANNING`
+guard. This is the single authoritative reset point and handles all transition paths.
+Do not add reset logic in state-specific branches.
 
-**Detection:**
-- Irregular servo twitches during otherwise stable tracking
-- Log the time delta between `logic_tick()` calls — spikes above 100 ms indicate the problem
-
-**Phase note:** Phase 2 (PID tuning). Set `sample_time` during initial implementation, not as a later fix.
+**Phase:** State machine review. Note this is already correct in the existing code — do
+not "improve" it.
 
 ---
 
-### Pitfall 7: HAAR Cascade minNeighbors Too Low — False Detections Drive Servo Hunting
+### Pitfall 10: IMX219 ColourGains — Gain Values Must Be Float Tuples, Not Int
 
 **What goes wrong:**
-At `minNeighbors=5` (existing config), HAAR detection works well on a 640x480 frame in controlled lighting. In the test tracker context — where any face triggers immediate PID tracking — false detections on patterned backgrounds, hands, or low-light frames cause the servo to "hunt" toward phantom targets. Because the test tracker has no dlib identity verification, it tracks whatever HAAR reports.
-
-**Why it happens:**
-The existing `HybridVision` uses dlib async verification to confirm identity before entering full tracking. The test tracker (`test_tracker.py`) intentionally removes identity verification to simplify the control loop. Without that filter, every false HAAR positive drives the PID controller.
-
-**Consequences:**
-- Servo chases background patterns when no human is present
-- State machine never reaches stable TRACKING — oscillates between TRACKING (phantom) and SCANNING
-- PID integral accumulates against conflicting targets
+`set_controls({"ColourGains": (2, 1)})` passes integer values. Picamera2's control
+pipeline expects `float` for gain values. Passing integers may work on some versions but
+raises `TypeError: Cannot convert int to float` or silently applies 1.0 for both gains
+on others, leaving the blue tint unchanged.
 
 **Prevention:**
-Use `minNeighbors=8` (higher confidence threshold) and `minSize=(80, 80)` (ignore small detections) in the test tracker specifically. Also add a **detection streak filter**: require the same face region to be detected in N consecutive frames before transitioning from SCANNING to TRACKING. A streak of 3 frames eliminates almost all single-frame false positives.
+Always pass explicit floats: `set_controls({"ColourGains": (2.0, 1.4)})`.
+For IMX219 (Camera Module V2) in typical indoor fluorescent lighting, starting values
+of `(1.8, 1.5)` (red_gain, blue_gain) are a reasonable starting point. Outdoor daylight
+typically needs `(1.5, 1.8)`. Tune empirically on the actual hardware in the target
+lighting conditions by adjusting in 0.1 increments.
 
-**Detection:**
-- Servo moves erratically when room is empty
-- Log HAAR detection count per frame — healthy: 0–1 detections; hunting: >1 per frame
+**Detection (warning signs):**
+- `TypeError` at camera start
+- Blue tint unchanged after adding ColourGains — check that gains were actually applied
+  by reading back `picam2.capture_metadata()["ColourGains"]` after a few frames
 
-**Phase note:** Phase 2 (face detection integration). Tune `minNeighbors` and add streak filter before testing PID.
-
----
-
-### Pitfall 8: MG-90S Servo PWM Pulse Width — gpiozero min/max_pulse_width Mismatch
-
-**What goes wrong:**
-`AngularServo` in gpiozero defaults to `min_pulse_width=1ms` and `max_pulse_width=2ms`. MG-90S servos technically accept 0.5 ms–2.5 ms, giving a full 180° range. With the 1–2 ms defaults, the effective range is ~90° (not the configured `min_angle=-90, max_angle=90`). The soft limits in `config.py` (pan ±60°, tilt ±30°) fall within this range, so the bug is hidden — but the servo may not reach commanded angles precisely, causing the PID to never fully zero the error.
-
-**Why it happens:**
-The existing `hardware.py` creates `AngularServo` with `min_angle=-90, max_angle=90` but does not explicitly set `min_pulse_width` and `max_pulse_width`. gpiozero maps angle to pulse width linearly between the defaults. If the actual servo calibration differs, the mapping is off.
-
-**Consequences:**
-- PID has a residual steady-state error it cannot eliminate
-- `Ki` term winds up trying to correct the uncorrectable mechanical offset
-- Pan/tilt does not center on face even with correct error calculation
-
-**Prevention:**
-Characterise the specific MG-90S units before PID tuning. Measure actual neutral pulse width with an oscilloscope or servo tester. For most MG-90S from reputable suppliers, `min_pulse_width=0.5ms, max_pulse_width=2.5ms` gives true ±90° range:
-```python
-AngularServo(pin, min_angle=-90, max_angle=90,
-             min_pulse_width=0.0005, max_pulse_width=0.0025,
-             pin_factory=factory)
-```
-Test center position independently: command `angle=0` and verify servo shaft is mechanically centred.
-
-**Detection:**
-- `set_angles(0, 0)` produces a measurably off-centre position
-- PID settles with a visible face offset from frame center
-- Residual error remains constant regardless of `Ki`
-
-**Phase note:** Phase 1 (hardware init). Verify pulse width before writing any PID code.
-
----
-
-### Pitfall 9: Scan Pattern Stale State After TRACKING → SCANNING Transition
-
-**What goes wrong:**
-`TrackerMachine.do_scan()` uses `scan_step_pan` and `scan_step_tilt` as directional accumulators. When tracking is lost and the state transitions back to SCANNING, the scan resumes from wherever `target_pan` and `target_tilt` were when tracking was last active. If tracking ended at pan=+55°, the scan immediately hits the limit, flips direction, and the tilt nudges — but the effective scan range is only the last ~5° before the limit, not the full ±60° sweep.
-
-**Why it happens:**
-There is no reset of `target_pan` / `target_tilt` on the TRACKING → SCANNING transition. The scan state is continuous, not re-initialized. This is acceptable for the main system (gradual recovery) but in the test tracker, which is intended to prove correct behaviour, it produces confusing partial-scan artefacts during testing.
-
-**Consequences:**
-- Scan pattern is asymmetric after tracking ends at an extreme
-- System appears to not scan at all if target was lost at the pan limit
-- Makes PID + scan integration harder to verify
-
-**Prevention:**
-On TRACKING → SCANNING transition, reset `target_pan = 0.0` and call `smooth_move_to(0, 0)` before resuming the scan. Alternatively, use a sine wave sweep (as mentioned in PROJECT.md goals) driven by `time.time()` instead of accumulated steps — a time-based sinusoid is immune to stale state:
-```python
-t = time.time() - self.scan_start_time
-self.target_pan = PAN_LIMIT_MAX * math.sin(2 * math.pi * t / SCAN_PERIOD)
-```
-
-**Detection:**
-- Servo barely moves after target is lost at an extreme angle
-- Log `target_pan` and `target_tilt` at state transition point
-
-**Phase note:** Phase 2 (state machine implementation). The sinusoidal scan is explicitly mentioned in the v1.6 goal — implement it from the start, not as a refactor.
-
----
-
-## Minor Pitfalls
-
----
-
-### Pitfall 10: `detach_servos()` Called Too Early — Servo Falls to Mechanical Stop
-
-**What goes wrong:**
-`PanTiltSystem.detach_servos()` removes the PWM signal from the servo pins. On MG-90S servos, this causes the servo to drop torque and fall under gravity to its mechanical stop (typically the extreme end of travel). If `detach_servos()` is called at module teardown without first moving to neutral, the servo snaps to the stop position — the same brownout risk as Pitfall 1, plus physical stress on the ribbon cable.
-
-**Prevention:**
-Always call `smooth_move_to(0, 0)` before `detach_servos()` in the cleanup sequence. The correct shutdown order: `stop capture loop` → `move to neutral` → `detach servos` → `close camera`.
-
-**Phase note:** Phase 1 (graceful shutdown). Enforce via `finally` block ordering.
-
----
-
-### Pitfall 11: Picamera2 `capture_array()` Blocking the Control Loop
-
-**What goes wrong:**
-`picam2.capture_array()` in synchronous mode blocks the calling thread until a frame is available from the camera sensor. At 30 FPS, this is ~33 ms. Combined with HAAR detection time (~40–80 ms on RPi4), the control loop tick rate drops to 8–12 FPS, making the PID derivative term unstable at gains tuned for 30 FPS.
-
-**Prevention:**
-Use Picamera2's continuous capture mode with a `deque(maxlen=1)` buffer, mirroring the existing `VideoStream` async pattern in `src/camera.py`. Configure:
-```python
-picam2.start()
-# In a background thread:
-frame = picam2.capture_array()
-with lock:
-    latest_frame = frame
-```
-The control loop reads from `latest_frame` without blocking on the camera, decoupling camera I/O latency from PID tick rate.
-
-**Detection:**
-- Measure time between `logic_tick()` calls — consistently above 50 ms indicates blocking capture
-- FPS counter in the display overlay
-
-**Phase note:** Phase 1 (camera architecture). Use the async capture pattern from the start — retrofitting it later requires restructuring the control loop.
-
----
-
-### Pitfall 12: `simple_pid` Package Not Installed — Silent Import Error
-
-**What goes wrong:**
-`src/tracker.py` imports `from simple_pid import PID`. The test tracker depends on the same package. If the virtual environment on the RPi4 was set up before the `simple_pid` dependency was added to `requirements.txt`, the import fails at runtime with `ModuleNotFoundError`. This is a deployment-environment mismatch, not a code bug.
-
-**Prevention:**
-Verify `simple_pid` is in `requirements.txt` and confirm with `pip show simple-pid` on the RPi4 before testing. Add a version pin: the API is stable but `sample_time` behaviour changed between 1.x and 2.x.
-
-**Phase note:** Pre-Phase 1 environment setup check.
-
----
-
-### Pitfall 13: Tilt Sign Convention Inconsistency
-
-**What goes wrong:**
-In `TrackerMachine.do_tracking()`, the tilt correction sign differs from pan:
-```python
-pan_correction = -self.pid_pan(error_pan)   # negated
-tilt_correction = self.pid_tilt(error_tilt) # not negated
-```
-This is intentional — camera geometry means pan and tilt require opposite sign conventions. However, the test tracker may re-implement this logic and get one axis backwards, causing the servo to actively move the target further from centre on one axis.
-
-**Prevention:**
-Copy the exact sign convention from `TrackerMachine.do_tracking()` into the test tracker. Document why each sign is what it is with a comment. Add a manual smoke test before PID tuning: move a face left in frame, verify servo pans left; move face up in frame, verify servo tilts up.
-
-**Detection:**
-- One axis tracks correctly, the other diverges continuously
-- Face moves further from centre in one dimension over time
-
-**Phase note:** Phase 2 (PID integration). Smoke test sign convention before any numerical tuning.
+**Phase:** AWB fix. Use explicit floats from the first implementation.
 
 ---
 
@@ -358,18 +523,16 @@ Copy the exact sign convention from `TrackerMachine.do_tracking()` into the test
 
 | Phase Topic | Likely Pitfall | Mitigation |
 |-------------|---------------|------------|
-| Phase 1: Camera init (Picamera2) | Camera not released on exit (Pitfall 2) | `try/finally` + signal handlers before any other code |
-| Phase 1: Camera init (Picamera2) | Frame format RGB vs BGR (Pitfall 3) | Set `format="BGR888"` at configure time |
-| Phase 1: Camera init (Picamera2) | Blocking `capture_array()` (Pitfall 11) | Async capture thread from day one |
-| Phase 1: Hardware init | Brownout from servo jump (Pitfall 1) | `smooth_move_to(0,0)` is first operation |
-| Phase 1: Hardware init | Wrong pulse width mapping (Pitfall 8) | Characterise servos and set explicit pulse widths |
-| Phase 1: Isolation contract | Dual camera opener (Pitfall 4) | Run as standalone script; add startup guard |
-| Phase 2: State machine | Stale scan state (Pitfall 9) | Sinusoidal scan using `time.time()` |
-| Phase 2: Face detection | False detections hunting (Pitfall 7) | `minNeighbors=8`, detection streak filter |
-| Phase 2: PID loop | Integral windup (Pitfall 5) | `pid.reset()` on TRACKING → SCANNING transition |
-| Phase 2: PID loop | Variable-dt derivative spike (Pitfall 6) | Set `sample_time=0.033` on both PID objects |
-| Phase 2: PID integration | Tilt sign error (Pitfall 13) | Smoke test sign convention before numerical tuning |
-| Teardown/cleanup | Servo falls to mechanical stop (Pitfall 10) | Enforce cleanup order: neutral → detach → close camera |
+| PID sign fix: tilt non-movement | Misdiagnosed sign error (actually mock mode or zero error) | Rule out mock mode and zero blad_tilt before touching sign (Pitfall 2) |
+| PID sign fix: runaway camera | Pan at limit masking true sign direction | Add soft-limit logging first; sign fix is secondary (Pitfall 7) |
+| PID sign fix: both axes | Double-negation from fixing one, breaking other | Verify error formula and servo direction independently before any change (Pitfall 1) |
+| AWB fix: set_controls timing | Controls silently ignored before camera start | Call set_controls after start() with time.sleep(0.1) (Pitfall 3) |
+| AWB fix: warm-up artifact | First frames wrong, developer tunes against artifact | Add 5-frame warm-up skip in capture thread (Pitfall 4) |
+| AWB fix: YUV conversion | Temptation to change cvtColor constant while fixing AWB | Treat as independent; existing YUV constant is correct (Pitfall 8) |
+| AWB fix: gain type | Integer ColourGains silently misapplied | Always use float tuple (Pitfall 10) |
+| PID reset: state transition | Adding extra reset inside TRACKING state | Reset only in _przejdz_do() for SCANNING entry, never in TRACKING (Pitfall 5) |
+| PID reset: anti-windup version | simple_pid < 2.0 does not clamp integral | Pin simple-pid>=2.0.0 in requirements.txt (Pitfall 6) |
+| Servo limits: correction masked | Correction applied but silently clamped at limit | Add soft-limit logging to set_angles() immediately (Pitfall 7) |
 
 ---
 
@@ -377,23 +540,27 @@ Copy the exact sign convention from `TrackerMachine.do_tracking()` into the test
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Picamera2 resource cleanup (Pitfall 2) | MEDIUM | Based on known libcamera IPC behaviour; specific Bookworm kernel behaviour unverified via official docs |
-| Brownout / servo jump (Pitfall 1) | HIGH | Explicitly documented in CLAUDE.md and PROJECT.md as known issue; confirmed in codebase |
-| BGR/RGB format mismatch (Pitfall 3) | HIGH | Picamera2 default output format is RGB; confirmed in multiple community references |
-| Dual camera opener conflict (Pitfall 4) | MEDIUM | Bookworm V4L2 libcamera bridge behaviour; pattern well-established in community |
-| PID windup (Pitfall 5) | HIGH | Fundamental control theory; `simple_pid` integral accumulation is documented |
-| PID sample_time / variable dt (Pitfall 6) | HIGH | Grounded in existing code and `simple_pid` documentation |
-| HAAR false detections (Pitfall 7) | HIGH | Grounded in existing code — no dlib filter in test tracker by design |
-| MG-90S pulse width (Pitfall 8) | MEDIUM | Common MG-90S behaviour; exact values depend on servo batch |
-| Stale scan state (Pitfall 9) | HIGH | Directly observable from `TrackerMachine.do_scan()` logic |
-| Tilt sign convention (Pitfall 13) | HIGH | Directly readable from `tracker.py` line 78 |
+| PID double-negation (Pitfall 1) | HIGH | Derived from direct code reading and confirmed mounting convention from PROJECT.md |
+| Tilt non-movement misdiagnosis (Pitfall 2) | HIGH | Mock mode path verified in hardware.py; zero-error scenario is mathematically straightforward |
+| AWB set_controls timing (Pitfall 3) | HIGH | Confirmed by Picamera2 maintainer in RPi forums and GitHub issue #825; ordering requirement is documented |
+| AWB warm-up flicker (Pitfall 4) | HIGH | Standard Picamera2 pipeline behavior; documented in multiple community threads |
+| PID reset() clears derivative (Pitfall 5) | HIGH | simple_pid source verified: reset() clears _last_input, _integral, _proportional, _derivative, _last_time |
+| simple_pid version anti-windup (Pitfall 6) | MEDIUM | Anti-windup behavior change between 1.x and 2.x documented in simple_pid changelog; exact version on test RPi4 unverified |
+| Soft limit masking (Pitfall 7) | HIGH | Derived directly from hardware.py set_angles() clamp logic; clamping is silent and confirmed by code |
+| YUV420 conversion constant (Pitfall 8) | MEDIUM | OpenCV constant naming is documented; Picamera2 YUV420 plane ordering confirmed I420; interaction between specific OpenCV build and constant requires hardware verification |
+| STATE_TARGET_LOST latency (Pitfall 9) | HIGH | Direct code analysis of tick() and _przejdz_do(); one-tick delay is intentional and documented |
+| ColourGains type requirement (Pitfall 10) | MEDIUM | Float requirement is standard for Picamera2 controls; specific TypeError on int input is version-dependent |
 
 ---
 
 ## Sources
 
-- `src/hardware.py`, `src/tracker.py`, `src/camera.py`, `src/config.py`, `src/vision.py` — direct code analysis (HIGH confidence basis for code-grounded pitfalls)
-- `CLAUDE.md` — documents brownout and smooth_move_to requirement explicitly
-- `.planning/PROJECT.md` — documents v1.6 constraints and hardware setup
-- `.planning/codebase/CONCERNS.md` — original risk analysis
-- Training knowledge: Picamera2 resource management, libcamera on Bookworm, PID control theory, gpiozero AngularServo pulse width behaviour (MEDIUM confidence — training data, web search unavailable for verification)
+- `src/modes/test_tracker.py` — direct code analysis: `_sledz()` sign convention, `_przejdz_do()` reset logic, `Picamera2Stream.start()` AWB absence
+- `src/hardware.py` — direct code analysis: `set_angles()` clamping behavior, mock mode fallback
+- `src/config.py` — PID gains, servo limits, state names
+- `.planning/PROJECT.md` — confirmed mounting: `pan+ = right`, `tilt+ = down`; v1.7 bug descriptions
+- `CLAUDE.md` — architecture, threading model, hardware constraints
+- simple_pid source code (`github.com/m-lundberg/simple-pid`) — `reset()` clears `_proportional`, `_integral`, `_derivative`, `_last_output`, `_last_input`, `_last_time` (HIGH confidence)
+- Raspberry Pi Forums: "How to lock AWB with Picamera2" — `set_controls` must follow `start()`; setting `ColourGains` implicitly disables AWB; do not set `AwbEnable=False` alongside `ColourGains` (HIGH confidence)
+- GitHub raspberrypi/picamera2 issue #825 — AWB/ColourGains not working root causes: adaptive algorithms, camera warm-up, control ordering (HIGH confidence)
+- PyImageSearch pan-tilt face tracking tutorial — error sign convention: `error = center - object`, servo angles negated; explicit negation of both pan and tilt (MEDIUM confidence — different mounting, but error formula pattern is standard)

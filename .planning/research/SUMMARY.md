@@ -1,17 +1,19 @@
 # Project Research Summary
 
-**Project:** ARIES-LITE v1.6 — Test Tracker (Picamera2 Migration)
-**Domain:** Embedded real-time face tracking on RPi4 with Picamera2 + PID servo control
-**Researched:** 2026-03-26
-**Confidence:** MEDIUM-HIGH
+**Project:** ARIES-LITE v1.7 — Debugging Milestone (test_tracker.py)
+**Domain:** Pan-tilt face tracking bug fixes on RPi4 (Picamera2 + pigpio + simple_pid)
+**Researched:** 2026-03-27
+**Confidence:** HIGH
+
+---
 
 ## Executive Summary
 
-v1.6 is a focused proof-of-concept: a single isolated file (`src/modes/test_tracker.py`) that validates the complete hardware+PID control loop on RPi OS Bookworm 64-bit using the Picamera2 camera stack. The existing v1.5 system uses `cv2.VideoCapture` via V4L2, which is incompatible with Bookworm's libcamera-based Pi Camera stack. The test tracker is NOT a feature release — it is a camera-backend migration proof with a deliberately simplified vision pipeline (HAAR-only, any face, no identity verification). All other v1.5 components (state machine, PID tuning, hardware abstraction) are validated and reused directly.
+This milestone is a precision bug-fix release targeting four confirmed defects in `src/modes/test_tracker.py`. All four bugs are isolated to a single file and require a combined total of roughly 4 lines changed across 3 methods. There is no architectural redesign, no new dependencies, and no change to `src/hardware.py` or `src/config.py`. Research is grounded in direct source-code inspection of `simple_pid`, live verification of the Picamera2 API on target hardware, and first-principles derivation from the system's coordinate conventions documented in PROJECT.md.
 
-The recommended approach is a self-contained module that imports only `PanTiltSystem` and `src.config` from the existing codebase, creates its own `simple_pid.PID` instances, and wraps Picamera2 in a thin `Picamera2Wrapper` class inside the module. The state machine mirrors `TrackerMachine` (SAFE_START → SCANNING → TRACKING → TARGET_LOST) but removes dlib identity verification entirely. The entry point (`run_test_tracker.py`) is a standalone script — completely separate from `main.py` and Flask. This isolation is non-negotiable: running both simultaneously causes a silent camera resource conflict.
+The most critical fix is a single missing minus sign on `korekta_tilt` in `MaszynaStanow._sledz()`. This one character error creates a positive feedback loop on the tilt axis: the servo actively drives the camera away from the face rather than toward it. Because `simple_pid` computes `error = setpoint - input_` (with `setpoint=0`), a positive tilt error (face below center) produces a negative PID output. Without negation, the tilt angle decreases, the camera tilts upward, and the face moves further down the frame — a runaway. The tilt servo hits its soft limit within 2-3 frames, which explains both observed symptoms (tilt "not moving" and apparent camera runaway) as a single mechanical root cause. The AWB blue tint is an independent ISP initialization issue: Picamera2 starts AWB asynchronously and the current code provides no warm-up or gain lock. The scanning streak-reset is a logical off-by-one where the detection counter is cleared one frame later than state entry requires.
 
-The primary risks are hardware-level: a direct servo jump at startup causes brownout/reboot (documented critical issue), and Picamera2 not released on exit blocks all subsequent runs. Both are preventable with `try/finally` discipline and `smooth_move_to(0,0)` as the unconditional first operation. PID risks are secondary — integral windup on state transitions and variable-dt derivative spikes are known issues with straightforward mitigations already proven in the existing codebase.
+The key implementation risk is in the AWB fix: `set_controls()` must be called after `picam2.start()`, not before or during `configure()`. Any controls placed before `start()` are silently ignored by the Picamera2 ISP pipeline. A secondary risk is the temptation to also modify the YUV-to-BGR conversion constant while fixing AWB — these are independent issues and the existing `cv2.COLOR_YUV420p2BGR` constant is correct for Picamera2's I420 output; do not change it.
 
 ---
 
@@ -19,125 +21,164 @@ The primary risks are hardware-level: a direct servo jump at startup causes brow
 
 ### Recommended Stack
 
-The stack is largely locked by the existing v1.5 codebase. The only new dependency is Picamera2, which must be installed as a system package (`python3-picamera2`) with the venv created using `--system-site-packages`. This is the single most common Bookworm deployment pitfall. All other libraries (opencv-python-headless, simple-pid, numpy, pigpio) are already in `requirements.txt` and validated.
+All existing dependencies remain unchanged. No new libraries are required for v1.7 fixes.
 
 **Core technologies:**
-- `picamera2 ≥0.3.x` (system pkg): Camera capture — native libcamera stack on Bookworm; `cv2.VideoCapture(0)` is incompatible with RPi Camera on Bookworm 64-bit
-- `opencv-python-headless 4.8+`: HAAR cascade face detection — already validated; headless variant avoids GUI libs
-- `pigpio 1.78+`: Hardware PWM servo control — already validated in v1.5; only library providing true H-PWM on RPi4
-- `simple-pid 2.0+`: PID controller — already in deps; use `output_limits=(-10,10)` and `sample_time=0.033` for stable servo control
 
-**Critical install note:** Picamera2 requires `python3 -m venv venv --system-site-packages`. A standard venv without system site-packages will fail to import picamera2.
+- `simple_pid 2.0+` — PID control; `error = setpoint - input_` is the confirmed formula from source; `reset()` zeroes all terms including integral; `output_limits=(-10, 10)` provides anti-windup automatically in 2.x. Pin `>=2.0.0` in requirements.txt to guarantee integral clamping behavior.
+- `picamera2 0.3+` (system package) — Camera capture; `set_controls()` must follow `start()` with a warm-up delay; `ColourGains` control accepts float tuples `(red_gain, blue_gain)` and implicitly disables AWB when set. Do not set `AwbEnable: False` alongside it — the Picamera2 maintainer warns this causes control sequencing conflicts.
+- `opencv-python-headless 4.8+` — HAAR detection and YUV conversion; `cv2.COLOR_YUV420p2BGR` is correct for Picamera2 I420 output — do not change it when fixing AWB.
+- `pigpio 1.78+` — Hardware PWM; unchanged and correct; `smooth_move_to()` must remain the only startup path to servos.
 
-**Avoid:** `cv2.VideoCapture(0)` for Pi Camera on Bookworm (V4L2 not available), `picamera` v1 (deprecated), `gpiozero` software PWM (jitter).
+### Expected Fixes (Bug-Fix Milestone, Not Feature Release)
 
-### Expected Features
+**Must fix (table stakes — system is broken without these):**
 
-This milestone is a test module, not a feature release. Features are evaluated by whether they are required to prove the hardware+PID loop works.
+- Tilt PID sign inversion — one character: `korekta_tilt = -self.pid_tilt(blad_tilt)` in `_sledz()` line 263. Without this the tilt axis exhibits positive feedback; system cannot track vertically.
+- AWB gain lock after convergence — add `time.sleep(2.0)` + `capture_metadata()` + `set_controls({"ColourGains": gains})` after `picam2.start()` in both `Picamera2Stream.start()` and the reinit path in `_petla_przechwytywania`.
 
-**Must have (table stakes):**
-- Safe startup via `smooth_move_to(0,0)` — prevents brownout, mandatory before any loop
-- HAAR face detection (any face, no identity) — simplest reliable detector at 30 FPS; no dlib dependency
-- SCANNING state with sinusoidal sweep (time-based) — demonstrates behavior when no face; sinusoidal is immune to stale state bugs
-- TRACKING state: dual-axis PID on face centroid → `set_angles()` — core proof of the control loop
-- TARGET LOST timeout (2s) → return to SCANNING — graceful recovery, prevents servo lockup
-- Picamera2 frame acquisition — the entire point of the milestone
-- Single-file isolation — no modifications to existing v1.5 modules
-- PID output limits ±10 deg/frame — prevents servo jerk on new bbox appearance
-- Graceful cleanup on Ctrl+C (`try/finally`, servo to neutral before detach)
+**Should fix (logical correctness, low visual impact):**
 
-**Should have (quality of proof):**
-- Minimal HUD overlay (state label + bbox + FPS counter) — enables empirical verification of state transitions and frame rate without external logging
-- Detection streak filter (N=3 consecutive frames) — eliminates single-frame false positives that cause hunting
-- PID reset on TRACKING → SCANNING transition — prevents integral windup overshoot on first tracking acquisition
+- Scanning streak reset timing — change the streak-reset condition in `TestTracker.uruchom()` from firing on `STATE_SCANNING` entry to firing on `STATE_TARGET_LOST` entry. One condition rewrite, same line count.
 
-**Defer (not needed for this proof):**
-- dlib identity recognition — actively excluded; obscures PID behavior
-- Flask/MJPEG streaming — out of scope; adds threading complexity
-- CSRT/KCF visual tracker — excluded; direct HAAR→PID is cleaner for proof
-- Multi-face priority logic, IDLE state, persistent config file
+**Defer to v1.8+ (confirmed not needed for v1.7):**
 
-**PID tuning baseline (validated in v1.5):** Kp=0.05, Ki=0.001, Kd=0.005. Pan uses `- pid_pan(error)`, tilt uses `+ pid_tilt(error)` — sign inversion is intentional and must be copied exactly.
+- Scan phase continuity — a phase-offset arcsin approach to eliminate the pan jerk at TRACKING → SCANNING resumption is fully specified in FEATURES.md (lines 316-328). Valid improvement but the current sinusoidal scan is functional. Defer unless servo jerk is confirmed as a visible user-experience issue after v1.7 fixes.
+- Kalman filter, deep-learning detection, dlib identity changes, custom PID replacement — locked architectural decisions; all confirmed out of scope.
+
+**Anti-features for this milestone:**
+
+- Do not change Kp/Ki/Kd values — gains are empirically validated; sign bugs mimic gain problems but are distinct.
+- Do not rewrite `MaszynaStanow` — state transitions are correct; only `_sledz()` and the streak-reset condition need changes.
+- Do not add `AwbEnable: False` alongside `ColourGains`.
 
 ### Architecture Approach
 
-The test tracker is a single new package (`src/modes/`) containing one file (`test_tracker.py`) plus an entry point at project root (`run_test_tracker.py`). It imports `PanTiltSystem` and `src.config` directly from the existing codebase, creates fresh `simple_pid.PID` instances (does NOT import `TrackerMachine`), and defines `Picamera2Wrapper` as an internal class. The existing `main.py` dependency graph is completely untouched. The test tracker and the Flask server are mutually exclusive — they cannot run in the same process or simultaneously.
+All four fixes land in `src/modes/test_tracker.py` only. The component boundary is unchanged: `Picamera2Stream` owns camera lifecycle, `MaszynaStanow` owns state and PID logic, `DetekcjaTwarzy` owns detection and streak counting. The streak-reset fix deliberately preserves the existing boundary by modifying `uruchom()`'s condition rather than passing `DetekcjaTwarzy` into `_przejdz_do()`.
 
-**Major components:**
-1. `Picamera2Wrapper` (internal to test_tracker.py) — thin camera backend producing BGR numpy frames; `try/finally` lifecycle; `BGR888` format configured at init
-2. `TestTracker` (src/modes/test_tracker.py) — state machine (SAFE_START → SCANNING → TRACKING → TARGET_LOST) + HAAR detection + dual-axis PID
-3. `PanTiltSystem` (src/hardware.py, reused) — servo PWM abstraction with soft limits and `smooth_move_to()`
-4. `run_test_tracker.py` (project root) — standalone entry point with signal handling and `finally` cleanup
+**Exact integration points:**
 
-**Data flow:** `Picamera2.capture_array()` (async thread, deque buffer) → BGR frame → HAAR detectMultiScale → face centroid → PID correction → `PanTiltSystem.set_angles()`.
+| Fix | File | Method | Change |
+|-----|------|--------|--------|
+| Tilt PID sign | `src/modes/test_tracker.py` | `MaszynaStanow._sledz()` line 263 | Add `-` prefix to `pid_tilt()` call (1 character) |
+| AWB lock — start path | `src/modes/test_tracker.py` | `Picamera2Stream.start()` lines 66-70 | Add sleep + metadata read + `set_controls` after `picam2.start()` (~5 lines) |
+| AWB lock — reinit path | `src/modes/test_tracker.py` | `Picamera2Stream._petla_przechwytywania` lines 111-113 | Add matching `controls={"AwbMode": 4}` to reinit `create_video_configuration` call (1 line) |
+| Streak reset timing | `src/modes/test_tracker.py` | `TestTracker.uruchom()` lines 323-324 | Change condition from SCANNING entry to TARGET_LOST entry (1 condition rewrite) |
 
-**Key patterns:**
-- Async Picamera2 capture in background thread with `deque(maxlen=1)` — decouples camera I/O from PID tick rate
-- Time-based sinusoidal scan: `target_pan = PAN_LIMIT_MAX * sin(2π * t / SCAN_PERIOD)` — immune to stale state on TRACKING → SCANNING transition
-- `pid.reset()` on every transition into SCANNING state — prevents integral windup
+Total change surface: 4 locations in 1 file. No other file is modified.
+
+**Sign convention reference (canonical, for maintenance):**
+
+```
+PIXEL COORDINATES (OpenCV): origin = top-left, x right, y down
+
+ERROR DEFINITIONS:
+  blad_pan  = srodek_x - ramka_cx   (positive = face RIGHT of center)
+  blad_tilt = srodek_y - ramka_cy   (positive = face BELOW center)
+
+simple_pid OUTPUT (setpoint=0):  pid(error) = -Kp * error
+
+HARDWARE (PROJECT.md, empirically confirmed):
+  pan_angle+  → camera rotates right → face moves LEFT in frame
+  tilt_angle+ → camera rotates down  → face moves UP in frame
+
+REQUIRED:
+  face right  (+blad_pan)  → pan_angle must INCREASE → korekta_pan POSITIVE
+  face below  (+blad_tilt) → tilt_angle must INCREASE → korekta_tilt POSITIVE
+
+DERIVATION:
+  korekta_pan  = -pid_pan(blad_pan)   = +Kp*blad_pan  ✓  (already in code)
+  korekta_tilt = -pid_tilt(blad_tilt) = +Kp*blad_tilt ✓  (MISSING — the bug)
+```
+
+**Architecture invariants that must not be broken:**
+
+1. `Picamera2Stream` and `MaszynaStanow` remain separate classes.
+2. `MaszynaStanow` must not import `DetekcjaTwarzy`.
+3. `smooth_move_to()` must remain the only startup path to servos.
+4. `_przejdz_do()` remains the single state transition method.
 
 ### Critical Pitfalls
 
-1. **Servo jump at startup (brownout/reboot)** — Always call `smooth_move_to(0,0)` as the unconditional first hardware operation. Never call `set_angles()` directly at init. Current spike from cold-start servo jump causes RPi4 under-voltage reboot. (HIGH confidence — documented in CLAUDE.md)
+1. **AWB set_controls before start() — silently ignored.** The ISP pipeline is not active until `start()` is called. Placing `set_controls()` before `start()` or inside `configure()` has no effect and produces no error. Always: `start()` → `time.sleep(2.0)` → `capture_metadata()` → `set_controls({"ColourGains": gains})`. (HIGH confidence — confirmed by Picamera2 maintainer, GitHub issue #825)
 
-2. **Picamera2 not released — "Camera already in use"** — Wrap entire camera lifecycle in `try/finally` with both `picam2.stop()` AND `picam2.close()`. Register SIGINT/SIGTERM handlers. Skipping either step leaves libcamera pipeline locked; recovery requires `sudo killall libcamera-vid` or reboot. (MEDIUM confidence)
+2. **Double-negation trap on PID corrections.** Pan is already correctly negated. Adding a second negation to pan while fixing tilt will reverse pan behavior. Verify each axis independently before changing signs: (a) confirm `blad_pan` is positive when face is right of center, (b) confirm `set_angles(+10, 0)` pans camera right. Only then derive required correction sign from first principles. Only tilt needs to change. (HIGH confidence)
 
-3. **RGB vs BGR frame format** — Configure `format="BGR888"` at Picamera2 configure time, not per-frame. Running HAAR on RGB frames silently degrades detection accuracy. Zero runtime cost to fix at configure time. (HIGH confidence)
+3. **Tilt non-movement root cause check — pigpiod first.** If `pigpiod` is not running, `PanTiltSystem` falls back to mock mode silently — no servo movement, no error. Run `systemctl is-active pigpiod` before any PID sign analysis. Also check `maszyna.hardware._mock_mode` at startup. (HIGH confidence)
 
-4. **PID integral windup on state transitions** — Call `pid_pan.reset()` and `pid_tilt.reset()` on every TRACKING → SCANNING transition. Otherwise, accumulated integral causes overshoot servo snap when next face is acquired. Also set `sample_time=0.033` on both PID objects to stabilize the derivative term against variable loop timing. (HIGH confidence)
+4. **Soft limit masking PID output.** The sign bug drives the tilt servo to the ±30° limit within 2-3 frames; all subsequent corrections are clamped silently. The servo appears frozen while PID computes valid outputs. Add debug logging to `hardware.py` `set_angles()` to make clamping visible during diagnosis — do not assume "no movement" means "zero correction." (HIGH confidence)
 
-5. **HAAR false detections without dlib filter** — Use `minNeighbors=8` (not 5) and `minSize=(80,80)` in the test tracker. Add a 3-frame detection streak filter before SCANNING → TRACKING transition. Without dlib verification (intentionally excluded), every false positive drives the servo. (HIGH confidence)
+5. **AWB warm-up flicker — first 3-10 frames ignore manual gains.** Controls set via `set_controls()` take effect 2-3 frames after being issued. Evaluate color correctness only after steady state. A 5-frame warm-up skip in `_petla_przechwytywania` prevents these pre-convergence frames from being stored. (HIGH confidence)
+
+6. **`simple_pid` version anti-windup difference.** Integral clamping to `output_limits` is reliable in `simple_pid >= 2.0` but not guaranteed in 1.x. Check `pip show simple-pid` on device; update `requirements.txt` to pin `simple-pid>=2.0.0`. (MEDIUM confidence — depends on installed version)
 
 ---
 
 ## Implications for Roadmap
 
-Based on the combined research, this milestone maps cleanly to two implementation phases driven by hardware safety and dependency ordering.
+### Phase 1: Camera Fix (AWB Blue Tint)
 
-### Phase 1: Hardware Foundation and Camera Integration
+**Rationale:** Camera quality fix first — all subsequent hardware tests observe correct color rendering. Independent of all logic fixes; isolated to `Picamera2Stream`. Low risk of interaction with servo or PID logic.
 
-**Rationale:** The two critical pitfalls (brownout, camera lock) are both Phase 1 issues. Hardware init and camera init must be proven safe before any vision or PID code is written. Getting these wrong costs significant recovery time on real hardware (reboot, camera unlock). Everything in Phase 2 depends on a clean camera frame stream and safe servo operation.
+**Delivers:** Blue tint eliminated; neutral skin-tone rendering; stable color across frames after ~2s warm-up.
 
-**Delivers:** A running loop that captures Picamera2 frames, displays them via `cv2.imshow()`, moves servos safely to (0,0) on startup, and exits cleanly on Ctrl+C with servos returned to neutral.
+**Changes:**
+- `Picamera2Stream.start()` — add `time.sleep(2.0)` + `capture_metadata()` + `set_controls({"ColourGains": colour_gains})` after `picam2.start()`; add fallback to `(2.5, 1.9)` if metadata unavailable.
+- `Picamera2Stream._petla_przechwytywania` reinit block — add matching `controls={"AwbMode": 4}` to the `create_video_configuration` call.
 
-**Addresses features:** Safe startup, Picamera2 frame acquisition, graceful cleanup, single-file isolation, `BGR888` format correctness.
+**Avoids:** Pitfall 3 (controls before start), Pitfall 4 (warm-up flicker), Pitfall 10 (int vs float ColourGains), Pitfall 8 (do not touch YUV constant).
 
-**Avoids pitfalls:** Pitfall 1 (brownout), Pitfall 2 (camera lock), Pitfall 3 (RGB/BGR), Pitfall 4 (dual opener), Pitfall 8 (pulse width), Pitfall 10 (servo falls on detach), Pitfall 11 (blocking capture), Pitfall 12 (missing dependency).
+**Needs research-phase:** No — AWB API sequence is fully specified in STACK.md with exact code samples.
 
-**Must verify before Phase 2:** `libcamera-hello` works, `from picamera2 import Picamera2` imports in venv, Picamera2 + pigpio coexist without DMAHEAP errors, servo centers correctly at (0,0).
+---
 
-### Phase 2: State Machine, Vision, and PID Integration
+### Phase 2: PID Sign Fix (Tilt Runaway / Tilt Not Moving)
 
-**Rationale:** With clean frame delivery and safe servo control proven, the full control loop can be assembled. Vision (HAAR), state machine (SCANNING/TRACKING/TARGET_LOST), and PID are tightly coupled — they should be implemented together in one phase rather than separately. The pitfalls in this phase are behavioral (windup, sign errors, false detections) rather than catastrophic, and all have clear smoke tests.
+**Rationale:** The most impactful functional fix. Applying after AWB means the first motion test under correct color simultaneously validates both fixes. One-character change with immediately observable hardware effect.
 
-**Delivers:** Complete test tracker: face detected → servo follows → face lost → scan resumes. HUD overlay with state label, bbox, and FPS counter. Empirical proof that Picamera2 + PID loop achieves ~30 FPS on RPi4.
+**Delivers:** Tilt axis moves toward face; no runaway on either axis; system converges to face-centered steady state in both pan and tilt.
 
-**Addresses features:** HAAR detection, SCANNING state (sinusoidal), TRACKING state (dual PID), TARGET LOST timeout, HUD overlay, detection streak filter, PID reset on transition.
+**Changes:**
+- `MaszynaStanow._sledz()` line 263: `korekta_tilt = -self.pid_tilt(blad_tilt)` (add `-` prefix).
 
-**Avoids pitfalls:** Pitfall 5 (integral windup), Pitfall 6 (variable dt), Pitfall 7 (false detections), Pitfall 9 (stale scan state), Pitfall 13 (tilt sign convention).
+**Verification:** Hold face below frame center; confirm `Tilt:` HUD value increases (servo moves down); face moves toward vertical center. Hold face left; confirm `Pan:` HUD value decreases (servo moves left). No runaway in either axis.
 
-**Implementation order within phase:** `Picamera2Wrapper` async capture → HAAR detection → state machine skeleton → PID instances → SCANNING sweep → TRACKING PID loop → TARGET_LOST timeout → HUD → `run_test_tracker.py` entry point.
+**Avoids:** Pitfall 1 (double-negation), Pitfall 2 (mock-mode misdiagnosis before fix), Pitfall 7 (soft limit masking).
+
+**Needs research-phase:** No — fix is fully derived and verified in FEATURES.md and ARCHITECTURE.md with before/after traces.
+
+---
+
+### Phase 3: Scanning Streak Reset Timing
+
+**Rationale:** Most subtle fix; effect only visible in rapid TRACKING → SCANNING → TRACKING transition sequences. Saving it last allows phases 1 and 2 to be verified in stable tracking scenarios first.
+
+**Delivers:** Detection streak counter resets at the correct frame — on `STATE_TARGET_LOST` entry rather than one frame late at `STATE_SCANNING` entry.
+
+**Changes:**
+- `TestTracker.uruchom()` lines 323-324: change condition from `stan == config.STATE_SCANNING and poprzedni_stan != config.STATE_SCANNING` to `stan == STATE_TARGET_LOST and poprzedni_stan == config.STATE_TRACKING`.
+
+**Avoids:** Pitfall 9 (state transition timing), Pitfall 5 (PID reset in wrong location — keep reset only in `_przejdz_do()` for SCANNING entry).
+
+**Needs research-phase:** No — ARCHITECTURE.md provides exact before/after code for the recommended Option B approach.
+
+---
 
 ### Phase Ordering Rationale
 
-- Phase 1 before Phase 2 because: hardware safety failures are catastrophic (reboot, locked camera), while Phase 2 failures are behavioral and recoverable. You cannot tune PID without a working camera.
-- Async capture pattern (deque + background thread) belongs in Phase 1, not Phase 2 — retrofitting it after PID is wired would require restructuring the entire control loop.
-- Sinusoidal scan must be implemented from the start (not as a refactor) because time-based sinusoid eliminates Pitfall 9 (stale scan state) — the step-accumulator pattern from v1.5 is a known defect in this context.
-- The detection streak filter belongs in Phase 2 initial implementation (not as a later fix) because without dlib, false positives immediately corrupt PID integral state.
+- AWB first because correct color rendering is needed to evaluate tracking behavior visually in all subsequent tests. Fixing color first eliminates a confounding variable.
+- PID sign second because it is the highest-impact functional fix. A working tilt axis enables meaningful verification of the full tracking loop.
+- Streak timing last because it requires an already-working tracking system to exercise the TRACKING → TARGET_LOST → SCANNING transition path at test time.
+- All three phases are independent with no shared state. They could be applied in a single commit, but sequential verification on hardware is the safer path given the physical servo risks.
 
 ### Research Flags
 
-Phases likely needing verification during execution (not additional research, but on-device empirical checks):
+All three phases have no need for additional research-phase runs. Fixes are fully specified with exact line numbers, before/after code, and verification methods.
 
-- **Phase 1:** Picamera2 import in `--system-site-packages` venv must be verified on the actual target RPi4. Training data says it works but this is the most common Bookworm gotcha. Run `python3 -c "from picamera2 import Picamera2; print('OK')"` before writing any code.
-- **Phase 1:** Verify exact format returned by `capture_array("main")` with `"BGR888"` config on the specific RPi revision and firmware version. Reports of XRGB (4-channel) on some firmware versions.
-- **Phase 1:** Check for Picamera2 + pigpio DMA coexistence: run both simultaneously and check `dmesg` for DMAHEAP errors.
-- **Phase 1:** Verify `opencv-python-headless` imports correctly on aarch64 Bookworm — the pinned version (`4.8.1.78`) was for armhf.
-- **Phase 2:** Smoke-test tilt sign convention before any numerical PID tuning (move face left → servo pans left; move face up → servo tilts up).
+Phases that may benefit from empirical tuning on-device (not research — on-device iteration):
 
-Phases with standard patterns (no additional research needed):
-- **Phase 2 (PID):** Gains are validated from v1.5. `sample_time` and `output_limits` patterns are well-documented `simple_pid` behavior.
-- **Phase 2 (state machine):** Direct re-implementation of proven `TrackerMachine` logic with known simplifications.
+- **Phase 1 (AWB):** If `capture_metadata()["ColourGains"]` returns `None`, the fallback `(2.5, 1.9)` may need adjustment for specific indoor lighting. Read back `capture_metadata()["ColourGains"]` after 3-5 seconds of running to confirm settled values before hard-coding.
+- **Phase 2 (PID):** If tilt tracking oscillates significantly after the sign fix, consider reducing `PID_TILT_P` from 0.05 to 0.03 as a first tuning step. The existing gains are validated for pan; tilt dynamics may differ if camera mass distribution is asymmetric.
 
 ---
 
@@ -145,40 +186,47 @@ Phases with standard patterns (no additional research needed):
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | MEDIUM-HIGH | Existing stack (pigpio, opencv, simple-pid) is HIGH — validated in v1.5. Picamera2 API patterns are MEDIUM — training data only, not live-verified against Bookworm hardware. |
-| Features | HIGH | Sourced from existing production code (`tracker.py`, `hardware.py`, `config.py`) and authoritative `.planning/PROJECT.md`. Scope is narrow and well-defined. |
-| Architecture | MEDIUM-HIGH | Component boundaries and isolation strategy are HIGH confidence. Picamera2 integration details (exact format, venv behavior) are MEDIUM — needs on-device verification. |
-| Pitfalls | HIGH | Most pitfalls are grounded directly in existing codebase analysis (brownout, windup, sign convention) or widely-documented patterns (BGR/RGB, camera lock). Picamera2-specific pitfalls are MEDIUM. |
+| Stack | HIGH | simple_pid source inspected directly from GitHub; Picamera2 AWB API verified from maintainer responses and GitHub issues #825, #232, #592; pigpio and OpenCV are unchanged from v1.6 |
+| Features | HIGH | All four bugs diagnosed from first principles + verified library behavior; PID sign derivation is a mathematical proof; AWB API sequence confirmed by maintainer |
+| Architecture | HIGH | Based on direct source analysis of test_tracker.py (all methods), hardware.py, config.py; all integration points identified with exact line numbers; live verification of Picamera2 API on target hardware |
+| Pitfalls | HIGH (7/10) / MEDIUM (3/10) | Pitfalls 1, 2, 3, 4, 5, 7, 9 are HIGH confidence from direct code or verified community sources; Pitfalls 6, 8, 10 are MEDIUM due to version-dependence and hardware-specific format variations |
 
-**Overall confidence:** MEDIUM-HIGH
+**Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **Picamera2 in venv with system-site-packages:** Must be the first verification step in Phase 1. If `apt install python3-picamera2` + `--system-site-packages` does not work cleanly, consider `pip install picamera2` as fallback. This is a deployment blocker, not a code issue.
-- **OpenCV aarch64 package:** The pinned `opencv-python-headless==4.8.1.78` may be armhf-only. Verify with `import cv2` before any HAAR code. May need to remove the version pin or use system OpenCV.
-- **Picamera2 capture_array format:** ARCHITECTURE.md notes RGB888 returns 3-channel arrays but warns of XRGB (4-channel) on some firmware. The `Picamera2Wrapper.read()` method must check `frame.ndim` and handle both cases, or use `BGR888` at configure time (strongly preferred).
-- **MG-90S pulse width calibration:** The existing `hardware.py` does not set explicit `min_pulse_width`/`max_pulse_width`. If servos do not center correctly at `set_angles(0,0)`, this must be characterized before PID tuning in Phase 2.
+- **YUV420 plane ordering on actual hardware (Pitfall 8):** Research confirms `cv2.COLOR_YUV420p2BGR` is correct for Picamera2 I420 output. If a green-magenta cast (distinct from the blue AWB tint) appears after the AWB fix, verify `klatka_yuv.shape` and test `cv2.COLOR_YUV2BGR_I420` as an alternative. Do not preemptively change this.
+
+- **AWB fallback gain values (Phase 1):** The fallback `(2.5, 1.9)` is a starting point for indoor LED/fluorescent on IMX219 V2. Tune empirically in 0.1 increments if skin tones are still incorrect. Read back `capture_metadata()["ColourGains"]` after warm-up to discover the correct values for the specific deployment environment.
+
+- **simple_pid version on RPi4 (Pitfall 6):** Anti-windup integral clamping behavior differs between 1.x and 2.x. Verify with `pip show simple-pid` on the device; update `requirements.txt` to `simple-pid>=2.0.0` if not already pinned.
+
+- **Scan phase continuity (deferred):** The arcsin-based phase offset approach described in FEATURES.md (lines 316-328) is mathematically complete and ready to implement if servo jerk at TRACKING → SCANNING resumption is confirmed as a visible issue after v1.7. The math is correct; implementation requires adding `_scan_phase_offset` field to `MaszynaStanow.__init__` and modifying `_inicjuj_faze_skanowania()` and `_skanuj()`.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `src/hardware.py`, `src/tracker.py`, `src/config.py`, `src/vision.py`, `src/camera.py` — direct codebase analysis; hardware constraints, PID values, state machine logic
-- `CLAUDE.md` — brownout warning, servo startup constraint, architecture overview
-- `.planning/PROJECT.md` — v1.6 milestone scope, constraints, goals
-- `.planning/STATE.md` — current decisions (Picamera2, any-face, Polish convention)
+
+- `simple_pid` source code, `raw.githubusercontent.com/m-lundberg/simple-pid/master/simple_pid/pid.py` — `__call__` formula, `reset()` complete behavior, integral clamping
+- Picamera2 GitHub issue #825 — ColourGains not working, AWB control ordering requirement
+- Picamera2 GitHub issue #232 — setting AwbMode with camera controls
+- Picamera2 GitHub discussion #592 — disabling AWB and controlling gains manually; ColourGains implicitly disables AWB
+- RPi Forums t=365052 — AWB lock with Picamera2, `set_controls` after `start()` requirement; do not use `AwbEnable: False` alongside `ColourGains`
+- `src/modes/test_tracker.py` — direct source analysis: all affected methods, exact line numbers
+- `src/hardware.py` — `set_angles()` clamping behavior, mock mode fallback, sign conventions
+- `src/config.py` — PID gains, output limits, servo soft limits, state names
+- `.planning/PROJECT.md` — hardware mounting: `pan+ = right`, `tilt+ = down` (empirically confirmed)
+- `CLAUDE.md` — threading model, hardware constraints, architecture overview
 
 ### Secondary (MEDIUM confidence)
-- Training data: Picamera2 API patterns, libcamera on Bookworm 64-bit, `--system-site-packages` venv requirement
-- Training data: Picamera2 resource cleanup behavior, libcamera IPC socket lifecycle
-- Training data: V4L2 libcamera bridge on Bookworm — dual-opener conflict pattern
 
-### Tertiary (LOW confidence — needs on-device verification)
-- Exact format returned by `capture_array()` on specific RPi firmware versions
-- Picamera2 + pigpio DMA coexistence on RPi4 BCM2711
-- OpenCV `4.8.1.78` compatibility with aarch64 Bookworm
+- PyImageSearch pan-tilt face tracking tutorial — error sign convention pattern using `panAngle = -1 * pan.value`; different mounting but formula structure confirms standard approach
+- GitHub raspberrypi/picamera2 issue #803 — AwbMode not always effective; ColourGains freeze is more reliable
+- Arducam forum — IMX219 blue tint is a known issue; AWB mode selection or gain lock resolves it
+- `simple_pid` changelog — anti-windup integral clamping behavior change between 1.x and 2.x
 
 ---
-*Research completed: 2026-03-26*
+*Research completed: 2026-03-27*
 *Ready for roadmap: yes*
