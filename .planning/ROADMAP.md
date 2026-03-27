@@ -97,7 +97,7 @@ Plans:
   2. After entering TARGET_LOST state, the detection streak counter is reset to zero immediately — a face appearing within the TARGET_LOST window requires a full 3-consecutive-frame streak before TRACKING is re-entered, not fewer
 **Plans:** 1 plan
 Plans:
-- [ ] 08-01-PLAN.md — TBD
+- [ ] 08-01-PLAN.md — Phase offset sinusoidy (SCAN-01) + streak reset przy TARGET_LOST (SCAN-02)
 
 ## Progress
 
