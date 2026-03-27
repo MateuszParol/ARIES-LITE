@@ -75,13 +75,16 @@ cv2.imshow HUD (or headless fallback)
 - **Two camera backends**: OpenCV `VideoCapture` for main app, `Picamera2` (YUV420 lores stream) for test tracker — Picamera2 gives lower latency on RPi but requires system packages
 
 ### Core Modules
-- `src/config.py` — All tuning constants: PID gains, servo limits, camera resolution, state names. Note: face recognition tolerance (0.55) is hardcoded in `vision.py:116`, not in config
+- `src/config.py` — All tuning constants: PID gains, servo limits, camera resolution, state names. Note: face recognition tolerance (0.55) is hardcoded in `vision.py` (search `tolerance=`), not in config
 - `src/vision.py` — HybridVision: HAAR + CSRT tracker + async dlib verification. Thread safety via `_async_lock`
 - `src/tracker.py` — TrackerMachine: state machine (SAFE_START→SCANNING→TRACKING→IDLE) with PID controllers
 - `src/hardware.py` — PanTiltSystem: servo abstraction with `PIGPIO_AVAILABLE` flag for graceful mock mode on non-RPi systems
 - `src/camera.py` — VideoStream: threaded OpenCV capture wrapper (used by main app only)
 - `src/modes/test_tracker.py` — Standalone test mode: `Picamera2Stream`, `DetekcjaTwarzy` (HAAR + streak), `MaszynaStanow` (sinusoidal scan), `TestTracker` orchestrator
 - `web/server.py` — Flask routes (`/`, `/video_feed`, `/api/state`, `/api/command`, `/api/upload_target`), MJPEG streaming, `init_event` guards endpoints during startup
+
+### Development on Non-RPi Systems
+Both entry points run on non-RPi hardware in mock mode — `hardware.py` catches `ImportError` on `gpiozero`/`pigpio` and logs a warning, then all `set_angles()` calls become no-ops. `run_test_tracker.py` will also fail to import `Picamera2` on non-RPi; only `main.py` (OpenCV `VideoCapture`) can run fully on desktop/laptop.
 
 ### Critical Hardware Constraints
 - `smooth_move_to()` must be used at startup — direct servo jumps cause brownout/reboot from current spikes
@@ -105,7 +108,7 @@ The project follows GSD (Get Shit Done) methodology defined in `PROJECT_RULES.md
 - **Planning lock**: No implementation until `SPEC.md` status is FINALIZED
 - **Commits**: `type(scope): description` — one task = one commit
 - **Verification**: Every change needs empirical proof (command output, screenshot)
-- **State**: `.gsd/STATE.md` maintains session memory across context windows
+- **State**: `.planning/STATE.md` maintains session memory across context windows
 - **Phases**: Wave-based execution with dependency grouping
 
 ## Commit Conventions

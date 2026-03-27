@@ -27,7 +27,11 @@
       "WebSearch",
       "WebFetch(domain:forums.raspberrypi.com)",
       "WebFetch(domain:github.com)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(grep -l \"## Validation Architecture\" \".planning/phases/07-pid-sign-correctness\"/*-RESEARCH.md)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cat /Users/mattparol/Desktop/Projekty/ARIES-LITE/ARIES-LITE/.planning/phases/07-pid-sign-correctness/*-VERIFICATION.md)"
     ]
   }
 }
