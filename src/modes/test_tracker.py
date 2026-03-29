@@ -78,30 +78,16 @@ class Picamera2Stream:
         self._thread = threading.Thread(target=self._petla_przechwytywania, daemon=True)
         self._thread.start()
 
-        logger.info("Czekam na stabilizację AWB (2s)...")
-        time.sleep(2.0)
+        # AWB dziala ciagle — nie lockujemy gains, ISP sam koryguje kolory
+        logger.info("AWB w trybie ciaglym (bez lockowania gains)")
+        time.sleep(1.0)  # krotki warmup zeby ISP zaczal korygowac
         metadata = self._picam2.capture_metadata()
         gains = metadata.get("ColourGains")
-        if gains is None or gains == (0.0, 0.0):
-            logger.warning("AWB still running lub ColourGains niedostepne, uzywam fallback (2.2, 1.8)")
-            gains = AWB_FALLBACK_GAINS
-        self._picam2.set_controls({"ColourGains": (float(gains[0]), float(gains[1]))})
-        r, b = gains
-        logger.info(f"ColourGains zablokowane: (R={r:.2f}, B={b:.2f})")
-
-        # Weryfikacja czy gains faktycznie sie ustawily — wykrywa silent failure (per D-06)
-        meta_po = self._picam2.capture_metadata()
-        gains_po = meta_po.get("ColourGains")
-        if gains_po is not None:
-            r_po, b_po = gains_po
-            logger.info(f"ColourGains potwierdzone z sensora: (R={r_po:.2f}, B={b_po:.2f})")
-            if abs(r_po - r) > 0.1 or abs(b_po - b) > 0.1:
-                logger.warning(
-                    f"AWB gains roznia sie od zadanych: zadane=(R={r:.2f}, B={b:.2f}), "
-                    f"rzeczywiste=(R={r_po:.2f}, B={b_po:.2f})"
-                )
+        if gains is not None:
+            r, b = gains
+            logger.info(f"ColourGains aktualne: (R={r:.2f}, B={b:.2f})")
         else:
-            logger.warning("ColourGains niedostepne w re-read metadata po set_controls")
+            logger.info("ColourGains jeszcze niedostepne — AWB nadal konwerguje")
 
     def _petla_przechwytywania(self) -> None:
         """Watek daemon: przechwytuje klatki w petli z ponowna inicjalizacja przy bledzie."""
