@@ -24,15 +24,15 @@ logger = logging.getLogger(__name__)
 # --- Stałe modułowe ---
 LORES_WIDTH = 320
 LORES_HEIGHT = 240
-HAAR_MIN_NEIGHBORS = 8
-HAAR_MIN_SIZE = (80, 80)
+HAAR_MIN_NEIGHBORS = 4
+HAAR_MIN_SIZE = (40, 40)
 STREAK_REQUIRED = 3
 SCAN_AMPLITUDE = 45.0       # stopnie
 SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
 PID_OUTPUT_LIMIT = 10.0
 CAMERA_MAX_RETRIES = 3
 CAMERA_RETRY_DELAY = 1.0  # sekundy miedzy probami ponownej inicjalizacji
-AWB_FALLBACK_GAINS = (2.5, 1.9)  # (Red, Blue) — fallback gdy sensor nie zwróci gains
+#AWB_FALLBACK_GAINS = (1.0, 1.0)  # (Red, Blue) — neutralne, bez wzmocnienia
 
 # Stan TARGET_LOST (przejściowy, wizualny)
 STATE_TARGET_LOST = "TARGET_LOST"
@@ -79,9 +79,9 @@ class Picamera2Stream:
         time.sleep(2.0)
         metadata = self._picam2.capture_metadata()
         gains = metadata.get("ColourGains")
-        if gains is None:
-            logger.warning("ColourGains niedostępne, używam fallback (2.5, 1.9)")
-            gains = AWB_FALLBACK_GAINS
+        #if gains is None:
+        #    logger.warning("ColourGains niedostępne, używam fallback (2.5, 1.9)")
+        #    gains = AWB_FALLBACK_GAINS
         self._picam2.set_controls({"ColourGains": gains})
         r, b = gains
         logger.info(f"ColourGains zablokowane: (R={r:.2f}, B={b:.2f})")
