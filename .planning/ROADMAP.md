@@ -43,7 +43,7 @@
 - [x] **Phase 10: Detection Fix** - HAAR parameter tuning (minSize, minNeighbors) — root cause of frozen tilt and apparent PID failures (completed 2026-03-29)
 - [x] **Phase 11: AWB Fix** - ColourGains at configure-time — neutral colors from frame 1 (completed 2026-03-29)
 - [x] **Phase 12: PID Validation** - Confirm tilt moves, no runaway, convergence — only after stable detection is verified (completed 2026-03-29)
-- [ ] **Phase 13: DNN Detector** - OpenCV DNN replacement for HAAR — conditional on HAAR tuning being insufficient
+- [x] **Phase 13: DNN Detector** - OpenCV DNN replacement for HAAR — conditional on HAAR tuning being insufficient (completed 2026-03-29)
 
 ## Phase Details
 
@@ -105,7 +105,7 @@ Plans:
   3. Interfejs `wykryj()` jest zachowany — `MaszynaStanow` i `TestTracker` nie wymagaja zmian
 **Plans**: 1 plan
 Plans:
-- [ ] 13-01-PLAN.md — Zamiana HAAR na DNN res10 w DetekcjaTwarzy + empiryczna weryfikacja na RPi4
+- [x] 13-01-PLAN.md — Zamiana HAAR na DNN res10 w DetekcjaTwarzy + empiryczna weryfikacja na RPi4
 
 ## Progress
 
@@ -123,4 +123,4 @@ Plans:
 | 10. Detection Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
 | 11. AWB Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
 | 12. PID Validation | v1.8 | 1/1 | Complete    | 2026-03-29 |
-| 13. DNN Detector | v1.8 | 0/1 | Planned | - |
+| 13. DNN Detector | v1.8 | 1/1 | Complete    | 2026-03-29 |
