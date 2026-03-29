@@ -21,8 +21,8 @@ Wymagania dla milestone Critical Hardware Fix. Naprawa bugow persystujacych po v
 
 ### Kamera (AWB)
 
-- [ ] **AWB-01**: ColourGains sa ustawione na etapie create_video_configuration() — neutralne kolory od pierwszej klatki
-- [ ] **AWB-02**: Obraz nie ma blue tint — skora wyglada naturalnie w normalnym oswietleniu wewnetrznym
+- [x] **AWB-01**: ColourGains sa ustawione na etapie create_video_configuration() — neutralne kolory od pierwszej klatki
+- [x] **AWB-02**: Obraz nie ma blue tint — skora wyglada naturalnie w normalnym oswietleniu wewnetrznym
 
 ### PID/Sterowanie
 
@@ -57,8 +57,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DIAG-04 | Phase 9 | Complete |
 | DET-01 | Phase 10 | Complete |
 | DET-02 | Phase 10 | Complete |
-| AWB-01 | Phase 11 | Pending |
-| AWB-02 | Phase 11 | Pending |
+| AWB-01 | Phase 11 | Complete |
+| AWB-02 | Phase 11 | Complete |
 | PID-04 | Phase 12 | Pending |
 | PID-05 | Phase 12 | Pending |
 | PID-06 | Phase 12 | Pending |

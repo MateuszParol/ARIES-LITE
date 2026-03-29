@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Critical Hardware Fix
-status: completed
-stopped_at: Phase 11 context gathered
-last_updated: "2026-03-29T10:25:21.185Z"
+status: verifying
+stopped_at: Completed 11-awb-fix 11-01-PLAN.md
+last_updated: "2026-03-29T10:46:11.960Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
   percent: 62
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** System dziala poprawnie na RPi4 — detekcja, PID, AWB, diagnostyka
-**Current focus:** Phase 10 — detection-fix
+**Current focus:** Phase 11 — awb-fix
 
 ## Current Position
 
-Phase: 11
-Plan: Not started
-Status: Phase 10 complete — weryfikacja empiryczna zatwierdzona (DET-01, DET-02)
+Phase: 11 (awb-fix) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
 Last activity: 2026-03-29
 
 Progress: [████████░░░░░] 62% (8/13 phases complete across all milestones)
@@ -50,6 +50,8 @@ Progress: [████████░░░░░] 62% (8/13 phases complete ac
 - [Phase 09-diagnostics]: logger.debug dla PID per-tick — nie zasmiecanie INFO streamu, DEBUG wymaga jawnego ustawienia
 - [Phase 09-diagnostics]: Tolerancja 0.1 dla roznic AWB gains — ponizej to szum pomiaru, powyzej sugeruje silent failure
 - [Phase 10-detection-fix]: HAAR_MIN_NEIGHBORS=4 i HAAR_MIN_SIZE=(40,40) — streak filter=3 filtruje false positives, zakres detekcji 40-100cm
+- [Phase 11-awb-fix]: Configure-time ColourGains=(1.0,1.0) w create_video_configuration() — neutralne kolory od frame 0, zanim ISP zdazy narzucic AWB
+- [Phase 11-awb-fix]: Fallback guard rozszerzony o (0.0, 0.0) check — Picamera2 zwraca (0.0,0.0) gdy AWB nadal liczy, nie tylko None
 
 ### Blockers/Concerns
 
@@ -63,6 +65,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-29T10:25:21.128Z
-Stopped at: Phase 11 context gathered
-Resume file: .planning/phases/11-awb-fix/11-CONTEXT.md
+Last session: 2026-03-29T10:46:11.867Z
+Stopped at: Completed 11-awb-fix 11-01-PLAN.md
+Resume file: None

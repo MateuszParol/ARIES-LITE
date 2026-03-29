@@ -41,7 +41,7 @@
 
 - [x] **Phase 9: Diagnostics** - Mock mode indicator, PID component logging, AWB gains logging — zero risk, maximum observability before any hardware change (completed 2026-03-29)
 - [x] **Phase 10: Detection Fix** - HAAR parameter tuning (minSize, minNeighbors) — root cause of frozen tilt and apparent PID failures (completed 2026-03-29)
-- [ ] **Phase 11: AWB Fix** - ColourGains at configure-time — neutral colors from frame 1
+- [x] **Phase 11: AWB Fix** - ColourGains at configure-time — neutral colors from frame 1 (completed 2026-03-29)
 - [ ] **Phase 12: PID Validation** - Confirm tilt moves, no runaway, convergence — only after stable detection is verified
 - [ ] **Phase 13: DNN Detector** - OpenCV DNN replacement for HAAR — conditional on HAAR tuning being insufficient
 
@@ -81,7 +81,7 @@ Plans:
   3. ColourGains sa ustawione w `create_video_configuration()` — nie tylko po `start()`
 **Plans**: 1 plan
 Plans:
-- [ ] 11-01-PLAN.md — AWB configure-time lock + fallback guard + weryfikacja wizualna
+- [x] 11-01-PLAN.md — AWB configure-time lock + fallback guard + weryfikacja wizualna
 
 ### Phase 12: PID Validation
 **Goal**: Oba serwomotory reaguja na ruch twarzy i konwerguja do srodka kadru bez ucieczki
@@ -117,6 +117,6 @@ Plans:
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 10. Detection Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
-| 11. AWB Fix | v1.8 | 0/1 | Not started | - |
+| 11. AWB Fix | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |
 | 13. DNN Detector | v1.8 | 0/? | Not started | - |
