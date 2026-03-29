@@ -47,7 +47,7 @@ completed: 2026-03-29
 - **Duration:** 5 min
 - **Started:** 2026-03-29T10:00:00Z
 - **Completed:** 2026-03-29T10:05:00Z
-- **Tasks:** 1 z 2 (Task 2 to checkpoint:human-verify — oczekuje empirycznej weryfikacji na RPi4)
+- **Tasks:** 2 z 2 (kompletne — Task 2 checkpoint:human-verify zatwierdzona empirycznie na RPi4)
 - **Files modified:** 1
 
 ## Accomplishments
@@ -56,6 +56,11 @@ completed: 2026-03-29
 - Zmieniono HAAR_MIN_SIZE: (80,80) → (40,40) (twarz od 40cm do ~100cm przy FOV kamery RPi)
 - STREAK_REQUIRED=3 bez zmian — zachowana filtracja fałszywych detekcji
 - Syntax check Python AST przeszedl bez bledow
+- Empiryczna weryfikacja na RPi4 zatwierdzona przez uzytkownika:
+  - Zielone prostokaty widoczne na HUD przy 40-100cm (DET-01)
+  - Detekcja potwierdzona przy odchyleniu glowy ±30° (DET-02)
+  - Stan TRACKING utrzymywany przez 3+ sekundy bez przerwy
+  - Brak false positives na pustym pokoju
 
 ## Task Commits
 
@@ -83,12 +88,14 @@ None — no external service configuration required.
 
 ## Next Phase Readiness
 
-- Task 2 (checkpoint:human-verify) oczekuje empirycznej weryfikacji na RPi4:
-  - Test DET-01: zielony prostokat na HUD przy 40-100cm od kamery
-  - Test DET-02: detekcja przy odchyleniu glowy ~30°
-  - Test stabilnosci: TRACKING utrzymywany >= 3 sekundy
-  - Test false positives: brak TRACKING na pustym pokoju
-- Po zatwierdzeniu: Phase 12 (PID validation) moze startowac — zalezna od stabilnej detekcji
+- Phase 12 (PID Validation) moze startowac — stabilna detekcja potwierdzona empirycznie na RPi4
+- Phase 13 (DNN Detector) — warunkowe, potrzebne tylko jesli HAAR okazal sie niewystarczajacy (nie jest — DET-01 i DET-02 spelnione)
+- Phase 11 (AWB Fix) — niezalezna, moze startowac rownolegle
+
+## Self-Check: PASSED
+
+- FOUND: .planning/phases/10-detection-fix/10-01-SUMMARY.md
+- FOUND: commit a5fa317 (fix(10-01): zmniejsz progi HAAR dla detekcji 40-100cm)
 
 ---
 *Phase: 10-detection-fix*

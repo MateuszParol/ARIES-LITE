@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Critical Hardware Fix
-status: verifying
-stopped_at: Completed 10-01-PLAN.md — awaiting human-verify checkpoint (DET-01, DET-02)
-last_updated: "2026-03-29T09:58:06.838Z"
+status: completed
+stopped_at: Completed 10-01-PLAN.md — empiryczna weryfikacja DET-01 i DET-02 zatwierdzona na RPi4
+last_updated: "2026-03-29T10:01:59.046Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 5
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-29)
 
 Phase: 10 (detection-fix) — EXECUTING
 Plan: 1 of 1
-Status: Phase complete — ready for verification
+Status: Phase 10 complete — weryfikacja empiryczna zatwierdzona (DET-01, DET-02)
 Last activity: 2026-03-29
 
 Progress: [████████░░░░░] 62% (8/13 phases complete across all milestones)
@@ -54,7 +54,7 @@ Progress: [████████░░░░░] 62% (8/13 phases complete ac
 ### Blockers/Concerns
 
 - [Phase 12]: PID validation zalezy od stabilnej detekcji z Phase 10 — nie walidowac PID bez 10+ klatek TRACKING
-- [Phase 13]: DNN warunkowe — wykonac tylko jesli HAAR po tuningu nadal niewystarczajacy
+- [Phase 13]: DNN warunkowe — HAAR wystarczajacy (DET-01, DET-02 spelnione), Phase 13 prawdopodobnie zbedna
 - [AWB]: Fallback gains (2.5, 1.9) wymagaja kalibracji dla konkretnego srodowiska — odczytac z capture_metadata()
 
 ### Pending Todos
@@ -63,6 +63,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-29T09:58:06.769Z
-Stopped at: Completed 10-01-PLAN.md — awaiting human-verify checkpoint (DET-01, DET-02)
+Last session: 2026-03-29T10:01:52.803Z
+Stopped at: Completed 10-01-PLAN.md — empiryczna weryfikacja DET-01 i DET-02 zatwierdzona na RPi4
 Resume file: None
