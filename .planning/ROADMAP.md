@@ -55,7 +55,9 @@
   1. HUD wyswietla etykiete `[MOCK]` gdy pigpiod nie jest aktywny — operator od razu wie ze serwa nie reaguja fizycznie
   2. Terminal loguje P, I, D components dla obu osi (pan i tilt) w kazdym ticku stanu TRACKING
   3. Terminal loguje rzeczywiste ColourGains z `capture_metadata()` po AWB warm-up — widoczne niezerowe wartosci R i B
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 09-01-PLAN.md — mock_mode property + [MOCK] HUD overlay + PID component logging + AWB gains re-read
 
 ### Phase 10: Detection Fix
 **Goal**: HAAR cascade wykrywa twarze w realnych warunkach — zielone prostokaty widoczne na HUD przy normalnym uzytkowaniu
@@ -109,7 +111,7 @@
 | 6. Diagnostics & Camera | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 7. PID Sign Correctness | v1.7 | 2/2 | Complete | 2026-03-27 |
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
-| 9. Diagnostics | v1.8 | 0/? | Not started | - |
+| 9. Diagnostics | v1.8 | 0/1 | Planned | - |
 | 10. Detection Fix | v1.8 | 0/? | Not started | - |
 | 11. AWB Fix | v1.8 | 0/? | Not started | - |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |
