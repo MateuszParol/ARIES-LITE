@@ -52,23 +52,23 @@ Deferred to future milestones.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COL-01 | — | Pending |
-| COL-02 | — | Pending |
-| COL-03 | — | Pending |
-| TRK-01 | — | Pending |
-| TRK-02 | — | Pending |
-| TRK-03 | — | Pending |
-| SCN-01 | — | Pending |
-| SCN-02 | — | Pending |
-| SCN-03 | — | Pending |
-| SMT-01 | — | Pending |
-| SMT-02 | — | Pending |
+| COL-01 | Phase 14 | Pending |
+| COL-02 | Phase 14 | Pending |
+| COL-03 | Phase 14 | Pending |
+| TRK-01 | Phase 15 | Pending |
+| TRK-02 | Phase 15 | Pending |
+| TRK-03 | Phase 15 | Pending |
+| SCN-01 | Phase 16 | Pending |
+| SCN-02 | Phase 16 | Pending |
+| SCN-03 | Phase 16 | Pending |
+| SMT-01 | Phase 17 | Pending |
+| SMT-02 | Phase 17 | Pending |
 
 **Coverage:**
 - v1.9 requirements: 11 total
-- Mapped to phases: 0
-- Unmapped: 11 ⚠️
+- Mapped to phases: 11
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 after initial definition*
+*Last updated: 2026-03-29 — traceability uzupelniona po roadmap v1.9*
