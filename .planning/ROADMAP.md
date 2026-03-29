@@ -39,7 +39,7 @@
 
 **Milestone Goal:** System dziala poprawnie na RPi4 — tilt reaguje, PID nie ucieka, obraz bez blue tint, detekcja twarzy jest responsywna.
 
-- [ ] **Phase 9: Diagnostics** - Mock mode indicator, PID component logging, AWB gains logging — zero risk, maximum observability before any hardware change
+- [x] **Phase 9: Diagnostics** - Mock mode indicator, PID component logging, AWB gains logging — zero risk, maximum observability before any hardware change (completed 2026-03-29)
 - [ ] **Phase 10: Detection Fix** - HAAR parameter tuning (minSize, minNeighbors) — root cause of frozen tilt and apparent PID failures
 - [ ] **Phase 11: AWB Fix** - ColourGains at configure-time — neutral colors from frame 1
 - [ ] **Phase 12: PID Validation** - Confirm tilt moves, no runaway, convergence — only after stable detection is verified
@@ -57,7 +57,7 @@
   3. Terminal loguje rzeczywiste ColourGains z `capture_metadata()` po AWB warm-up — widoczne niezerowe wartosci R i B
 **Plans**: 1 plan
 Plans:
-- [ ] 09-01-PLAN.md — mock_mode property + [MOCK] HUD overlay + PID component logging + AWB gains re-read
+- [x] 09-01-PLAN.md — mock_mode property + [MOCK] HUD overlay + PID component logging + AWB gains re-read
 
 ### Phase 10: Detection Fix
 **Goal**: HAAR cascade wykrywa twarze w realnych warunkach — zielone prostokaty widoczne na HUD przy normalnym uzytkowaniu
@@ -111,7 +111,7 @@ Plans:
 | 6. Diagnostics & Camera | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 7. PID Sign Correctness | v1.7 | 2/2 | Complete | 2026-03-27 |
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
-| 9. Diagnostics | v1.8 | 0/1 | Planned | - |
+| 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 10. Detection Fix | v1.8 | 0/? | Not started | - |
 | 11. AWB Fix | v1.8 | 0/? | Not started | - |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |

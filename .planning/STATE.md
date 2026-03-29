@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Critical Hardware Fix
-status: planning
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-29T08:26:18.774Z"
-last_activity: 2026-03-29 — Roadmap v1.8 created (Phases 9-13)
+status: verifying
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-29T08:38:31.611Z"
+last_activity: 2026-03-29
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
   percent: 62
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** System dziala poprawnie na RPi4 — detekcja, PID, AWB, diagnostyka
-**Current focus:** Phase 9 — Diagnostics (v1.8 start)
+**Current focus:** Phase 09 — diagnostics
 
 ## Current Position
 
-Phase: 9 of 13 (Diagnostics)
-Plan: 0 of ? in current phase
-Status: Ready to plan
-Last activity: 2026-03-29 — Roadmap v1.8 created (Phases 9-13)
+Phase: 09 (diagnostics) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-03-29
 
 Progress: [████████░░░░░] 62% (8/13 phases complete across all milestones)
 
@@ -47,6 +47,8 @@ Progress: [████████░░░░░] 62% (8/13 phases complete ac
 - [v1.7]: AWB lock via set_controls after start()+2s — dziala ale configure-time jest pewniejszy
 - [v1.8 research]: ROOT CAUSE = HAAR minNeighbors=8 + minSize=(80,80) — prawie zero detekcji w praktyce
 - [v1.8 research]: Mock mode niewidoczny w HUD — set_angles() aktualizuje software state zawsze
+- [Phase 09-diagnostics]: logger.debug dla PID per-tick — nie zasmiecanie INFO streamu, DEBUG wymaga jawnego ustawienia
+- [Phase 09-diagnostics]: Tolerancja 0.1 dla roznic AWB gains — ponizej to szum pomiaru, powyzej sugeruje silent failure
 
 ### Blockers/Concerns
 
@@ -60,6 +62,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-29T08:26:18.629Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-diagnostics/09-CONTEXT.md
+Last session: 2026-03-29T08:38:31.590Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: None

@@ -9,9 +9,9 @@ Wymagania dla milestone Critical Hardware Fix. Naprawa bugow persystujacych po v
 
 ### Diagnostyka
 
-- [ ] **DIAG-02**: HUD wyswietla indykator mock mode gdy pigpiod nie jest aktywny — operator widzi ze serwa sa w trybie symulacji
-- [ ] **DIAG-03**: Konsola loguje PID error i output (P, I, D components) dla obu osi w kazdym ticku TRACKING — wartosci widoczne w terminalu
-- [ ] **DIAG-04**: Konsola loguje ColourGains z capture_metadata() po AWB warm-up — operator widzi rzeczywiste gains z sensora
+- [x] **DIAG-02**: HUD wyswietla indykator mock mode gdy pigpiod nie jest aktywny — operator widzi ze serwa sa w trybie symulacji
+- [x] **DIAG-03**: Konsola loguje PID error i output (P, I, D components) dla obu osi w kazdym ticku TRACKING — wartosci widoczne w terminalu
+- [x] **DIAG-04**: Konsola loguje ColourGains z capture_metadata() po AWB warm-up — operator widzi rzeczywiste gains z sensora
 
 ### Detekcja
 
@@ -52,9 +52,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DIAG-02 | Phase 9 | Pending |
-| DIAG-03 | Phase 9 | Pending |
-| DIAG-04 | Phase 9 | Pending |
+| DIAG-02 | Phase 9 | Complete |
+| DIAG-03 | Phase 9 | Complete |
+| DIAG-04 | Phase 9 | Complete |
 | DET-01 | Phase 10 | Pending |
 | DET-02 | Phase 10 | Pending |
 | AWB-01 | Phase 11 | Pending |
