@@ -91,7 +91,9 @@ Plans:
   1. Wartosc Tilt na HUD zmienia sie w trakcie stanu TRACKING — serwo tilt fizycznie przesuwa sie gdy twarz jest poza centrum
   2. Zadna os nie ucieka do limitu po wejsciu w TRACKING — ruch jest proporcjonalny do bledu, nie natychmiastowy
   3. Po 10+ klatkach stabilnej detekcji twarz jest wycentrowana w obu osiach — PID osiaga stan ustalony
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 12-01-PLAN.md — --debug flag + empiryczna walidacja PID na RPi4
 
 ### Phase 13: DNN Detector
 **Goal**: OpenCV DNN zastepuje HAAR jako glowny detektor gdy HAAR jest niewystarczajacy — lepsza dokladnosc przy akceptowalnym FPS
@@ -118,5 +120,5 @@ Plans:
 | 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 10. Detection Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
 | 11. AWB Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
-| 12. PID Validation | v1.8 | 0/? | Not started | - |
+| 12. PID Validation | v1.8 | 0/1 | Planned | - |
 | 13. DNN Detector | v1.8 | 0/? | Not started | - |
