@@ -52,21 +52,23 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DIAG-02 | — | Pending |
-| DIAG-03 | — | Pending |
-| DIAG-04 | — | Pending |
-| DET-01 | — | Pending |
-| DET-02 | — | Pending |
-| DET-03 | — | Pending |
-| AWB-01 | — | Pending |
-| AWB-02 | — | Pending |
-| PID-04 | — | Pending |
-| PID-05 | — | Pending |
-| PID-06 | — | Pending |
+| DIAG-02 | Phase 9 | Pending |
+| DIAG-03 | Phase 9 | Pending |
+| DIAG-04 | Phase 9 | Pending |
+| DET-01 | Phase 10 | Pending |
+| DET-02 | Phase 10 | Pending |
+| AWB-01 | Phase 11 | Pending |
+| AWB-02 | Phase 11 | Pending |
+| PID-04 | Phase 12 | Pending |
+| PID-05 | Phase 12 | Pending |
+| PID-06 | Phase 12 | Pending |
+| DET-03 | Phase 13 | Pending |
 
 **Coverage:**
-- v1.8 requirements: 11 total (all pending)
-- Unmapped: 11
+- v1.8 requirements: 11 total
+- Mapped: 11/11 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-29*
+*Traceability updated: 2026-03-29 (roadmap created)*
