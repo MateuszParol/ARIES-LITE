@@ -16,6 +16,7 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 ## Current State
 
 **v1.8** in progress — critical hardware fix milestone.
+- Phase 12 (pid-validation) complete: --debug flag w run_test_tracker.py, empiryczna walidacja PID na RPi4 — oba kontrolery obliczaja poprawne korekty, brak runaway, konwergencja potwierdzona
 - Phase 11 (awb-fix) complete: AWB configure-time lock (1.0, 1.0) w create_video_configuration(), fallback guard na None/(0.0, 0.0), explicit float() cast — neutralne kolory od pierwszej klatki, potwierdzone na RPi4
 - Phase 10 (detection-fix) complete: HAAR_MIN_SIZE=(40,40), HAAR_MIN_NEIGHBORS=4 — detekcja dziala 40-100cm, pod katem ±30°, empirycznie potwierdzone na RPi4
 - Phase 09 (diagnostics) complete: mock mode [MOCK] HUD indicator, PID component per-tick logging, AWB ColourGains re-read verification after set_controls
@@ -125,4 +126,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after Phase 11 (awb-fix) completion*
+*Last updated: 2026-03-29 after Phase 12 (pid-validation) completion*
