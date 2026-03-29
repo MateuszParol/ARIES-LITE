@@ -40,7 +40,7 @@
 **Milestone Goal:** System dziala poprawnie na RPi4 — tilt reaguje, PID nie ucieka, obraz bez blue tint, detekcja twarzy jest responsywna.
 
 - [x] **Phase 9: Diagnostics** - Mock mode indicator, PID component logging, AWB gains logging — zero risk, maximum observability before any hardware change (completed 2026-03-29)
-- [ ] **Phase 10: Detection Fix** - HAAR parameter tuning (minSize, minNeighbors) — root cause of frozen tilt and apparent PID failures
+- [x] **Phase 10: Detection Fix** - HAAR parameter tuning (minSize, minNeighbors) — root cause of frozen tilt and apparent PID failures (completed 2026-03-29)
 - [ ] **Phase 11: AWB Fix** - ColourGains at configure-time — neutral colors from frame 1
 - [ ] **Phase 12: PID Validation** - Confirm tilt moves, no runaway, convergence — only after stable detection is verified
 - [ ] **Phase 13: DNN Detector** - OpenCV DNN replacement for HAAR — conditional on HAAR tuning being insufficient
@@ -69,7 +69,7 @@ Plans:
   3. Stan TRACKING jest utrzymywany przez co najmniej 3 sekundy bez przerwy po wejsciu
 **Plans**: 1 plan
 Plans:
-- [ ] 10-01-PLAN.md — HAAR_MIN_SIZE=(40,40) + HAAR_MIN_NEIGHBORS=4 + empiryczna weryfikacja na RPi4
+- [x] 10-01-PLAN.md — HAAR_MIN_SIZE=(40,40) + HAAR_MIN_NEIGHBORS=4 + empiryczna weryfikacja na RPi4
 
 ### Phase 11: AWB Fix
 **Goal**: Kamera renderuje naturalne kolory od pierwszej klatki — brak blue tint w kazdych warunkach oswietlenia
@@ -114,7 +114,7 @@ Plans:
 | 7. PID Sign Correctness | v1.7 | 2/2 | Complete | 2026-03-27 |
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
-| 10. Detection Fix | v1.8 | 0/1 | Planned | - |
+| 10. Detection Fix | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 11. AWB Fix | v1.8 | 0/? | Not started | - |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |
 | 13. DNN Detector | v1.8 | 0/? | Not started | - |

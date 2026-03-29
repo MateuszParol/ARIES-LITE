@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Critical Hardware Fix
 status: verifying
-stopped_at: Phase 10 context gathered
-last_updated: "2026-03-29T09:33:41.852Z"
+stopped_at: Completed 10-01-PLAN.md — awaiting human-verify checkpoint (DET-01, DET-02)
+last_updated: "2026-03-29T09:58:06.838Z"
 last_activity: 2026-03-29
 progress:
   total_phases: 5
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
   percent: 62
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** System dziala poprawnie na RPi4 — detekcja, PID, AWB, diagnostyka
-**Current focus:** Phase 09 — diagnostics
+**Current focus:** Phase 10 — detection-fix
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
+Phase: 10 (detection-fix) — EXECUTING
+Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-03-29
 
@@ -49,6 +49,7 @@ Progress: [████████░░░░░] 62% (8/13 phases complete ac
 - [v1.8 research]: Mock mode niewidoczny w HUD — set_angles() aktualizuje software state zawsze
 - [Phase 09-diagnostics]: logger.debug dla PID per-tick — nie zasmiecanie INFO streamu, DEBUG wymaga jawnego ustawienia
 - [Phase 09-diagnostics]: Tolerancja 0.1 dla roznic AWB gains — ponizej to szum pomiaru, powyzej sugeruje silent failure
+- [Phase 10-detection-fix]: HAAR_MIN_NEIGHBORS=4 i HAAR_MIN_SIZE=(40,40) — streak filter=3 filtruje false positives, zakres detekcji 40-100cm
 
 ### Blockers/Concerns
 
@@ -62,6 +63,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-29T09:33:41.772Z
-Stopped at: Phase 10 context gathered
-Resume file: .planning/phases/10-detection-fix/10-CONTEXT.md
+Last session: 2026-03-29T09:58:06.769Z
+Stopped at: Completed 10-01-PLAN.md — awaiting human-verify checkpoint (DET-01, DET-02)
+Resume file: None

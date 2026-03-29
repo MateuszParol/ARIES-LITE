@@ -15,8 +15,8 @@ Wymagania dla milestone Critical Hardware Fix. Naprawa bugow persystujacych po v
 
 ### Detekcja
 
-- [ ] **DET-01**: HAAR cascade wykrywa twarz z minSize=(40,40) i minNeighbors=4-5 na 320x240 — detekcja na odleglosc 40-100cm
-- [ ] **DET-02**: System wykrywa twarz pod katem do ±30° (nie tylko idealnie frontalnie) — zielony prostokat na HUD
+- [x] **DET-01**: HAAR cascade wykrywa twarz z minSize=(40,40) i minNeighbors=4-5 na 320x240 — detekcja na odleglosc 40-100cm
+- [x] **DET-02**: System wykrywa twarz pod katem do ±30° (nie tylko idealnie frontalnie) — zielony prostokat na HUD
 - [ ] **DET-03**: OpenCV DNN detector (res10 lub YuNet) zastepuje HAAR jako glowny detektor — lepsza dokladnosc przy akceptowalnym FPS (>10)
 
 ### Kamera (AWB)
@@ -55,8 +55,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DIAG-02 | Phase 9 | Complete |
 | DIAG-03 | Phase 9 | Complete |
 | DIAG-04 | Phase 9 | Complete |
-| DET-01 | Phase 10 | Pending |
-| DET-02 | Phase 10 | Pending |
+| DET-01 | Phase 10 | Complete |
+| DET-02 | Phase 10 | Complete |
 | AWB-01 | Phase 11 | Pending |
 | AWB-02 | Phase 11 | Pending |
 | PID-04 | Phase 12 | Pending |
