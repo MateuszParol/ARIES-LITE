@@ -32,7 +32,7 @@ SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
 PID_OUTPUT_LIMIT = 10.0
 CAMERA_MAX_RETRIES = 3
 CAMERA_RETRY_DELAY = 1.0  # sekundy miedzy probami ponownej inicjalizacji
-#AWB_FALLBACK_GAINS = (1.0, 1.0)  # (Red, Blue) — neutralne, bez wzmocnienia
+AWB_FALLBACK_GAINS = (1.0, 1.0)  # (Red, Blue) — neutralne, bez wzmocnienia
 
 # Stan TARGET_LOST (przejściowy, wizualny)
 STATE_TARGET_LOST = "TARGET_LOST"
@@ -65,7 +65,8 @@ class Picamera2Stream:
         """Inicjalizuje kamere i uruchamia watek przechwytywania."""
         self._picam2 = Picamera2()
         video_config = self._picam2.create_video_configuration(
-            lores={"size": (self._width, self._height), "format": "YUV420"}
+            lores={"size": (self._width, self._height), "format": "YUV420"},
+            controls={"ColourGains": AWB_FALLBACK_GAINS}
         )
         self._picam2.configure(video_config)
         self._picam2.start()
@@ -79,10 +80,10 @@ class Picamera2Stream:
         time.sleep(2.0)
         metadata = self._picam2.capture_metadata()
         gains = metadata.get("ColourGains")
-        #if gains is None:
-        #    logger.warning("ColourGains niedostępne, używam fallback (2.5, 1.9)")
-        #    gains = AWB_FALLBACK_GAINS
-        self._picam2.set_controls({"ColourGains": gains})
+        if gains is None or gains == (0.0, 0.0):
+            logger.warning("AWB still running lub ColourGains niedostepne, uzywam fallback (1.0, 1.0)")
+            gains = AWB_FALLBACK_GAINS
+        self._picam2.set_controls({"ColourGains": (float(gains[0]), float(gains[1]))})
         r, b = gains
         logger.info(f"ColourGains zablokowane: (R={r:.2f}, B={b:.2f})")
 
