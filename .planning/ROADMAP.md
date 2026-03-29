@@ -103,7 +103,9 @@ Plans:
   1. Detektor wykrywa twarz pod katem i przy czesciowym zaslonieniu gdzie HAAR zawiodl
   2. FPS nie spada ponizej 10 klatek/s przy DNN detekcji na RPi4 — system jest responsive
   3. Interfejs `wykryj()` jest zachowany — `MaszynaStanow` i `TestTracker` nie wymagaja zmian
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 13-01-PLAN.md — Zamiana HAAR na DNN res10 w DetekcjaTwarzy + empiryczna weryfikacja na RPi4
 
 ## Progress
 
@@ -121,4 +123,4 @@ Plans:
 | 10. Detection Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
 | 11. AWB Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
 | 12. PID Validation | v1.8 | 1/1 | Complete    | 2026-03-29 |
-| 13. DNN Detector | v1.8 | 0/? | Not started | - |
+| 13. DNN Detector | v1.8 | 0/1 | Planned | - |
