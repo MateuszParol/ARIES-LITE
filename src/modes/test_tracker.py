@@ -68,8 +68,7 @@ class Picamera2Stream:
         """Inicjalizuje kamere i uruchamia watek przechwytywania."""
         self._picam2 = Picamera2()
         video_config = self._picam2.create_video_configuration(
-            lores={"size": (self._width, self._height), "format": "YUV420"},
-            controls={"ColourGains": AWB_FALLBACK_GAINS}
+            lores={"size": (self._width, self._height), "format": "YUV420"}
         )
         self._picam2.configure(video_config)
         self._picam2.start()
