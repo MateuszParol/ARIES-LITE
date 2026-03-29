@@ -1,10 +1,11 @@
 ---
 phase: 8
 slug: scanning-logic
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: complete
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-27
+validated: 2026-03-29
 ---
 
 # Phase 8 — Validation Strategy
@@ -17,20 +18,21 @@ created: 2026-03-27
 
 | Property | Value |
 |----------|-------|
-| **Framework** | none — empirical hardware verification only |
+| **Framework** | standalone Python scripts (no pytest dependency) |
 | **Config file** | none |
-| **Quick run command** | `python3 run_test_tracker.py` |
-| **Full suite command** | `python3 run_test_tracker.py` (on RPi4, visual observation) |
-| **Estimated runtime** | ~30 seconds (startup + visual check) |
+| **Quick run command** | `python3 tests/test_scan01_phase_offset.py && python3 tests/test_scan02_streak_reset.py` |
+| **Full suite command** | same — both complete in < 2 seconds |
+| **Hardware smoke command** | `python3 run_test_tracker.py` (on RPi4, visual observation) |
+| **Estimated runtime** | < 2 seconds (automated); ~30 seconds (hardware smoke) |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `python3 run_test_tracker.py` (smoke — does it start without AttributeError or ValueError)
+- **After every task commit:** `python3 tests/test_scan01_phase_offset.py && python3 tests/test_scan02_streak_reset.py`
 - **After every plan wave:** Full visual verification on RPi4
-- **Before `/gsd:verify-work`:** Both SCAN-01 and SCAN-02 confirmed visually
-- **Max feedback latency:** 30 seconds
+- **Before `/gsd:verify-work`:** Both automated suites green + hardware checkpoint approved
+- **Max feedback latency:** < 2 seconds (automated)
 
 ---
 
@@ -38,18 +40,19 @@ created: 2026-03-27
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 8-01-01 | 01 | 1 | SCAN-01 | manual visual | `python3 run_test_tracker.py` | N/A | ⬜ pending |
-| 8-01-02 | 01 | 1 | SCAN-02 | manual visual | `python3 run_test_tracker.py` | N/A | ⬜ pending |
+| 8-01-01 | 01 | 1 | SCAN-01 | unit | `python3 tests/test_scan01_phase_offset.py` | tests/test_scan01_phase_offset.py | green |
+| 8-01-02 | 01 | 1 | SCAN-02 | unit | `python3 tests/test_scan02_streak_reset.py` | tests/test_scan02_streak_reset.py | green |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: pending · green · red · flaky*
 
 ---
 
 ## Wave 0 Requirements
 
-Existing infrastructure covers all phase requirements.
+All phase requirements now have automated test coverage.
 
-*No test files needed — verification is empirical by project convention (CLAUDE.md: "There are no unit tests or linting tools configured. Verification is empirical").*
+- `tests/test_scan01_phase_offset.py` — 6 tests covering SCAN-01: field init, math.asin computation at various pan positions, clamp guard against ValueError, offset application in _skanuj()
+- `tests/test_scan02_streak_reset.py` — 6 tests covering SCAN-02: resetuj_streak() resets counter, STREAK_REQUIRED constant, reset triggers at TARGET_LOST entry (not SCANNING), state sequence TRACKING→TARGET_LOST→SCANNING, 3-frame accumulation requirement, streak drops on miss
 
 ---
 
@@ -57,18 +60,18 @@ Existing infrastructure covers all phase requirements.
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |----------|-------------|------------|-------------------|
-| No visible servo snap on TRACKING→SCANNING transition | SCAN-01 | Hardware servo motion requires physical observation on RPi4 | Cover face to trigger TARGET_LOST → SCANNING; observe pan servo sweeps smoothly without snap/step change on first scan frame |
-| Face shown during TARGET_LOST window requires 3 consecutive frames before TRACKING | SCAN-02 | Streak counter state not exposed via CLI; requires visual HUD observation | Rapidly show face during TARGET_LOST window; verify HUD shows state transitions only after 3 consecutive detections |
+| No visible servo snap on TRACKING→SCANNING transition | SCAN-01 (hardware feel) | Physical servo motion requires RPi4 observation | Cover face to trigger TARGET_LOST → SCANNING; observe pan servo sweeps smoothly without snap/step change on first scan frame |
+| Face shown during TARGET_LOST window requires 3 consecutive frames before TRACKING | SCAN-02 (hardware feel) | Visual HUD confirmation of streak enforcement | Rapidly show face during TARGET_LOST window; verify HUD transitions to TRACKING only after 3 consecutive frames |
 
 ---
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 30s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have automated verify command
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 2s (automated)
+- [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending
+**Approval:** nyquist-auditor 2026-03-29 — automated gaps filled, 12/12 tests green
