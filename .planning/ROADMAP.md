@@ -117,6 +117,6 @@ Plans:
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 10. Detection Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
-| 11. AWB Fix | v1.8 | 1/1 | Complete   | 2026-03-29 |
+| 11. AWB Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |
 | 13. DNN Detector | v1.8 | 0/? | Not started | - |
