@@ -86,6 +86,20 @@ class Picamera2Stream:
         r, b = gains
         logger.info(f"ColourGains zablokowane: (R={r:.2f}, B={b:.2f})")
 
+        # Weryfikacja czy gains faktycznie sie ustawily — wykrywa silent failure (per D-06)
+        meta_po = self._picam2.capture_metadata()
+        gains_po = meta_po.get("ColourGains")
+        if gains_po is not None:
+            r_po, b_po = gains_po
+            logger.info(f"ColourGains potwierdzone z sensora: (R={r_po:.2f}, B={b_po:.2f})")
+            if abs(r_po - r) > 0.1 or abs(b_po - b) > 0.1:
+                logger.warning(
+                    f"AWB gains roznia sie od zadanych: zadane=(R={r:.2f}, B={b:.2f}), "
+                    f"rzeczywiste=(R={r_po:.2f}, B={b_po:.2f})"
+                )
+        else:
+            logger.warning("ColourGains niedostepne w re-read metadata po set_controls")
+
     def _petla_przechwytywania(self) -> None:
         """Watek daemon: przechwytuje klatki w petli z ponowna inicjalizacja przy bledzie."""
         _retry_count = 0
@@ -280,6 +294,16 @@ class MaszynaStanow:
 
         self.hardware.set_angles(nowy_pan, nowy_tilt)
 
+        # PID diagnostyka per-tick (per D-03) — widoczne z logging.DEBUG
+        p_pan, i_pan, d_pan = self.pid_pan.components
+        p_tilt, i_tilt, d_tilt = self.pid_tilt.components
+        logger.debug(
+            "PAN err=%+.1f P=%.3f I=%.3f D=%.3f out=%+.1f | "
+            "TILT err=%+.1f P=%.3f I=%.3f D=%.3f out=%+.1f",
+            blad_pan, p_pan, i_pan, d_pan, korekta_pan,
+            blad_tilt, p_tilt, i_tilt, d_tilt, korekta_tilt
+        )
+
     def _przejdz_do(self, nowy_stan: str) -> None:
         """Zmiana stanu z resetem PID przy wejściu w SCANNING."""
         logger.info(f"Zmiana stanu: {self.stan} → {nowy_stan}")
@@ -396,6 +420,13 @@ class TestTracker:
         (tw, th), _ = cv2.getTextSize(fps_tekst, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         cv2.putText(klatka, fps_tekst, (w - tw - 5, h - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (150, 150, 150), 1)
+
+        # Indykator mock mode — czerwony [MOCK] w prawym gornym rogu (per D-01)
+        if self.maszyna.hardware.mock_mode:
+            mock_tekst = "[MOCK]"
+            (mw, mh), _ = cv2.getTextSize(mock_tekst, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.putText(klatka, mock_tekst, (w - mw - 5, mh + 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
 
     def zatrzymaj(self) -> None:
         """Cleanup: zatrzymanie petli, powrot serw do neutralnej, zwolnienie kamery."""
