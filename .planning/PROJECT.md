@@ -15,6 +15,9 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 
 ## Current State
 
+**v1.8** in progress — critical hardware fix milestone.
+- Phase 09 (diagnostics) complete: mock mode [MOCK] HUD indicator, PID component per-tick logging, AWB ColourGains re-read verification after set_controls
+
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
 - Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
 - AWB warm-up + ColourGains lock eliminates blue tint on Picamera2/IMX219
