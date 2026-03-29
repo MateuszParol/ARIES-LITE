@@ -115,7 +115,7 @@ class Picamera2Stream:
                 _retry_count = 0  # reset po udanym przechwyceniu
 
                 # Konwersja YUV420 → BGR
-                klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2RGB)
+                klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)
 
                 # Weryfikacja formatu na pierwszej klatce
                 if not _format_zweryfikowany:
