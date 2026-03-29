@@ -1,11 +1,12 @@
 """
 Test Tracker v1.6 — Autonomiczny moduł testowy pętli sterowania.
 
-Dowodzi działania: Picamera2 + HAAR detekcja + PID tracking + skanowanie sinusoidalne.
+Dowodzi działania: Picamera2 + DNN detekcja (res10_300x300) + PID tracking + skanowanie sinusoidalne.
 Standalone — nie wymaga Flaska ani dlib.
 """
 
 import math
+import os
 import sys
 import time
 import logging
@@ -24,8 +25,10 @@ logger = logging.getLogger(__name__)
 # --- Stałe modułowe ---
 LORES_WIDTH = 320
 LORES_HEIGHT = 240
-HAAR_MIN_NEIGHBORS = 4
-HAAR_MIN_SIZE = (40, 40)
+DNN_CONFIDENCE_THRESHOLD = 0.5
+DNN_SKIP_EVERY = 5
+MODEL_PROTOTXT = "models/deploy.prototxt"
+MODEL_CAFFEMODEL = "models/res10_300x300_ssd_iter_140000.caffemodel"
 STREAK_REQUIRED = 3
 SCAN_AMPLITUDE = 45.0       # stopnie
 SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
@@ -168,42 +171,67 @@ class Picamera2Stream:
 
 
 class DetekcjaTwarzy:
-    """Detekcja twarzy HAAR z filtrem streak (fałszywe pozytywy)."""
+    """Detekcja twarzy DNN (res10_300x300) z filtrem streak."""
 
     def __init__(self):
-        if hasattr(cv2, "data") and cv2.data.haarcascades:
-            haar_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        else:
-            haar_path = "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
-        self._klasyfikator = cv2.CascadeClassifier(haar_path)
-        if self._klasyfikator.empty():
-            raise RuntimeError(f"Nie udało się załadować kaskady HAAR: {haar_path}")
+        if not os.path.exists(MODEL_PROTOTXT):
+            raise RuntimeError(
+                f"Brak pliku modelu DNN: {MODEL_PROTOTXT}\n"
+                f"Pobierz z: https://github.com/opencv/opencv/tree/master/samples/dnn/face_detector"
+            )
+        if not os.path.exists(MODEL_CAFFEMODEL):
+            raise RuntimeError(
+                f"Brak pliku wag modelu DNN: {MODEL_CAFFEMODEL}\n"
+                f"Pobierz z: https://github.com/opencv/opencv_3rdparty"
+            )
+        self._net = cv2.dnn.readNetFromCaffe(MODEL_PROTOTXT, MODEL_CAFFEMODEL)
         self._streak: int = 0
-        logger.info("Klasyfikator HAAR załadowany.")
+        self._klatka_licznik: int = 0
+        self._ostatni_bbox: Optional[Tuple[int, int, int, int]] = None
+        logger.info("Model DNN res10_300x300 zaladowany.")
+
+        # Rozgrzewka — unika cold start penalty (~1200ms) na pierwszej klatce
+        dummy = np.zeros((300, 300, 3), dtype=np.uint8)
+        blob = cv2.dnn.blobFromImage(dummy, 1.0, (300, 300), (104.0, 177.0, 123.0), swapRB=False)
+        self._net.setInput(blob)
+        self._net.forward()
+        logger.info("DNN rozgrzewka zakonczona.")
 
     def wykryj(self, klatka: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
         """
         Wykrywa twarz w klatce. Zwraca bbox (x, y, w, h) największej twarzy
         tylko gdy streak >= STREAK_REQUIRED. None jeśli brak stabilnej detekcji.
+        DNN forward pass co DNN_SKIP_EVERY klatek — między nimi używa ostatniego bbox.
         """
-        szara = cv2.cvtColor(klatka, cv2.COLOR_BGR2GRAY)
-        twarze = self._klasyfikator.detectMultiScale(
-            szara,
-            scaleFactor=1.1,
-            minNeighbors=HAAR_MIN_NEIGHBORS,
-            minSize=HAAR_MIN_SIZE,
-        )
+        self._klatka_licznik += 1
 
-        if len(twarze) == 0:
+        # Forward pass co DNN_SKIP_EVERY klatek
+        if self._klatka_licznik % DNN_SKIP_EVERY == 0:
+            h, w = klatka.shape[:2]
+            blob = cv2.dnn.blobFromImage(klatka, 1.0, (300, 300), (104.0, 177.0, 123.0), swapRB=False)
+            self._net.setInput(blob)
+            detections = self._net.forward()
+
+            # Szukaj pierwszej detekcji powyzej progu confidence
+            self._ostatni_bbox = None
+            for i in range(detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > DNN_CONFIDENCE_THRESHOLD:
+                    x1 = int(detections[0, 0, i, 3] * w)
+                    y1 = int(detections[0, 0, i, 4] * h)
+                    x2 = int(detections[0, 0, i, 5] * w)
+                    y2 = int(detections[0, 0, i, 6] * h)
+                    self._ostatni_bbox = (x1, y1, x2 - x1, y2 - y1)
+                    break  # Pierwsza (najwyzsza confidence) wystarczy
+
+        # Streak filter — na kazdym wywolaniu
+        if self._ostatni_bbox is None:
             self._streak = 0
             return None
 
-        # Wybierz największą twarz wg pola powierzchni
-        najw = max(twarze, key=lambda r: r[2] * r[3])
         self._streak += 1
-
         if self._streak >= STREAK_REQUIRED:
-            return tuple(najw)
+            return self._ostatni_bbox
         return None
 
     def resetuj_streak(self) -> None:
