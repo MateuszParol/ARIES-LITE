@@ -16,6 +16,7 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 ## Current State
 
 **v1.8** in progress — critical hardware fix milestone.
+- Phase 10 (detection-fix) complete: HAAR_MIN_SIZE=(40,40), HAAR_MIN_NEIGHBORS=4 — detekcja dziala 40-100cm, pod katem ±30°, empirycznie potwierdzone na RPi4
 - Phase 09 (diagnostics) complete: mock mode [MOCK] HUD indicator, PID component per-tick logging, AWB ColourGains re-read verification after set_controls
 
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
