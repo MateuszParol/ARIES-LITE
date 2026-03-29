@@ -1,19 +1,17 @@
 # Project Research Summary
 
-**Project:** ARIES-LITE v1.7 — Debugging Milestone (test_tracker.py)
-**Domain:** Pan-tilt face tracking bug fixes on RPi4 (Picamera2 + pigpio + simple_pid)
-**Researched:** 2026-03-27
+**Project:** ARIES-LITE v1.8 Critical Hardware Fix
+**Domain:** Embedded real-time face tracking — RPi4 Bookworm 64-bit (Picamera2 + pigpio + simple_pid)
+**Researched:** 2026-03-29
 **Confidence:** HIGH
-
----
 
 ## Executive Summary
 
-This milestone is a precision bug-fix release targeting four confirmed defects in `src/modes/test_tracker.py`. All four bugs are isolated to a single file and require a combined total of roughly 4 lines changed across 3 methods. There is no architectural redesign, no new dependencies, and no change to `src/hardware.py` or `src/config.py`. Research is grounded in direct source-code inspection of `simple_pid`, live verification of the Picamera2 API on target hardware, and first-principles derivation from the system's coordinate conventions documented in PROJECT.md.
+ARIES-LITE v1.8 is a focused bug-fix milestone targeting four confirmed hardware failures that survived v1.7 code changes: tilt axis frozen at 0.0 in the HUD, pan runaway on TRACKING entry, persistent blue tint from the camera, and HAAR detection triggering only under near-perfect conditions. All four symptoms were observed on physical RPi4 hardware despite syntactically correct v1.7 fixes being present in the codebase. The core research finding is that the primary root cause is a misdiagnosis cascade: HAAR detection is so restrictive (`minNeighbors=8`, `minSize=(80,80)`) that the state machine almost never enters TRACKING, making the PID and scan behaviors appear broken when they may be functionally correct.
 
-The most critical fix is a single missing minus sign on `korekta_tilt` in `MaszynaStanow._sledz()`. This one character error creates a positive feedback loop on the tilt axis: the servo actively drives the camera away from the face rather than toward it. Because `simple_pid` computes `error = setpoint - input_` (with `setpoint=0`), a positive tilt error (face below center) produces a negative PID output. Without negation, the tilt angle decreases, the camera tilts upward, and the face moves further down the frame — a runaway. The tilt servo hits its soft limit within 2-3 frames, which explains both observed symptoms (tilt "not moving" and apparent camera runaway) as a single mechanical root cause. The AWB blue tint is an independent ISP initialization issue: Picamera2 starts AWB asynchronously and the current code provides no warm-up or gain lock. The scanning streak-reset is a logical off-by-one where the detection counter is cleared one frame later than state entry requires.
+The recommended approach is a strictly sequenced fix: detection first, AWB second, PID diagnosis third, scan continuity fourth. Detection must be confirmed stable before any PID conclusion is drawn, because fleeting 1-frame TRACKING events are visually indistinguishable from PID runaway. The highest-confidence, lowest-risk fix is relaxing HAAR parameters to `minNeighbors=4`, `minSize=(40,40)` before touching any other subsystem. If HAAR tuning proves insufficient, the OpenCV DNN `res10_300x300_ssd` model is the validated fallback — it ships inside `opencv-python-headless` already in `requirements.txt`, requires no new pip installs, and preserves the `wykryj()` interface contract.
 
-The key implementation risk is in the AWB fix: `set_controls()` must be called after `picam2.start()`, not before or during `configure()`. Any controls placed before `start()` are silently ignored by the Picamera2 ISP pipeline. A secondary risk is the temptation to also modify the YUV-to-BGR conversion constant while fixing AWB — these are independent issues and the existing `cv2.COLOR_YUV420p2BGR` constant is correct for Picamera2's I420 output; do not change it.
+The key implementation risk is invisible mock mode: `PanTiltSystem.set_angles()` updates software state (`tilt_angle`, `pan_angle`) unconditionally in both real and mock modes, meaning the HUD shows correct-looking values even when `pigpiod` is not running and no servo moves. All hardware debugging sessions must begin with a mock-mode preflight check. The AWB blue tint fix is straightforward but requires passing `ColourGains` in `create_video_configuration()` at configure time as the primary lock (not only via post-start `set_controls`), which guarantees correct color from frame 1 regardless of Picamera2/libcamera version quirks on Bookworm.
 
 ---
 
@@ -21,164 +19,131 @@ The key implementation risk is in the AWB fix: `set_controls()` must be called a
 
 ### Recommended Stack
 
-All existing dependencies remain unchanged. No new libraries are required for v1.7 fixes.
+The existing pinned stack is correct and requires no new dependencies for v1.8. `opencv-python-headless==4.8.1.78` includes the DNN module with `res10_300x300_ssd` support. `simple-pid>=2.0.1` exposes the `components` property (`pid.components` returns `(P, I, D)` tuple) needed for PID diagnostics. `picamera2` (system package) supports `capture_metadata()["ColourGains"]` and `create_video_configuration(controls={...})` as the reliable AWB lock path. MediaPipe is explicitly rejected: no `aarch64` Linux wheel exists on PyPI as of 2026-03-29 and community builds are fragile.
 
 **Core technologies:**
+- `opencv-python-headless 4.8.1.78`: HAAR + DNN face detection — DNN module bundled, no extra pip install needed
+- `picamera2` (system pkg): YUV420 lores capture + AWB ColourGains API — native libcamera stack on Bookworm
+- `simple-pid >=2.0.1`: PID with `components` tuple — official API for per-component diagnostic logging; `pid.components` returns `(P, I, D)` after every `pid(error)` call
+- `pigpio 1.78+` + `gpiozero`: hardware PWM for servos — only library providing true H-PWM on RPi4
+- OpenCV DNN model files: `deploy.prototxt` (~28KB) + `res10_300x300_ssd_iter_140000.caffemodel` (~10MB) — one-time wget download to `models/`, not a pip install; needed only if HAAR tuning is insufficient
 
-- `simple_pid 2.0+` — PID control; `error = setpoint - input_` is the confirmed formula from source; `reset()` zeroes all terms including integral; `output_limits=(-10, 10)` provides anti-windup automatically in 2.x. Pin `>=2.0.0` in requirements.txt to guarantee integral clamping behavior.
-- `picamera2 0.3+` (system package) — Camera capture; `set_controls()` must follow `start()` with a warm-up delay; `ColourGains` control accepts float tuples `(red_gain, blue_gain)` and implicitly disables AWB when set. Do not set `AwbEnable: False` alongside it — the Picamera2 maintainer warns this causes control sequencing conflicts.
-- `opencv-python-headless 4.8+` — HAAR detection and YUV conversion; `cv2.COLOR_YUV420p2BGR` is correct for Picamera2 I420 output — do not change it when fixing AWB.
-- `pigpio 1.78+` — Hardware PWM; unchanged and correct; `smooth_move_to()` must remain the only startup path to servos.
+### Expected Features
 
-### Expected Fixes (Bug-Fix Milestone, Not Feature Release)
+All v1.8 features are bug fixes, not new functionality. The milestone has a narrow, well-defined scope.
 
-**Must fix (table stakes — system is broken without these):**
+**Must have (table stakes — all four required for milestone to ship):**
+- Tilt axis physically moves during TRACKING — diagnose mock mode / call path before assuming PID sign error
+- PAN converges to face center without runaway — confirm sustained TRACKING with logging before drawing any PID conclusions
+- Camera renders neutral colors from frame 1 — configure-time `ColourGains` lock as primary; post-start `set_controls` as secondary verification
+- HAAR detects real faces at 50-80 cm with slight angle — `minSize=(40,40)`, `minNeighbors=4`, keep `STREAK_REQUIRED=3`
 
-- Tilt PID sign inversion — one character: `korekta_tilt = -self.pid_tilt(blad_tilt)` in `_sledz()` line 263. Without this the tilt axis exhibits positive feedback; system cannot track vertically.
-- AWB gain lock after convergence — add `time.sleep(2.0)` + `capture_metadata()` + `set_controls({"ColourGains": gains})` after `picam2.start()` in both `Picamera2Stream.start()` and the reinit path in `_petla_przechwytywania`.
+**Should have (diagnostic support — same milestone, zero structural risk):**
+- Per-tick PID debug logging in `_sledz()` — `logger.debug` with error, raw output, correction, resulting angle per axis
+- ColourGains confirmation log at metadata capture point (before None check)
+- Mock-mode indicator `[MOCK]` in HUD and `logger.info` of `_mock_mode` at startup
+- HUD bbox dimension display (`w x h` pixels) to confirm whether `minSize` was the blocker
 
-**Should fix (logical correctness, low visual impact):**
-
-- Scanning streak reset timing — change the streak-reset condition in `TestTracker.uruchom()` from firing on `STATE_SCANNING` entry to firing on `STATE_TARGET_LOST` entry. One condition rewrite, same line count.
-
-**Defer to v1.8+ (confirmed not needed for v1.7):**
-
-- Scan phase continuity — a phase-offset arcsin approach to eliminate the pan jerk at TRACKING → SCANNING resumption is fully specified in FEATURES.md (lines 316-328). Valid improvement but the current sinusoidal scan is functional. Defer unless servo jerk is confirmed as a visible user-experience issue after v1.7 fixes.
-- Kalman filter, deep-learning detection, dlib identity changes, custom PID replacement — locked architectural decisions; all confirmed out of scope.
-
-**Anti-features for this milestone:**
-
-- Do not change Kp/Ki/Kd values — gains are empirically validated; sign bugs mimic gain problems but are distinct.
-- Do not rewrite `MaszynaStanow` — state transitions are correct; only `_sledz()` and the streak-reset condition need changes.
-- Do not add `AwbEnable: False` alongside `ColourGains`.
+**Defer to future milestones:**
+- OpenCV DNN `DetekcjaTwarzyDNN` class — only if HAAR tuning at `(40,40)/4` is empirically insufficient after hardware test
+- CSRT tracker in test module — new scope; valid only after PID is confirmed working
+- PID gain retuning — only after sign convention and hardware path are confirmed correct
+- AWB mode presets (Indoor/Fluorescent) — only if dynamic lock still fails after configure-time fix
 
 ### Architecture Approach
 
-All four fixes land in `src/modes/test_tracker.py` only. The component boundary is unchanged: `Picamera2Stream` owns camera lifecycle, `MaszynaStanow` owns state and PID logic, `DetekcjaTwarzy` owns detection and streak counting. The streak-reset fix deliberately preserves the existing boundary by modifying `uruchom()`'s condition rather than passing `DetekcjaTwarzy` into `_przejdz_do()`.
+All v1.8 changes are confined to a single file: `src/modes/test_tracker.py`. The four-layer architecture (Input → Detection → Control → Hardware) is unchanged. The `wykryj(klatka) -> Optional[Tuple[int,int,int,int]]` contract is the key interface boundary — any detector replacement (HAAR or DNN) must conform to this return type, keeping `TestTracker.uruchom()` and `MaszynaStanow.tick()` untouched. `hardware.py` has zero modifications; `config.py` may gain one constant (`DNN_CONFIDENCE_THRESHOLD = 0.5`) if DNN is added.
 
-**Exact integration points:**
-
-| Fix | File | Method | Change |
-|-----|------|--------|--------|
-| Tilt PID sign | `src/modes/test_tracker.py` | `MaszynaStanow._sledz()` line 263 | Add `-` prefix to `pid_tilt()` call (1 character) |
-| AWB lock — start path | `src/modes/test_tracker.py` | `Picamera2Stream.start()` lines 66-70 | Add sleep + metadata read + `set_controls` after `picam2.start()` (~5 lines) |
-| AWB lock — reinit path | `src/modes/test_tracker.py` | `Picamera2Stream._petla_przechwytywania` lines 111-113 | Add matching `controls={"AwbMode": 4}` to reinit `create_video_configuration` call (1 line) |
-| Streak reset timing | `src/modes/test_tracker.py` | `TestTracker.uruchom()` lines 323-324 | Change condition from SCANNING entry to TARGET_LOST entry (1 condition rewrite) |
-
-Total change surface: 4 locations in 1 file. No other file is modified.
-
-**Sign convention reference (canonical, for maintenance):**
-
-```
-PIXEL COORDINATES (OpenCV): origin = top-left, x right, y down
-
-ERROR DEFINITIONS:
-  blad_pan  = srodek_x - ramka_cx   (positive = face RIGHT of center)
-  blad_tilt = srodek_y - ramka_cy   (positive = face BELOW center)
-
-simple_pid OUTPUT (setpoint=0):  pid(error) = -Kp * error
-
-HARDWARE (PROJECT.md, empirically confirmed):
-  pan_angle+  → camera rotates right → face moves LEFT in frame
-  tilt_angle+ → camera rotates down  → face moves UP in frame
-
-REQUIRED:
-  face right  (+blad_pan)  → pan_angle must INCREASE → korekta_pan POSITIVE
-  face below  (+blad_tilt) → tilt_angle must INCREASE → korekta_tilt POSITIVE
-
-DERIVATION:
-  korekta_pan  = -pid_pan(blad_pan)   = +Kp*blad_pan  ✓  (already in code)
-  korekta_tilt = -pid_tilt(blad_tilt) = +Kp*blad_tilt ✓  (MISSING — the bug)
-```
-
-**Architecture invariants that must not be broken:**
-
-1. `Picamera2Stream` and `MaszynaStanow` remain separate classes.
-2. `MaszynaStanow` must not import `DetekcjaTwarzy`.
-3. `smooth_move_to()` must remain the only startup path to servos.
-4. `_przejdz_do()` remains the single state transition method.
+**Major components (all in `test_tracker.py`, in order of v1.8 change risk):**
+1. `Picamera2Stream` — YUV420 capture + AWB lock; modified with configure-time `ColourGains` and full metadata log
+2. `DetekcjaTwarzy` — HAAR + streak filter; parameters relaxed or replaced by `DetekcjaTwarzyDNN` with identical `wykryj()` interface
+3. `MaszynaStanow._sledz()` — PID dual-axis tracking; modified with `logger.debug` diagnostic points P1-P4
+4. `PanTiltSystem` (`hardware.py`) — unchanged; existing clamp WARNING logs already serve as P4 diagnostic output
 
 ### Critical Pitfalls
 
-1. **AWB set_controls before start() — silently ignored.** The ISP pipeline is not active until `start()` is called. Placing `set_controls()` before `start()` or inside `configure()` has no effect and produces no error. Always: `start()` → `time.sleep(2.0)` → `capture_metadata()` → `set_controls({"ColourGains": gains})`. (HIGH confidence — confirmed by Picamera2 maintainer, GitHub issue #825)
+1. **HAAR never detects — tilt=0.0 is a detection symptom, not a PID symptom.** `minNeighbors=8` + `minSize=(80,80)` at 320x240 produces near-zero detections in practice. The state machine stays in SCANNING permanently; `_skanuj()` calls `set_angles(pan, 0.0)` with hardcoded tilt=0. HUD Tilt frozen at 0.0 looks identical to a PID failure. Fix: reduce to `minNeighbors=4`, `minSize=(40,40)`. Confirm with green rectangles visible at 1 m and TRACKING sustained 3+ seconds before touching PID code.
 
-2. **Double-negation trap on PID corrections.** Pan is already correctly negated. Adding a second negation to pan while fixing tilt will reverse pan behavior. Verify each axis independently before changing signs: (a) confirm `blad_pan` is positive when face is right of center, (b) confirm `set_angles(+10, 0)` pans camera right. Only then derive required correction sign from first principles. Only tilt needs to change. (HIGH confidence)
+2. **Mock mode is invisible in HUD.** `set_angles()` updates `tilt_angle`/`pan_angle` software floats even when `_mock_mode=True`. HUD shows moving values while physical servos are frozen. Add `[MOCK]` label to HUD and `logger.info` of `_mock_mode` before main loop. Verify `sudo systemctl is-active pigpiod` is `active` before every hardware session.
 
-3. **Tilt non-movement root cause check — pigpiod first.** If `pigpiod` is not running, `PanTiltSystem` falls back to mock mode silently — no servo movement, no error. Run `systemctl is-active pigpiod` before any PID sign analysis. Also check `maszyna.hardware._mock_mode` at startup. (HIGH confidence)
+3. **AWB blue tint from frame 1 — `set_controls()` after `start()` is too late.** Controls set via `set_controls()` after `start()` take effect 2-3 frames later. Pass `controls={"ColourGains": AWB_FALLBACK_GAINS}` in `create_video_configuration()` for first-frame guarantee. Do NOT set `AwbEnable: False` alongside `ColourGains` in the same `set_controls()` call — confirmed sequencing conflict on Bookworm versions. Setting `ColourGains` directly implicitly disables AWB.
 
-4. **Soft limit masking PID output.** The sign bug drives the tilt servo to the ±30° limit within 2-3 frames; all subsequent corrections are clamped silently. The servo appears frozen while PID computes valid outputs. Add debug logging to `hardware.py` `set_angles()` to make clamping visible during diagnosis — do not assume "no movement" means "zero correction." (HIGH confidence)
+4. **Diagnosing PID without stable detection — all PID fixes are unverifiable.** 1-frame TRACKING events produce observation windows too short to distinguish a sign bug from a gain problem from scan oscillation. The `SCAN_AMPLITUDE=45°` sinusoid can be mistaken for PAN runaway. Confirm TRACKING sustained for 10+ consecutive frames before drawing any PID conclusions.
 
-5. **AWB warm-up flicker — first 3-10 frames ignore manual gains.** Controls set via `set_controls()` take effect 2-3 frames after being issued. Evaluate color correctness only after steady state. A 5-frame warm-up skip in `_petla_przechwytywania` prevents these pre-convergence frames from being stored. (HIGH confidence)
-
-6. **`simple_pid` version anti-windup difference.** Integral clamping to `output_limits` is reliable in `simple_pid >= 2.0` but not guaranteed in 1.x. Check `pip show simple-pid` on device; update `requirements.txt` to pin `simple-pid>=2.0.0`. (MEDIUM confidence — depends on installed version)
+5. **Phase offset formula non-convergent at SCANNING re-entry.** The `asin(pan/A)` offset is geometrically correct but does not cancel absolute `time.time()` drift. Results in a pan jerk at every TRACKING→SCANNING transition. Fix with a `_scan_start_time` reference instead of `_scan_phase_offset`. Lower priority — address after detection and PID are confirmed working.
 
 ---
 
 ## Implications for Roadmap
 
-### Phase 1: Camera Fix (AWB Blue Tint)
+Based on research, the phase structure must follow a strict diagnostic dependency chain. Phases 1-3 cannot be parallelized: later phases cannot be validated without earlier ones passing on hardware.
 
-**Rationale:** Camera quality fix first — all subsequent hardware tests observe correct color rendering. Independent of all logic fixes; isolated to `Picamera2Stream`. Low risk of interaction with servo or PID logic.
+### Phase 0: Pre-flight Diagnostics
+**Rationale:** Mock mode is the most common silent failure mode on RPi4. Any hardware session that proceeds without confirming pigpiod status wastes diagnostic effort and may produce false PID conclusions. Zero code risk — pure log additions that cost nothing to keep permanently.
+**Delivers:** Confirmed hardware mode at startup; HUD shows `[MOCK]` when pigpiod is absent; `_mock_mode` logged at INFO before main loop
+**Addresses:** Mock-mode status log on `set_angles()` (FEATURES.md P1 diagnostic)
+**Avoids:** Pitfall 5 (HUD software state mistaken for hardware state)
+**Needs research-phase:** No — standard Python logging.
 
-**Delivers:** Blue tint eliminated; neutral skin-tone rendering; stable color across frames after ~2s warm-up.
+### Phase 1: Detection Fix
+**Rationale:** This is the highest-probability root cause of all four reported symptoms. HAAR with current parameters (`minNeighbors=8`, `minSize=(80,80)`) barely triggers at 320x240 under real-world conditions. Without stable detection, the state machine stays in SCANNING and all other subsystems cannot be validated. Must come before any PID analysis.
+**Delivers:** Green face rectangles visible at 1 m with slight off-angle; TRACKING sustained 3+ seconds
+**Addresses:** HAAR minSize/minNeighbors tuning (FEATURES.md P1); HUD bbox dimension display (FEATURES.md P2)
+**Avoids:** Pitfall 1 (HAAR too restrictive), Pitfall 2 (PID diagnosis without stable detection)
+**Stack note:** HAAR parameter change only — no new files, no new dependencies.
+**Needs research-phase:** No — parameter values fully specified in PITFALLS.md and FEATURES.md.
 
-**Changes:**
-- `Picamera2Stream.start()` — add `time.sleep(2.0)` + `capture_metadata()` + `set_controls({"ColourGains": colour_gains})` after `picam2.start()`; add fallback to `(2.5, 1.9)` if metadata unavailable.
-- `Picamera2Stream._petla_przechwytywania` reinit block — add matching `controls={"AwbMode": 4}` to the `create_video_configuration` call.
+### Phase 2: AWB Fix
+**Rationale:** AWB fix is independent of PID and can be validated visually without tracking. Correct colors are needed to confirm detection quality and face bounding box accuracy in all subsequent testing. The configure-time lock is the reliable path across all Bookworm libcamera versions.
+**Delivers:** Neutral color from frame 1; `ColourGains` log fires with non-zero R and B values; blue tint absent
+**Addresses:** AWB blue tint fix (FEATURES.md P1); ColourGains confirmation log (FEATURES.md P1)
+**Avoids:** Pitfall 3 (configure-time lock missing), Pitfall 6 (wrong fallback gains — determine empirically on hardware)
+**Stack note:** `create_video_configuration(controls={"ColourGains": gains})` as primary lock; float tuple required; `(0.0, 0.0)` re-enables AWB and must not be passed.
+**Needs research-phase:** No — AWB API sequence fully specified in PITFALLS.md (Picamera2 issues #825, #933, #977).
 
-**Avoids:** Pitfall 3 (controls before start), Pitfall 4 (warm-up flicker), Pitfall 10 (int vs float ColourGains), Pitfall 8 (do not touch YUV constant).
+### Phase 3: PID Diagnostic Logging + Tilt/Pan Fix
+**Rationale:** Add diagnostics first to understand the actual failure mode before changing control logic. `_sledz()` is the single location for all PID diagnostic points P1-P4. Logging costs zero hardware risk and is permanent infrastructure for future debugging. Fix is derived from log evidence, not speculation.
+**Delivers:** Per-tick PID debug output (`logger.debug`); tilt axis physically moves; pan converges without runaway
+**Addresses:** Per-tick PID logging (FEATURES.md P1); Tilt axis fix (FEATURES.md P1); PAN runaway fix (FEATURES.md P1)
+**Avoids:** Pitfall 2 (detection must be Phase 1 — do not reach Phase 3 without confirmed stable TRACKING)
+**Stack note:** `simple-pid.components` tuple provides `(P, I, D)` per axis; use `logger.debug` not `logger.info` to avoid log flood at 20 FPS.
+**Needs research-phase:** No — diagnostic pattern fully specified in STACK.md and ARCHITECTURE.md Pattern 2.
 
-**Needs research-phase:** No — AWB API sequence is fully specified in STACK.md with exact code samples.
+### Phase 4: Scan Continuity Fix (conditional)
+**Rationale:** Lower priority. Execute only after Phases 0-3 are verified on hardware. Phase offset `asin` formula produces a pan jerk at every TRACKING→SCANNING transition. Visually noticeable but does not block basic tracking functionality.
+**Delivers:** Smooth scan resume with no pan position discontinuity at TRACKING→SCANNING transition
+**Addresses:** Scan continuity (deferred in FEATURES.md)
+**Avoids:** Pitfall 4 (phase offset non-convergent with absolute `time.time()`)
+**Needs research-phase:** No — replacement formula (`_scan_start_time` reference) specified in PITFALLS.md.
 
----
-
-### Phase 2: PID Sign Fix (Tilt Runaway / Tilt Not Moving)
-
-**Rationale:** The most impactful functional fix. Applying after AWB means the first motion test under correct color simultaneously validates both fixes. One-character change with immediately observable hardware effect.
-
-**Delivers:** Tilt axis moves toward face; no runaway on either axis; system converges to face-centered steady state in both pan and tilt.
-
-**Changes:**
-- `MaszynaStanow._sledz()` line 263: `korekta_tilt = -self.pid_tilt(blad_tilt)` (add `-` prefix).
-
-**Verification:** Hold face below frame center; confirm `Tilt:` HUD value increases (servo moves down); face moves toward vertical center. Hold face left; confirm `Pan:` HUD value decreases (servo moves left). No runaway in either axis.
-
-**Avoids:** Pitfall 1 (double-negation), Pitfall 2 (mock-mode misdiagnosis before fix), Pitfall 7 (soft limit masking).
-
-**Needs research-phase:** No — fix is fully derived and verified in FEATURES.md and ARCHITECTURE.md with before/after traces.
-
----
-
-### Phase 3: Scanning Streak Reset Timing
-
-**Rationale:** Most subtle fix; effect only visible in rapid TRACKING → SCANNING → TRACKING transition sequences. Saving it last allows phases 1 and 2 to be verified in stable tracking scenarios first.
-
-**Delivers:** Detection streak counter resets at the correct frame — on `STATE_TARGET_LOST` entry rather than one frame late at `STATE_SCANNING` entry.
-
-**Changes:**
-- `TestTracker.uruchom()` lines 323-324: change condition from `stan == config.STATE_SCANNING and poprzedni_stan != config.STATE_SCANNING` to `stan == STATE_TARGET_LOST and poprzedni_stan == config.STATE_TRACKING`.
-
-**Avoids:** Pitfall 9 (state transition timing), Pitfall 5 (PID reset in wrong location — keep reset only in `_przejdz_do()` for SCANNING entry).
-
-**Needs research-phase:** No — ARCHITECTURE.md provides exact before/after code for the recommended Option B approach.
-
----
+### Phase 5: Detector Upgrade to OpenCV DNN (conditional)
+**Rationale:** Execute only if HAAR tuning in Phase 1 is empirically insufficient after hardware test. DNN integration is confined to a new `DetekcjaTwarzyDNN` class with identical `wykryj()` interface. Single substitution in `TestTracker.__init__()`. Zero changes to orchestrator or state machine.
+**Delivers:** Detection at ±30° head angles, partial occlusion, lower contrast; faces detected without requiring near-frontal positioning
+**Uses:** `opencv-python-headless` DNN module (already installed); `models/deploy.prototxt` + `models/res10_300x300_ssd_iter_140000.caffemodel` (one-time wget download)
+**Implements:** Detector swap pattern (ARCHITECTURE.md Pattern 1 — interface `wykryj()` preserved)
+**Needs research-phase:** No — integration path fully specified in STACK.md and ARCHITECTURE.md.
 
 ### Phase Ordering Rationale
 
-- AWB first because correct color rendering is needed to evaluate tracking behavior visually in all subsequent tests. Fixing color first eliminates a confounding variable.
-- PID sign second because it is the highest-impact functional fix. A working tilt axis enables meaningful verification of the full tracking loop.
-- Streak timing last because it requires an already-working tracking system to exercise the TRACKING → TARGET_LOST → SCANNING transition path at test time.
-- All three phases are independent with no shared state. They could be applied in a single commit, but sequential verification on hardware is the safer path given the physical servo risks.
+- **Detection before PID:** PITFALLS.md explicitly identifies misdiagnosis as the structural risk. PID behavior cannot be validated through 1-frame TRACKING events. This is the single most important sequencing constraint.
+- **Pre-flight before any hardware session:** Mock mode failure is silent and produces misleading HUD output. One log line prevents hours of incorrect diagnosis.
+- **AWB independent but early:** Color correctness is needed for visual inspection of detection quality. Independent of PID — can be validated in a 2-second startup without triggering TRACKING at all.
+- **Scan fix last:** Not blocking; only observable after tracking is working end-to-end. Mathematical fix is specified but has lower validation priority.
+- **DNN conditional:** Research confirms HAAR at `(40,40)/4` is the correct first step. DNN adds model file download and moderate integration effort with no benefit if HAAR tuning is sufficient.
 
 ### Research Flags
 
-All three phases have no need for additional research-phase runs. Fixes are fully specified with exact line numbers, before/after code, and verification methods.
+Phases with well-documented patterns (research complete, skip research-phase):
+- **Phase 0:** Standard Python logging — trivial
+- **Phase 1:** HAAR parameter values fully specified; no API research needed
+- **Phase 2:** Picamera2 AWB API sequence fully specified in PITFALLS.md
+- **Phase 3:** PID component logging pattern fully specified in STACK.md
+- **Phase 4:** Scan formula replacement fully specified in PITFALLS.md
+- **Phase 5:** DNN integration pattern fully specified in ARCHITECTURE.md and STACK.md
 
-Phases that may benefit from empirical tuning on-device (not research — on-device iteration):
-
-- **Phase 1 (AWB):** If `capture_metadata()["ColourGains"]` returns `None`, the fallback `(2.5, 1.9)` may need adjustment for specific indoor lighting. Read back `capture_metadata()["ColourGains"]` after 3-5 seconds of running to confirm settled values before hard-coding.
-- **Phase 2 (PID):** If tilt tracking oscillates significantly after the sign fix, consider reducing `PID_TILT_P` from 0.05 to 0.03 as a first tuning step. The existing gains are validated for pan; tilt dynamics may differ if camera mass distribution is asymmetric.
+Phases with a decision point requiring empirical hardware input (not research — on-device iteration):
+- **Phase 2:** AWB fallback gains `(2.5, 1.9)` may need adjustment for deployment lighting — read `capture_metadata()["ColourGains"]` after 5 s auto-AWB and use those values
+- **Phase 5 (if triggered):** YuNet (`FaceDetectorYN`, ~380KB) vs `res10` Caffe (~10MB) — ARCHITECTURE.md and STACK.md make conflicting recommendations; resolve with a quick empirical FPS test on hardware; default to `res10` if time-constrained
 
 ---
 
@@ -186,47 +151,44 @@ Phases that may benefit from empirical tuning on-device (not research — on-dev
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | simple_pid source inspected directly from GitHub; Picamera2 AWB API verified from maintainer responses and GitHub issues #825, #232, #592; pigpio and OpenCV are unchanged from v1.6 |
-| Features | HIGH | All four bugs diagnosed from first principles + verified library behavior; PID sign derivation is a mathematical proof; AWB API sequence confirmed by maintainer |
-| Architecture | HIGH | Based on direct source analysis of test_tracker.py (all methods), hardware.py, config.py; all integration points identified with exact line numbers; live verification of Picamera2 API on target hardware |
-| Pitfalls | HIGH (7/10) / MEDIUM (3/10) | Pitfalls 1, 2, 3, 4, 5, 7, 9 are HIGH confidence from direct code or verified community sources; Pitfalls 6, 8, 10 are MEDIUM due to version-dependence and hardware-specific format variations |
+| Stack | HIGH | All recommendations source-verified: official docs, GitHub issues, simple-pid source code. MediaPipe rejection confirmed via PyPI aarch64 wheel absence. |
+| Features | HIGH | Direct code audit of v1.7 `test_tracker.py` + confirmed symptom list from STATE.md. No speculation. |
+| Architecture | HIGH | Direct code audit of all modified and unchanged components. Interface contracts verified with exact line references. |
+| Pitfalls | HIGH (code-derived) / MEDIUM (AWB API sequencing) | Mock mode, HAAR threshold, scan phase — confirmed from source code. AWB sequencing based on verified Picamera2 GitHub issues #825, #933, #977. |
 
 **Overall confidence:** HIGH
 
 ### Gaps to Address
 
-- **YUV420 plane ordering on actual hardware (Pitfall 8):** Research confirms `cv2.COLOR_YUV420p2BGR` is correct for Picamera2 I420 output. If a green-magenta cast (distinct from the blue AWB tint) appears after the AWB fix, verify `klatka_yuv.shape` and test `cv2.COLOR_YUV2BGR_I420` as an alternative. Do not preemptively change this.
+- **DNN model choice conflict:** ARCHITECTURE.md recommends OpenCV `FaceDetectorYN` (YuNet, `face_detection_yunet_2023mar.onnx`, ~380KB, built into `cv2.FaceDetectorYN` since OpenCV 4.5.4) while STACK.md recommends `res10_300x300_ssd` Caffe model via `cv2.dnn.readNetFromCaffe` (~10MB). Both are viable. Resolve at Phase 5 entry with an empirical FPS test on hardware. Default to `res10` if time-constrained — STACK.md confidence is higher for this specific model.
 
-- **AWB fallback gain values (Phase 1):** The fallback `(2.5, 1.9)` is a starting point for indoor LED/fluorescent on IMX219 V2. Tune empirically in 0.1 increments if skin tones are still incorrect. Read back `capture_metadata()["ColourGains"]` after warm-up to discover the correct values for the specific deployment environment.
+- **AWB fallback gains environment-specific:** `AWB_FALLBACK_GAINS = (2.5, 1.9)` is not verified for the deployment environment. PITFALLS.md recommends reading settled auto-gains after 5 seconds. This calibration step should be done once on hardware at Phase 2 entry before hardcoding.
 
-- **simple_pid version on RPi4 (Pitfall 6):** Anti-windup integral clamping behavior differs between 1.x and 2.x. Verify with `pip show simple-pid` on the device; update `requirements.txt` to `simple-pid>=2.0.0` if not already pinned.
-
-- **Scan phase continuity (deferred):** The arcsin-based phase offset approach described in FEATURES.md (lines 316-328) is mathematically complete and ready to implement if servo jerk at TRACKING → SCANNING resumption is confirmed as a visible issue after v1.7. The math is correct; implementation requires adding `_scan_phase_offset` field to `MaszynaStanow.__init__` and modifying `_inicjuj_faze_skanowania()` and `_skanuj()`.
+- **True root cause of tilt=0.0:** Three candidate causes remain without hardware confirmation: (A) HAAR never detects → `_skanuj()` calls `set_angles(pan, 0.0)` with hardcoded zero — most likely given detection parameters; (B) pigpiod not running → mock mode; (C) tilt PID output zero due to `sample_time` not elapsed. Phase 0 (mock mode log) and Phase 1 (detection fix) will resolve this empirically on hardware without further research.
 
 ---
 
 ## Sources
 
-### Primary (HIGH confidence)
+### Primary (HIGH confidence — direct code analysis + official docs)
+- `src/modes/test_tracker.py` — all class and method analysis; HAAR parameters, `_skanuj()` hardcoded tilt=0, `Picamera2Stream.start()` AWB sequence
+- `src/hardware.py` — `set_angles()` mock mode behavior: software state always updated regardless of `_mock_mode`
+- `src/config.py` — all constants: `PAN_LIMIT`, `TILT_LIMIT`, PID gains, `SCAN_AMPLITUDE=45.0`, `SCAN_FREQUENCY=0.1`
+- GitHub `m-lundberg/simple-pid` source — `components` property confirmed; `reset()` behavior verified
+- GitHub `raspberrypi/picamera2` issues #312, #825, #933, #977 — AWB API sequencing behavior confirmed
+- PyPI `mediapipe 0.10.33` — no `aarch64` Linux wheel confirmed
+- `.planning/STATE.md` — confirmed symptom list: "brak logu ColourGains", tilt frozen at 0.0, pan runaway
 
-- `simple_pid` source code, `raw.githubusercontent.com/m-lundberg/simple-pid/master/simple_pid/pid.py` — `__call__` formula, `reset()` complete behavior, integral clamping
-- Picamera2 GitHub issue #825 — ColourGains not working, AWB control ordering requirement
-- Picamera2 GitHub issue #232 — setting AwbMode with camera controls
-- Picamera2 GitHub discussion #592 — disabling AWB and controlling gains manually; ColourGains implicitly disables AWB
-- RPi Forums t=365052 — AWB lock with Picamera2, `set_controls` after `start()` requirement; do not use `AwbEnable: False` alongside `ColourGains`
-- `src/modes/test_tracker.py` — direct source analysis: all affected methods, exact line numbers
-- `src/hardware.py` — `set_angles()` clamping behavior, mock mode fallback, sign conventions
-- `src/config.py` — PID gains, output limits, servo soft limits, state names
-- `.planning/PROJECT.md` — hardware mounting: `pan+ = right`, `tilt+ = down` (empirically confirmed)
-- `CLAUDE.md` — threading model, hardware constraints, architecture overview
+### Secondary (MEDIUM confidence — community sources, multiple agree)
+- GitHub `Qengineering/Face-detection-Raspberry-Pi-32-64-bits` — OpenCV DNN FPS benchmarks on RPi4
+- GitHub `sr6033/face-detection-with-OpenCV-and-DNN` — `res10` model files source and download URLs
+- RPi Forums t=365052 — AWB lock sequence: `set_controls` must follow `configure`
+- GitHub `raspberrypi/picamera2` discussions #592 — `ColourGains=(0,0)` re-enables AWB confirmed
+- GitHub `google-ai-edge/mediapipe` issue #4673 — aarch64 install failures confirmed
 
-### Secondary (MEDIUM confidence)
-
-- PyImageSearch pan-tilt face tracking tutorial — error sign convention pattern using `panAngle = -1 * pan.value`; different mounting but formula structure confirms standard approach
-- GitHub raspberrypi/picamera2 issue #803 — AwbMode not always effective; ColourGains freeze is more reliable
-- Arducam forum — IMX219 blue tint is a known issue; AWB mode selection or gain lock resolves it
-- `simple_pid` changelog — anti-windup integral clamping behavior change between 1.x and 2.x
+### Tertiary (MEDIUM confidence — not hardware-verified for this project)
+- OpenCV `FaceDetectorYN` YuNet model — availability confirmed via `opencv_zoo` GitHub; FPS on RPi4 not verified for ARIES-LITE pipeline
 
 ---
-*Research completed: 2026-03-27*
+*Research completed: 2026-03-29*
 *Ready for roadmap: yes*

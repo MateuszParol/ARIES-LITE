@@ -1,131 +1,189 @@
 # Stack Research
 
 **Domain:** Picamera2 + pigpio face tracking on RPi4 Bookworm 64-bit
-**Researched:** 2026-03-26 (base), 2026-03-27 (v1.7 bug-fix supplement)
-**Confidence:** HIGH (source-verified against simple_pid source code and Picamera2 GitHub issues)
+**Researched:** 2026-03-26 (base), 2026-03-27 (v1.7 supplement), 2026-03-29 (v1.8 supplement)
+**Confidence:** HIGH (source-verified against official docs, GitHub issues, and simple_pid source code)
 
 ---
 
-## v1.7 Supplement: Bug-Fix Research
+## v1.8 Supplement: Critical Hardware Fix Research
 
-This section answers the three specific questions raised for the v1.7 milestone.
+This section answers the three specific questions raised for the v1.8 milestone:
+1. Better face detector on RPi4 (replaces overly strict HAAR cascade)
+2. Picamera2 AWB/ColourGains debugging for IMX219 sensor on Bookworm
+3. PID diagnostic logging patterns for servo runaway debugging
+
 It supersedes any previous speculation on these topics.
 
 ---
 
-### 1. simple_pid Sign Convention — Verified from Source Code
+### 1. Face Detector Replacement — Decision: OpenCV DNN (res10_300x300)
 
-**Source:** `github.com/m-lundberg/simple-pid` raw source `simple_pid/pid.py` — HIGH confidence.
+**Recommendation: OpenCV DNN with `res10_300x300_ssd_iter_140000.caffemodel`**
 
-**Exact line from source:**
+**Rationale:** Three options were evaluated.
 
+#### Option A: MediaPipe Face Detection — REJECTED
+
+**Installation blocker on RPi4 Bookworm (64-bit):**
+
+MediaPipe PyPI (latest 0.10.33 as of March 2026) does NOT publish a Linux aarch64 wheel.
+The PyPI page lists wheels only for: Windows x86-64, Linux x86-64, macOS ARM64.
+Linux ARM64 (which RPi4 Bookworm 64-bit requires) is absent.
+
+Workarounds exist but add maintenance cost:
+- PINTO0309/mediapipe-bin: community-maintained, tracks behind official releases,
+  not a reliable dependency for a production system
+- Build from source: requires Docker + 4+ hour compile time on RPi4
+
+Additionally, MediaPipe achieves 9–12 FPS on RPi4 CPU-only (confirmed by benchmark
+from SaraEye/SaraKIT project) — competitive but with a heavyweight installation
+that is not straightforward on the target platform.
+
+**Verdict: Do not use MediaPipe for this project.**
+
+Sources:
+- PyPI mediapipe 0.10.33: no aarch64 Linux wheel listed
+- GitHub google-ai-edge/mediapipe issue #4673: confirms aarch64 install problems
+- PINTO0309/mediapipe-bin: community wheel workaround (fragile)
+
+#### Option B: OpenCV DNN (res10_300x300_ssd) — RECOMMENDED
+
+**Why this is the right choice:**
+
+Already on the system. `opencv-python-headless==4.8.1.78` is pinned in requirements.txt.
+The DNN module is bundled with OpenCV — no additional pip install needed.
+Only two external model files are required (~2MB total), downloaded once and committed.
+
+**Performance on RPi4 (64-bit, 300x300 input):**
+- DNN SSD res10 at 320x240 input: approximately 8–12 FPS (MEDIUM confidence — Q-engineering
+  benchmarks show the Ultra-Light-Fast slim-320 model at ~35–40 FPS with OpenCV,
+  but that is a different model; the res10 SSD Caffe model is slower due to ResNet-10 backbone)
+- HAAR at current settings (minNeighbors=8, minSize=80px): measured in project as
+  producing near-zero detections — the bottleneck is sensitivity, not FPS
+
+At 320x240 input the inference cost is lower than 300x300 because the blob resize
+is from a smaller input. Real throughput in the 8–15 FPS range is acceptable for the
+control loop (HAAR runs similarly on the same hardware when detection fires).
+
+**Accuracy advantage:** DNN SSD detects faces at non-frontal angles (+/-30 degrees),
+partial occlusions, and lower contrast. HAAR with minNeighbors=8 requires near-perfect
+frontal alignment — verified as the root cause of "brak zielonej ramki" in PROJECT.md.
+
+**Integration path is minimal:**
 ```python
-error = self.setpoint - input_
+# Drop-in replacement inside DetekcjaTwarzy
+net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
+blob = cv2.dnn.blobFromImage(klatka, 1.0, (300, 300), (104, 177, 123))
+net.setInput(blob)
+detections = net.forward()
+# detections[0, 0, i, 2] is confidence; [3:7] is x1,y1,x2,y2 normalized
 ```
 
-**Consequence for the current code:**
+The class `DetekcjaTwarzy` in `src/modes/test_tracker.py` becomes a thin wrapper
+around this net — streak filter and bbox selection logic stays identical.
 
-`pid_pan` and `pid_tilt` are both created with `setpoint=0`.
-When a face is to the right of centre, `blad_pan = srodek_x - ramka_cx` is **positive**.
-When `pid_pan(blad_pan)` is called:
+**Model files (must be downloaded and committed to repo or a `models/` directory):**
 
-```
-error = 0 - blad_pan  →  negative error
-output = Kp * negative_error  →  negative output
-```
+| File | Size | Source |
+|------|------|--------|
+| `deploy.prototxt` | ~28KB | github.com/sr6033/face-detection-with-OpenCV-and-DNN |
+| `res10_300x300_ssd_iter_140000.caffemodel` | ~10.1MB | same repo or OpenCV samples |
 
-So `pid_pan(positive_error)` returns a **negative value**.
+**Confidence threshold:** 0.5 is the standard default. For a face-tracking system with
+streak filter in place, 0.5 works well. Lower to 0.4 if detections are sparse.
 
-The current `_sledz` code:
+#### Option C: OpenCV HAAR (improved parameters) — PARTIAL FIX ONLY
 
-```python
-korekta_pan = -self.pid_pan(blad_pan)   # negates → positive correction
-korekta_tilt = self.pid_tilt(blad_tilt)  # no negation → negative correction
-```
+Relaxing `minNeighbors` from 8 to 4–5 and `minSize` from (80,80) to (50,50) will
+improve detection rate without any new dependency. However:
+- Still fails at head rotation > ~15 degrees
+- False-positive rate increases noticeably without dlib backup
+- Appropriate only as a quick interim test, not the final fix
 
-**Pan analysis** (face right of centre):
-- `blad_pan > 0`
-- `pid_pan(blad_pan)` → negative
-- `-pid_pan(blad_pan)` → positive
-- `nowy_pan = hardware.pan_angle + positive` → pan moves right → **correct** (pan+ = prawo per PROJECT.md)
-
-**Tilt analysis** (face below centre):
-- `blad_tilt > 0`
-- `pid_tilt(blad_tilt)` → negative
-- No negation → `korekta_tilt` is **negative**
-- `nowy_tilt = hardware.tilt_angle + negative` → tilt moves up (decreases angle)
-- But tilt+ = dół (downward) per PROJECT.md, so face below centre should increase tilt
-- **This is the sign bug causing tilt to not move or move wrong way**
-
-**Fix required in `_sledz`:**
-
-```python
-korekta_pan  = -self.pid_pan(blad_pan)   # keep negation: pan+ = right, face right → pan+
-korekta_tilt = -self.pid_tilt(blad_tilt) # add negation: tilt+ = down,  face down  → tilt+
-```
-
-Both axes follow the same pattern: output must be negated because `error = setpoint - input`
-produces negative output when input > setpoint, but the servo must move *toward* the
-positive direction when the face is in the positive pixel-offset direction.
+**Verdict: Use OpenCV DNN as the replacement. Keep HAAR fallback path available for
+testing, controlled by a constructor flag.**
 
 ---
 
-### 2. Picamera2 AWB Configuration — Verified from Official GitHub
+### 2. Picamera2 AWB/ColourGains Debugging — IMX219 on Bookworm
 
-**Sources:** Picamera2 GitHub issues #825, #232, #592, RPi forums t=365052 — HIGH confidence.
+**Context:** v1.7 shipped AWB lock code. PROJECT.md says "AWB lock via set_controls
+after start()+2s sleep — Good — eliminates blue tint." v1.8 reports blue tint has
+returned or the fix did not execute correctly.
 
-#### The blue-tint root cause
+**Diagnostic checklist (in priority order):**
 
-YUV420 is a raw sensor stream. When AWB has not settled yet at the time the first
-frames are captured (or when AWB overshoots for the IMX219 with default tuning),
-the blue channel gain is applied incorrectly, producing the tint.
+#### Check A: `ColourGains` capitalization (HIGH confidence — confirmed bug in picamera2)
 
-Current code in `Picamera2Stream.start()` starts capturing frames immediately with
-no AWB warm-up or manual gain lock.
+GitHub issue #312 documented a case-sensitivity bug in older picamera2 versions.
+The correct key is `"ColourGains"` (capital G). Using `"Colourgains"` silently fails
+in older versions and raises `RuntimeError` in newer ones.
 
-#### Correct API sequence
-
-**Step A — Let AWB settle (1 second is enough):**
-
+Verify the exact string in `Picamera2Stream.start()`:
 ```python
-self._picam2.start()
-time.sleep(2.0)  # AWB needs ~1-2s to converge on IMX219
+self._picam2.set_controls({"ColourGains": gains})  # capital G — correct
 ```
 
-**Step B — Read settled gains from metadata:**
+#### Check B: `ColourGains = (0.0, 0.0)` treated as AWB-on
 
+Confirmed from picamera2 issue #825: setting `ColourGains` to exactly `(0.0, 0.0)`
+is interpreted by libcamera as "enable AWB". If `capture_metadata()` returns
+`ColourGains = (0.0, 0.0)` (which can happen if the sensor has not yet computed
+AWB at 2s warmup — e.g., dark room, camera just reset), the fallback `(2.5, 1.9)`
+is used. But if the fallback gains are wrong for current lighting, blue tint persists.
+
+**Fix: Add verification log after set_controls to confirm gains were applied:**
 ```python
-metadata = self._picam2.capture_metadata()
-colour_gains = metadata.get("ColourGains")
-# Returns (red_gain, blue_gain) tuple, e.g. (2.52, 1.90) under warm white LED
+time.sleep(0.1)  # brief settle after set_controls
+post_meta = self._picam2.capture_metadata()
+applied = post_meta.get("ColourGains")
+logger.info(f"Gains po ustawieniu: {applied}")
 ```
 
-**Step C — Lock the gains (disables AWB automatically):**
+The second `capture_metadata()` call reads the controls from the next delivered frame,
+confirming the gains were actually applied to the pipeline.
 
+#### Check C: YUV420 subformat (NV12 vs YUV420p) — HIGH confidence
+
+This was documented in the v1.7 research STACK.md but may not have been acted upon.
+Picamera2 on Bookworm with IMX219 delivers YUV420 as NV12 (semi-planar), NOT YUV420p
+(fully planar). Using `cv2.COLOR_YUV420p2BGR` on NV12 data produces a systematic colour
+error that LOOKS like a blue tint because the UV plane interleaving is misread.
+
+**Test: print the YUV frame shape before conversion:**
 ```python
-self._picam2.set_controls({"ColourGains": colour_gains})
-# Setting ColourGains implicitly disables AWB per libcamera behaviour.
-# Explicit AwbEnable: False is optional but harmless.
+logger.info(f"YUV klatka shape: {klatka_yuv.shape}")
+# 320x240 YUV → expected (360, 320) for both NV12 and YUV420p
+# Shape alone does not distinguish — must test both flags
 ```
 
-**Alternative C — Hard-code gains for known lighting:**
-
+**Diagnostic code for `_petla_przechwytywania`:**
 ```python
-# Typical indoor daylight/LED values for IMX219 V2 camera:
-self._picam2.set_controls({"ColourGains": (2.5, 1.9)})
-# Red gain ~2.0-2.8, Blue gain ~1.6-2.2 for 5000-6500K illuminant
+# Try NV12 first — this is what Picamera2/libcamera produces on Bookworm
+klatka_nv12 = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV2BGR_NV12)
+klatka_p = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)
+# Log average B channel value of both; correct one will have B ~= G ~= R under white light
+b_nv12 = klatka_nv12[:,:,0].mean()
+b_p = klatka_p[:,:,0].mean()
+logger.debug(f"NV12 avg B={b_nv12:.1f}  YUV420p avg B={b_p:.1f}")
 ```
 
-#### Critical sequencing rules
+The correct conversion flag produces roughly equal mean values across R, G, B channels
+under neutral white light. A blue tint produces B significantly higher than R.
 
-| Rule | Detail |
-|------|--------|
-| After `configure()`, not before | `configure()` wipes controls; `set_controls()` must follow `start()` |
-| After `start()`, not at init | Controls applied pre-start have no effect |
-| `set_controls` is per-frame delivery | Applied with next submitted request; not instantaneous |
-| `ColourGains` disables AWB implicitly | Per libcamera design; explicit `AwbEnable: False` redundant but safe |
+**Recommendation:** Change default to `cv2.COLOR_YUV2BGR_NV12` and verify. If image
+looks correct, the old flag was wrong. This is the single most likely cause of
+persistent blue tint after AWB gains are set correctly.
 
-#### Recommended minimal patch in `Picamera2Stream.start()`:
+#### Check D: AWB warm-up duration
+
+2 seconds is documented to be sufficient for IMX219 under normal conditions.
+However, on cold start in a dark room or with significant backlight, AWB may need
+longer. If `ColourGains` from `capture_metadata()` looks unreasonable (e.g., gains
+below 1.0 or above 4.0), extend sleep to 3–4 seconds and re-test.
+
+#### Recommended minimal AWB debug patch for v1.8:
 
 ```python
 def start(self) -> None:
@@ -136,98 +194,221 @@ def start(self) -> None:
     self._picam2.configure(video_config)
     self._picam2.start()
 
-    # Wait for AWB to converge, then lock gains
+    logger.info("Czekam na stabilizację AWB (2s)...")
     time.sleep(2.0)
+
     metadata = self._picam2.capture_metadata()
-    colour_gains = metadata.get("ColourGains")
-    if colour_gains:
-        self._picam2.set_controls({"ColourGains": colour_gains})
-        logger.info(f"AWB blokada: ColourGains={colour_gains}")
-    else:
-        # Fallback: hard-coded IMX219 indoor values
-        self._picam2.set_controls({"ColourGains": (2.5, 1.9)})
-        logger.warning("ColourGains nie dostepne w metadata — uzyta wartoc fallback (2.5, 1.9)")
+    gains = metadata.get("ColourGains")
+    logger.info(f"ColourGains z metadanych: {gains}")  # NEW: log raw value
 
-    logger.info(f"Picamera2 uruchomiona: {self._width}x{self._height} YUV420")
-    # ...rest of thread start
+    if gains is None or gains == (0.0, 0.0):
+        logger.warning("ColourGains niedostępne lub zerowe — używam fallback (2.5, 1.9)")
+        gains = AWB_FALLBACK_GAINS
+
+    self._picam2.set_controls({"ColourGains": gains})
+
+    # NEW: verify gains were applied
+    time.sleep(0.1)
+    post_meta = self._picam2.capture_metadata()
+    applied_gains = post_meta.get("ColourGains")
+    r, b = gains
+    logger.info(f"ColourGains żądane: (R={r:.2f}, B={b:.2f}) | zastosowane: {applied_gains}")
+
+    self._running = True
+    self._thread = threading.Thread(target=self._petla_przechwytywania, daemon=True)
+    self._thread.start()
 ```
 
-#### Separate known issue: YUV420p vs YUV420sp
-
-The current code uses `cv2.COLOR_YUV420p2BGR`. If the Picamera2 YUV420 buffer is
-semi-planar (NV12), the wrong conversion flag will produce colour artifacts that
-look like a blue tint. Verify the actual buffer layout:
-
-```python
-logger.info(f"YUV shape: {klatka_yuv.shape}")
-# For 320x240: planar (YUV420p) → shape (360, 320), semi-planar (NV12) → shape (360, 320)
-# Both same shape — only difference is UV plane interleaving
-```
-
-If blue tint persists after AWB fix, try `cv2.COLOR_YUV2BGR_NV12` instead of
-`cv2.COLOR_YUV420p2BGR`. The RPi camera on Bookworm typically outputs YUV420
-in NV12 (semi-planar) format.
+No new dependencies required. Pure Picamera2 API.
 
 ---
 
-### 3. simple_pid `reset()` and Anti-Windup — Verified from Source Code
+### 3. PID Diagnostic Logging — simple-pid `components` Property
+
+**Context:** v1.8 reports pan runaway (instant escape to limit) and tilt frozen at 0.0.
+These are opposite failure modes requiring different root causes. Per-tick PID logging
+is the only reliable way to distinguish them without physical access to the hardware.
+
+**simple-pid `components` property — HIGH confidence (verified from source code)**
+
+Since v2.0, simple-pid exposes a `components` property returning `(P, I, D)` tuple
+of the last computed terms:
+
+```python
+p_term, i_term, d_term = pid.components
+# Available after any pid(error) call — read immediately after the call
+```
+
+Source: `github.com/m-lundberg/simple-pid/blob/master/simple_pid/pid.py`
+
+**Diagnostic logging pattern for `_sledz` in `MaszynaStanow`:**
+
+```python
+def _sledz(self, bbox, w, h):
+    x, y, bw, bh = bbox
+    srodek_x = x + bw // 2
+    srodek_y = y + bh // 2
+    ramka_cx, ramka_cy = w // 2, h // 2
+
+    blad_pan = srodek_x - ramka_cx
+    blad_tilt = srodek_y - ramka_cy
+
+    korekta_pan = -self.pid_pan(blad_pan)
+    p_pan, i_pan, d_pan = self.pid_pan.components
+
+    korekta_tilt = -self.pid_tilt(blad_tilt)
+    p_tilt, i_tilt, d_tilt = self.pid_tilt.components
+
+    nowy_pan = self.hardware.pan_angle + korekta_pan
+    nowy_tilt = self.hardware.tilt_angle + korekta_tilt
+
+    logger.debug(
+        f"blad=({blad_pan:+.0f},{blad_tilt:+.0f}) "
+        f"pid_out=({korekta_pan:+.2f},{korekta_tilt:+.2f}) "
+        f"PID_pan=P{p_pan:+.3f}/I{i_pan:+.3f}/D{d_pan:+.3f} "
+        f"PID_tilt=P{p_tilt:+.3f}/I{i_tilt:+.3f}/D{d_tilt:+.3f} "
+        f"angles=({nowy_pan:+.1f},{nowy_tilt:+.1f})"
+    )
+
+    self.hardware.set_angles(nowy_pan, nowy_tilt)
+```
+
+Use `logger.debug` (not `info`) to avoid flooding normal output. Enable with:
+```bash
+python3 run_test_tracker.py --log-level DEBUG
+# or temporarily change basicConfig level to DEBUG in main
+```
+
+**What each failure mode looks like in this log:**
+
+| Symptom | Log pattern | Root cause |
+|---------|-------------|------------|
+| Pan runaway to limit | `blad_pan` small, `korekta_pan` large and growing | I-term windup — integral not reset, or sign error causing positive feedback |
+| Tilt frozen at 0.0 | `blad_tilt` non-zero, `korekta_tilt=0.00` every tick | `pid_tilt(blad_tilt)` returns 0 — possible: `output_limits` set to (0,0), or `pid_tilt` never called |
+| Tilt frozen at 0.0 (v2) | `korekta_tilt` non-zero, `nowy_tilt` non-zero, but HUD shows 0.0 | `set_angles()` not called, or `tilt_angle` attribute not updated |
+
+**I-term windup detection:** If `i_pan` grows each tick toward `PID_OUTPUT_LIMIT`
+(currently 10.0) and the total output is dominated by I-term even when error is small,
+that confirms integral windup. Fix: verify `pid_pan.reset()` is called at SCANNING entry.
+
+**Additional: log `set_angles` actual writes (already in hardware.py via WARNING on clamp)**
+
+The clamp WARNING in `set_angles()` (already present in v1.7 hardware.py) will fire
+every tick if the servo is hitting limits — that confirms runaway vs. frozen.
+
+**CSV logging (if needed for post-session analysis):**
+
+```python
+import csv, io
+_pid_log_buffer = io.StringIO()
+_pid_csv = csv.writer(_pid_log_buffer)
+_pid_csv.writerow(["t","blad_pan","blad_tilt","k_pan","k_tilt","p_pan","i_pan","d_pan","p_tilt","i_tilt","d_tilt"])
+
+# Inside _sledz, after computing terms:
+_pid_csv.writerow([time.time(), blad_pan, blad_tilt, korekta_pan, korekta_tilt,
+                   p_pan, i_pan, d_pan, p_tilt, i_tilt, d_tilt])
+```
+
+Flush to file on shutdown. Visualize with any CSV viewer or numpy/matplotlib.
+No additional libraries required — `csv` and `io` are stdlib.
+
+---
+
+## Recommended Stack Additions for v1.8
+
+### New Dependencies
+
+| Package | Version | Source | Purpose | Install |
+|---------|---------|--------|---------|---------|
+| OpenCV DNN models | n/a | Downloaded once (not pip) | res10 SSD face detection | `models/` directory in repo |
+
+No new pip packages required. All additions use existing installed libraries.
+
+### Model Files to Add
+
+```
+models/
+  deploy.prototxt                          (~28KB)
+  res10_300x300_ssd_iter_140000.caffemodel (~10.1MB — add to .gitignore or LFS)
+```
+
+Download script (run once on RPi):
+```bash
+mkdir -p models
+wget -O models/deploy.prototxt \
+  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/deploy.prototxt"
+wget -O models/res10_300x300_ssd_iter_140000.caffemodel \
+  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/res10_300x300_ssd_iter_140000.caffemodel"
+```
+
+### requirements.txt — No Changes Needed
+
+The existing pinned stack handles all v1.8 changes:
+```
+opencv-python-headless==4.8.1.78  # DNN module bundled
+simple-pid>=2.0.1                  # components property available since 2.0
+```
+
+---
+
+## Alternatives Considered
+
+| Recommended | Alternative | Why Not |
+|-------------|-------------|---------|
+| OpenCV DNN res10_300x300 | MediaPipe Face Detection | No aarch64 Linux wheel on PyPI as of 2026-03-29; requires community builds or compile-from-source |
+| OpenCV DNN res10_300x300 | HAAR minNeighbors=4 relaxed | Fixes threshold, not detector — still fails >15deg rotation; acceptable only as interim test |
+| simple-pid components property | Custom PID wrapper with logging | components is the official API; wrapping adds indirection for no benefit |
+| cv2.COLOR_YUV2BGR_NV12 | cv2.COLOR_YUV420p2BGR | Picamera2 on Bookworm delivers NV12 semi-planar; wrong flag produces systematic blue shift |
+
+## What NOT to Use
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| `mediapipe` pip install | No aarch64 Linux wheel; PINTO0309 community builds lag behind and add fragile dependency | OpenCV DNN res10_300x300 |
+| `ColourGains: (0.0, 0.0)` in set_controls | libcamera interprets (0.0, 0.0) as "enable AWB" — will re-enable auto white balance | Use actual measured gains or fallback (2.5, 1.9) |
+| `cv2.COLOR_YUV420p2BGR` without verification | Picamera2 on Bookworm likely outputs NV12 (semi-planar), not planar YUV420p | Test both flags; default to COLOR_YUV2BGR_NV12 |
+| Manual `_integral` attribute access in simple-pid | Private attribute; may break between versions | `pid.components` tuple — official public API |
+| `logger.info` per tick for PID values | Floods logs at 30 FPS, makes debugging harder | `logger.debug` + enable DEBUG level only when diagnosing |
+
+---
+
+## Version Compatibility
+
+| Package | Version | Notes |
+|---------|---------|-------|
+| simple-pid | >=2.0.1 (pinned) | `components` property available since 2.0; `reset()` behavior verified |
+| opencv-python-headless | 4.8.1.78 (pinned) | DNN module stable, res10 Caffe model compatible |
+| picamera2 | system pkg (>=0.3.x) | `capture_metadata()` + `set_controls(ColourGains)` API stable; case-sensitive key required |
+
+---
+
+## v1.7 Supplement (preserved from 2026-03-27)
+
+### 1. simple_pid Sign Convention
 
 **Source:** `github.com/m-lundberg/simple-pid` raw source — HIGH confidence.
 
-#### What `reset()` does (exact from source):
-
 ```python
-def reset(self):
-    self._proportional = 0
-    self._integral = 0      # clears integral — anti-windup
-    self._derivative = 0
-    self._integral = _clamp(self._integral, self.output_limits)  # clamp 0 to limits
-    self._last_time = self.time_fn()
-    self._last_output = None
-    self._last_input = None
-    self._last_error = None
+error = self.setpoint - input_   # setpoint=0: error = -input
+output = Kp * error              # positive input → negative output
 ```
 
-**`reset()` clears the integral term completely.** It also clears `_last_input` and
-`_last_error`, which means the derivative term will also start fresh (no spike from
-stale derivative state).
-
-#### Anti-windup in simple_pid
-
-simple_pid has built-in anti-windup via `output_limits`. The integral term is
-clamped every iteration:
-
+Both axes require negation of PID output:
 ```python
-self._integral += self.Ki * error * dt
-self._integral = _clamp(self._integral, self.output_limits)
+korekta_pan  = -self.pid_pan(blad_pan)   # pan+ = right, face right → pan increases
+korekta_tilt = -self.pid_tilt(blad_tilt) # tilt+ = down,  face down  → tilt increases
 ```
 
-With `output_limits = (-10.0, 10.0)` as set in `MaszynaStanow.__init__()`, the
-integral is clamped to [-10, 10] every tick. No additional anti-windup logic is
-needed at the application level.
+### 2. Picamera2 AWB Configuration
 
-#### Current code assessment
+Correct API sequence: `configure()` → `start()` → `sleep(2)` → `capture_metadata()`
+→ `set_controls({"ColourGains": gains})`. Setting ColourGains implicitly disables AWB.
 
-The current `_przejdz_do` implementation is **correct**:
+### 3. simple_pid `reset()` and Anti-Windup
 
-```python
-def _przejdz_do(self, nowy_stan: str) -> None:
-    self.stan = nowy_stan
-    self._czas_ostatniego_celu = time.time()
-    if nowy_stan == config.STATE_SCANNING:
-        self.pid_pan.reset()    # clears integral, proportional, derivative
-        self.pid_tilt.reset()   # same
-```
-
-Calling `reset()` on SCANNING entry is the correct anti-windup pattern. There is
-**no need** to manually zero `_integral` or access internal attributes — `reset()`
-handles everything.
-
-#### One gap: transition SCANNING → TRACKING
-
-`reset()` is only called when entering SCANNING. When re-entering TRACKING from
-SCANNING (face acquired during scan), the PID state is already zeroed from the
-prior `reset()` call, so this is fine. No change needed.
+`reset()` clears `_proportional`, `_integral`, `_derivative`, `_last_input`, `_last_error`.
+Anti-windup via `output_limits` clamping integral every iteration. Current code is correct —
+`reset()` called on SCANNING entry is the right pattern.
 
 ---
 
@@ -239,15 +420,8 @@ prior `reset()` call, so this is fine. No change needed.
 |------------|---------|---------|-----------------|
 | picamera2 | >=0.3.x (system pkg) | Camera capture via libcamera | Native camera stack on Bookworm; replaces deprecated picamera/V4L2 |
 | pigpio | 1.78+ | Hardware PWM for servos | Validated in v1.5; only library providing true H-PWM on RPi4 |
-| opencv-python-headless | 4.8+ | HAAR cascade face detection | Already in deps; headless variant avoids GUI libs on RPi |
-| simple-pid | 2.0+ | PID controller | Already in deps; auto-integral clamping with output_limits |
-
-### Supporting Libraries
-
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
-| numpy | 1.24+ | Frame array manipulation | Required by both Picamera2 and OpenCV |
-| libcamera (system) | 0.1+ | Camera HAL | Installed with RPi OS Bookworm; Picamera2 depends on it |
+| opencv-python-headless | 4.8+ | HAAR + DNN face detection | Already in deps; DNN module bundled |
+| simple-pid | 2.0+ | PID controller with components property | Already in deps; auto-integral clamping with output_limits |
 
 ### Installation
 
@@ -259,71 +433,45 @@ sudo apt install -y python3-picamera2 python3-libcamera
 python3 -m venv venv --system-site-packages
 source venv/bin/activate
 
-# Python packages
-pip install opencv-python-headless simple-pid numpy
+# Python packages (unchanged from v1.7)
+pip install -r requirements.txt
+
+# Model files (one-time download)
+mkdir -p models
+wget -O models/deploy.prototxt \
+  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/deploy.prototxt"
+wget -O models/res10_300x300_ssd_iter_140000.caffemodel \
+  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/res10_300x300_ssd_iter_140000.caffemodel"
 ```
 
-## Picamera2 Key API Patterns
-
-### Optimal Configuration for 320x240 Face Detection
-
-```python
-from picamera2 import Picamera2
-
-picam2 = Picamera2()
-config = picam2.create_video_configuration(
-    main={"size": (640, 480), "format": "BGR888"},
-    lores={"size": (320, 240), "format": "BGR888"},
-    buffer_count=4,
-    controls={"FrameRate": 30}
-)
-picam2.configure(config)
-picam2.start()
-
-# Capture for detection (low-res, fast)
-frame_lores = picam2.capture_array("lores")  # 320x240 BGR numpy array
-```
-
-### Critical: Resource Cleanup
-
-```python
-try:
-    picam2.start()
-    # ... main loop
-finally:
-    picam2.stop()
-    picam2.close()  # Both required — stop() alone leaves libcamera pipeline locked
-```
-
-## Alternatives Considered
-
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| picamera2 | cv2.VideoCapture | Legacy Bullseye systems where V4L2 still works |
-| BGR888 at configure | cv2.cvtColor per frame | Never — runtime cost for no benefit |
-
-## What NOT to Use
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| picamera (v1) | Deprecated, not compatible with Bookworm libcamera stack | picamera2 |
-| cv2.VideoCapture(0) | V4L2 not available for RPi Camera on Bookworm 64-bit | picamera2 |
-| Manual `_integral` manipulation | Accesses private state; `reset()` is the correct API | `pid.reset()` |
+---
 
 ## Sources
 
-### v1.7 supplement (HIGH confidence)
-- simple_pid source code: `raw.githubusercontent.com/m-lundberg/simple-pid/master/simple_pid/pid.py`
-  — direct read of `__call__` and `reset()` methods
-- Picamera2 GitHub issue #825: ColourGains not working investigation
-- Picamera2 GitHub issue #232: How to set AwbMode with camera controls
-- Picamera2 GitHub discussion #592: Disabling AWB and controlling gains manually
-- RPi Forums t=365052: How to lock AWB with Picamera2 API
+### v1.8 supplement (2026-03-29)
 
-### Base stack (MEDIUM confidence — training data, needs on-device verification)
+- PyPI mediapipe 0.10.33 release page — confirmed no aarch64 Linux wheel (HIGH confidence)
+- GitHub google-ai-edge/mediapipe issue #4673 — aarch64 install failures confirmed
+- PINTO0309/mediapipe-bin — community aarch64 wheel workaround (MEDIUM confidence)
+- GitHub Qengineering/Face-detection-Raspberry-Pi-32-64-bits — OpenCV DNN FPS benchmarks on RPi4
+- GitHub sr6033/face-detection-with-OpenCV-and-DNN — model files source
+- ai.google.dev/edge/mediapipe/solutions/vision/face_detector/python — official MediaPipe Face Detector API
+- GitHub raspberrypi/picamera2 issue #312 — ColourGains case-sensitivity confirmed fix
+- GitHub raspberrypi/picamera2 issue #825 — ColourGains (0,0) = AWB-on behaviour
+- GitHub raspberrypi/picamera2 issue #322 — CCM and AWB disabled behaviour
+- GitHub m-lundberg/simple-pid pid.py source — `components` property verified (HIGH confidence)
+
+### v1.7 supplement (2026-03-27, HIGH confidence)
+
+- simple_pid source code `raw.githubusercontent.com/m-lundberg/simple-pid/master/simple_pid/pid.py`
+- Picamera2 GitHub issues #825, #232, #592
+- RPi Forums t=365052
+
+### Base stack (2026-03-26, MEDIUM confidence — training data + codebase analysis)
+
 - Existing codebase analysis (src/hardware.py, src/config.py) — HIGH confidence
 - Training data (Picamera2 docs, RPi forums, libcamera guides) — MEDIUM confidence
 
 ---
 *Stack research for: Picamera2 test tracker on RPi4 Bookworm*
-*Base: 2026-03-26 | v1.7 supplement: 2026-03-27*
+*Base: 2026-03-26 | v1.7 supplement: 2026-03-27 | v1.8 supplement: 2026-03-29*
