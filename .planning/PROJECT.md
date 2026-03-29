@@ -1,8 +1,8 @@
 # PROJECT.md — ARIES-LITE
 
 > **Full Name**: Autonomous Real-time Intelligent Eye System — Lightweight Edition
-> **Status**: Active (v1.7 shipped)
-> **Current Version**: v1.7.0
+> **Status**: Active (v1.8 in progress)
+> **Current Version**: v1.8.0-dev
 > **Target Platform**: Raspberry Pi 4 Model B
 
 ## Vision
@@ -41,6 +41,22 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 - Clean dependency tree (removed imutils), proper package exports
 
 </details>
+
+## Current Milestone: v1.8 Critical Hardware Fix
+
+**Goal:** System dziala poprawnie na RPi4 — tilt reaguje, PID nie ucieka, obraz bez blue tint, detekcja twarzy jest responsywna.
+
+**Target fixes:**
+- Debugowanie TILT (zamrozony na 0.0 w HUD) — sciezka kodu PID → set_angles()
+- Naprawa runaway (pozytywne sprzezenie zwrotne na 1 osi, natychmiastowa ucieczka do limitu)
+- Naprawa blue tint (AWB warm-up nie wykonuje sie lub gains zle dobrane)
+- Zamiana detektora twarzy (HAAR za restrykcyjny → MediaPipe/OpenCV DNN)
+
+**Kontekst hardware:**
+- Montaz: kamera prosto na tilt, HUD obraz prawidlowy
+- Tilt: HUD zamrozony na 0.0, serwo nie reaguje
+- Pan: ucieka natychmiast po TRACKING, bardzo szybki ruch do limitu
+- Detekcja: brak zielonych prostokatow, wymaga idealnej pozycji frontalnej
 
 ## What Could Come Next
 
@@ -104,4 +120,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after v1.7 milestone completion*
+*Last updated: 2026-03-29 after v1.8 milestone start*

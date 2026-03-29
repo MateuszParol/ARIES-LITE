@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.7
-milestone_name: Debugging & Optimization
-status: "Milestone v1.7 complete — shipped 2026-03-29"
-stopped_at: Milestone complete
+milestone: v1.8
+milestone_name: Critical Hardware Fix
+status: "Defining requirements"
+stopped_at: null
 last_updated: "2026-03-29"
-last_activity: 2026-03-29 — Milestone v1.7 archived and tagged
+last_activity: 2026-03-29 — Milestone v1.8 started
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,30 +20,35 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-29)
 
-**Core value:** Autonomous real-time face tracking on Raspberry Pi 4
-**Current focus:** Planning next milestone
+**Core value:** System dziala poprawnie na RPi4 — tilt, PID, AWB, detekcja
+**Current focus:** Defining requirements for v1.8
 
 ## Current Position
 
-Milestone v1.7 shipped. All 5 phases (04-08) complete, 6/6 plans executed.
-Next: `/gsd:new-milestone` to start next milestone cycle.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-29 — Milestone v1.8 started
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6 (v1.7)
-- Timeline: 4 days (2026-03-26 → 2026-03-29)
-- Files modified: 3 (test_tracker.py, hardware.py, requirements.txt)
+- Total plans completed: 0 (v1.8)
 
 ## Accumulated Context
 
 ### Decisions
 
-Archived to `.planning/milestones/v1.7-ROADMAP.md`. Key decisions also in PROJECT.md Key Decisions table.
+- v1.7 fixy w kodzie ale nie dzialaja na hardware RPi4
+- TILT zamrozony na 0.0 w HUD — PID output nie dociera do serwa
+- Pan runaway natychmiast po TRACKING — pozytywne sprzezenie zwrotne
+- Blue tint od startu — brak logu ColourGains
+- HAAR detekcja za restrykcyjna — wymaga idealnej pozycji frontalnej
+- Montaz fizyczny prawidlowy: kamera prosto na tilt, HUD obraz OK
 
 ### Blockers/Concerns
 
-None — milestone complete.
+None yet.
 
 ### Pending Todos
 
@@ -52,5 +57,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-29
-Stopped at: Milestone v1.7 complete
+Stopped at: Defining requirements
 Resume file: none
