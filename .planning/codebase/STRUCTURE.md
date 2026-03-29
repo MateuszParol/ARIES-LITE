@@ -1,6 +1,6 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-03-29
 
 ## Directory Layout
 
@@ -9,7 +9,7 @@ ARIES-LITE/
 ├── main.py                     # Entry point: full system (Flask + vision + PID)
 ├── run_test_tracker.py         # Entry point: standalone test tracker (no Flask, no dlib)
 ├── requirements.txt            # Python dependencies (10 pinned packages)
-├── VERSION                     # Version string file ("1.1")
+├── VERSION                     # Version string file
 ├── CLAUDE.md                   # AI coding assistant instructions
 ├── PROJECT_RULES.md            # GSD methodology rules
 ├── GSD-STYLE.md                # GSD style guide
@@ -26,7 +26,7 @@ ARIES-LITE/
 │   ├── hardware.py             # PanTiltSystem — servo abstraction with mock mode
 │   └── modes/                  # Standalone operational modes
 │       ├── __init__.py         # Exports: TestTracker
-│       └── test_tracker.py     # Self-contained test mode (Picamera2 + HAAR + PID, ~394 lines)
+│       └── test_tracker.py     # Self-contained test mode (Picamera2 + HAAR + PID, 408 lines)
 ├── web/                        # Flask web interface
 │   ├── server.py               # Flask app, routes, MJPEG stream, main_loop orchestration
 │   └── templates/
@@ -79,7 +79,22 @@ ARIES-LITE/
 - Purpose: Operational documentation
 - Contains: Runbook, AI model selection guide, token optimization guide
 
-## Module Boundaries
+## File Purposes
+
+| File | Lines | Purpose | Key Classes/Functions |
+|------|-------|---------|----------------------|
+| `main.py` | 16 | Full system entry point | Calls `start_server_and_logic()` |
+| `run_test_tracker.py` | 55 | Test tracker entry point | `_obsluga_sygnalu()`, `main()` |
+| `src/config.py` | 43 | All tuning constants | PID_PAN_P/I/D, PAN_LIMIT_*, STATE_* |
+| `src/camera.py` | 54 | Async OpenCV capture | `VideoStream` (start, read, stop) |
+| `src/vision.py` | 129 | Hybrid HAAR+dlib vision | `HybridVision` (process_frame, load_target_image, trigger_async_verification) |
+| `src/tracker.py` | 113 | State machine + PID | `TrackerMachine` (logic_tick, do_scan, do_tracking, start_pipeline) |
+| `src/hardware.py` | 104 | Servo abstraction | `PanTiltSystem` (set_angles, smooth_move_to, detach_servos) |
+| `src/modes/test_tracker.py` | 408 | Standalone test system | `Picamera2Stream`, `DetekcjaTwarzy` (wykryj), `MaszynaStanow` (tick), `TestTracker` (uruchom, zatrzymaj) |
+| `web/server.py` | 193 | Flask app + orchestration | `start_server_and_logic()`, `main_loop()`, routes: `/`, `/video_feed`, `/api/state`, `/api/command`, `/api/upload_target` |
+| `web/templates/index.html` | 221 | Mobile-first SPA | MJPEG viewer, status badge, control buttons, target upload form |
+
+## Module Dependencies
 
 **Import Rules (strict downward flow, no cycles):**
 - `src/config.py` imports nothing from the project (leaf dependency)
@@ -101,34 +116,15 @@ run_test_tracker.py
   └── src/modes/test_tracker.py -> src/hardware.py -> src/config.py
 ```
 
-## Key Files
-
-**Entry Points:**
-- `main.py`: Full system entry -- calls `web/server.py:start_server_and_logic()`
-- `run_test_tracker.py`: Test tracker entry -- instantiates `src/modes/test_tracker.py:TestTracker`, registers signal handlers
-
-**Configuration:**
-- `src/config.py`: All runtime constants (PID gains, servo limits, camera settings, state name strings, file paths)
-- `requirements.txt`: Python package dependencies with pinned versions
-
-**Core Logic:**
-- `src/vision.py`: HybridVision class -- HAAR detection, CSRT tracking, async dlib verification (~130 lines)
-- `src/tracker.py`: TrackerMachine class -- state machine with PID-driven servo control (~114 lines)
-- `src/hardware.py`: PanTiltSystem class -- gpiozero/pigpio servo driver with mock fallback (~97 lines)
-- `src/camera.py`: VideoStream class -- threaded OpenCV VideoCapture wrapper (~55 lines)
-- `src/modes/test_tracker.py`: Complete standalone test system -- 4 classes (Picamera2Stream, DetekcjaTwarzy, MaszynaStanow, TestTracker), largest file (~394 lines)
-
-**Web Layer:**
-- `web/server.py`: Flask routes (5 endpoints), MJPEG generator, main_loop, start/shutdown orchestration (~194 lines)
-- `web/templates/index.html`: Mobile-first single-page UI with inline CSS/JS -- MJPEG stream viewer, status badge, control buttons, target face upload form (~222 lines)
-
 ## Configuration Files
 
-- `src/config.py`: Application constants (not a config file, but a Python module with all tunables)
-- `requirements.txt`: `pip install -r requirements.txt` -- 10 packages pinned
-- `VERSION`: Plain text version string
-- `model_capabilities.yaml`: AI model capability definitions for GSD tooling
-- `.gitignore`: Ignores `__pycache__/`, `venv/`, `tmp_faces/`, `.env`
+| File | Purpose |
+|------|---------|
+| `src/config.py` | Application constants (PID gains, servo limits, camera settings, state names) |
+| `requirements.txt` | Python package dependencies -- 10 packages pinned |
+| `VERSION` | Plain text version string |
+| `model_capabilities.yaml` | AI model capability definitions for GSD tooling |
+| `.gitignore` | Ignores `__pycache__/`, `venv/`, `tmp_faces/`, `.env` |
 
 ## Naming Conventions
 
@@ -194,7 +190,7 @@ run_test_tracker.py
 
 **`venv/`:**
 - Purpose: Python virtual environment
-- Generated: Yes, by `python3 -m venv venv`
+- Generated: Yes, by `python3 -m venv venv --system-site-packages`
 - Committed: No (in `.gitignore`)
 
 **`.planning/`:**
@@ -204,4 +200,4 @@ run_test_tracker.py
 
 ---
 
-*Structure analysis: 2026-03-27*
+*Structure analysis: 2026-03-29*

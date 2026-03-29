@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-03-29
 
 ## Pattern Overview
 
@@ -208,7 +208,7 @@ TARGET_LOST -> (next tick) -> SCANNING
 - Purpose: Smooth servo correction to center face in frame
 - Location: Both state machine classes instantiate `simple_pid.PID`
 - Config: Kp=0.05, Ki=0.001, Kd=0.005, output limits [-10, +10] degrees/tick
-- Pan error is negated (line 77 of `src/tracker.py`, line 262 of `src/modes/test_tracker.py`) to invert correction direction
+- Pan error is negated (line 77 of `src/tracker.py`, line 275 of `src/modes/test_tracker.py`) to invert correction direction
 
 ## Entry Points
 
@@ -259,6 +259,8 @@ TARGET_LOST -> (next tick) -> SCANNING
 
 **Configuration:**
 - All tuning constants centralized in `src/config.py`
+- Exception: face recognition tolerance hardcoded as `0.55` in `src/vision.py:116`
+- Exception: test tracker module-level constants in `src/modes/test_tracker.py:24-36` (LORES_WIDTH, HAAR_MIN_NEIGHBORS, STREAK_REQUIRED, SCAN_AMPLITUDE, SCAN_FREQUENCY, etc.)
 - No environment variables, no `.env` files, no runtime config
 - Flask upload folder created at import time: `os.makedirs(config.TEMP_FACES_DIR, exist_ok=True)`
 
@@ -268,4 +270,4 @@ TARGET_LOST -> (next tick) -> SCANNING
 
 ---
 
-*Architecture analysis: 2026-03-27*
+*Architecture analysis: 2026-03-29*

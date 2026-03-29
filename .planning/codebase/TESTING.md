@@ -1,6 +1,6 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-03-29
 
 ## Test Framework
 
@@ -17,7 +17,6 @@
 # Manual validation only:
 python3 main.py                  # Start full system, verify via browser at http://0.0.0.0:5000
 python3 run_test_tracker.py      # Standalone hardware test (requires RPi4 + pigpiod + camera)
-scripts/validate-all.sh          # GSD methodology validators (not code tests)
 ```
 
 ## Test File Organization
@@ -41,11 +40,7 @@ scripts/validate-all.sh          # GSD methodology validators (not code tests)
 
 **What exists:**
 1. **Manual integration testing** via `run_test_tracker.py` — runs camera + HAAR + PID + servos in a loop with HUD display
-2. **GSD validation scripts** in `scripts/` — validate GSD methodology files (workflows, skills, templates), not application code:
-   - `scripts/validate-all.sh`: Master runner, calls all validators below
-   - `scripts/validate-workflows.sh`: Checks `.agent/workflows/*.md` for frontmatter and `<process>` tags
-   - `scripts/validate-skills.sh`: Checks `.agent/skills/*/SKILL.md` for frontmatter fields
-   - `scripts/validate-templates.sh`: Checks `.gsd/templates/*.md` for title heading and minimum size
+2. **GSD validation scripts** in `scripts/` — validate GSD methodology files (workflows, skills, templates), not application code
 
 ## Verification Methods
 
@@ -70,7 +65,40 @@ This tests: Picamera2 capture, HAAR face detection with streak filter, PID track
 - Allows running the Flask server on non-RPi machines for UI development
 - Servos are simulated (angles tracked in memory, no PWM output)
 
-## Test Structure (for future implementation)
+## Testability Assessment
+
+**Easily testable (no hardware needed):**
+
+| Component | File | What to test |
+|-----------|------|-------------|
+| PanTiltSystem (mock) | `src/hardware.py` | Angle clamping, smooth_move math, mock mode activation |
+| TrackerMachine | `src/tracker.py` | State transitions, PID direction, scan pattern |
+| MaszynaStanow | `src/modes/test_tracker.py` | State transitions, PID, sinusoidal scan |
+| DetekcjaTwarzy | `src/modes/test_tracker.py` | Streak filter logic (with mocked cv2 cascade) |
+| Config constants | `src/config.py` | Limits sensibility, state name uniqueness |
+| Flask endpoints | `web/server.py` | API responses, 503 guard, upload validation |
+
+**Testable with mocking:**
+
+| Component | File | What to mock |
+|-----------|------|-------------|
+| HybridVision | `src/vision.py` | `cv2.CascadeClassifier`, `face_recognition`, `cv2.TrackerCSRT_create` |
+| VideoStream | `src/camera.py` | `cv2.VideoCapture` |
+
+**Not testable automatically:**
+- Physical servo movement (requires hardware observation)
+- Actual camera feed quality (requires RPi + camera module)
+- End-to-end latency (requires full hardware chain)
+
+## Barriers to Automated Testing
+
+1. **No test framework installed** — needs pytest added to `requirements.txt`
+2. **Global state in `web/server.py`** — module-level globals (`stream`, `vision`, `tracker`) prevent clean test isolation. Each test would need to reset these globals or the module needs refactoring to use dependency injection.
+3. **No dependency injection** — `TrackerMachine.__init__()` creates `PanTiltSystem()` directly. To unit test the state machine without hardware concerns, inject the hardware dependency.
+4. **Threading complexity** — `trigger_async_verification()` spawns daemon threads. Testing async verification requires either mocking the thread or using `threading.Event` synchronization.
+5. **Camera dependency** — `VideoStream` opens `cv2.VideoCapture` in `__init__`. Needs mock or lazy initialization for testing.
+
+## Recommended Testing Strategy
 
 **Recommended framework:** pytest + pytest-mock
 
@@ -94,44 +122,78 @@ tests/
 └── test_server.py           # Flask test client for API endpoints
 ```
 
-## Mocking
+## Example Test Patterns
 
-**No mocking framework in use.** However, the codebase has built-in mock patterns:
-
-**Hardware mock** (`src/hardware.py` lines 5-11, 25-39):
+**TrackerMachine state machine** (`src/tracker.py`) — best candidate for first tests:
 ```python
-try:
-    from gpiozero import AngularServo
-    from gpiozero.pins.pigpio import PiGPIOFactory
-    PIGPIO_AVAILABLE = True
-except ImportError:
-    PIGPIO_AVAILABLE = False
+def test_tracker_transitions_to_scanning_after_timeout():
+    tracker = TrackerMachine()
+    tracker.start_pipeline()
+    assert tracker.state == "SCANNING"
 
-# In PanTiltSystem.__init__:
-self._mock_mode = not PIGPIO_AVAILABLE
-```
-`PanTiltSystem` already operates in mock mode without hardware. This is leverageable for testing — instantiate on any machine, verify angle calculations without servos.
+    # Simulate target found
+    tracker.logic_tick(bbox=(100, 100, 50, 50), w=640, h=480, is_target=True)
+    assert tracker.state == "TRACKING"
 
-**Headless display mock** (`src/modes/test_tracker.py` lines 331-344):
-```python
-try:
-    cv2.imshow("ARIES-LITE Test Tracker", wyswietlana)
-except cv2.error:
-    self._headless = True
-    cv2.destroyAllWindows()
+    # After timeout with no bbox
+    import time; time.sleep(config.TIME_TO_LOST_SEC + 0.1)
+    tracker.logic_tick(bbox=None, w=640, h=480, is_target=False)
+    assert tracker.state == "SCANNING"
 ```
 
-**What to mock for unit tests:**
+**Hardware angle clamping** (`src/hardware.py`):
+```python
+def test_set_angles_clamps_to_limits():
+    hw = PanTiltSystem()  # Mock mode on non-RPi
+    hw.set_angles(999, -999)
+    assert hw.pan_angle == config.PAN_LIMIT_MAX   # 60
+    assert hw.tilt_angle == config.TILT_LIMIT_MIN  # -30
+```
+
+**DetekcjaTwarzy streak filter** (`src/modes/test_tracker.py`):
+```python
+def test_streak_filter_requires_consecutive_detections(mocker):
+    detekcja = DetekcjaTwarzy()
+    fake_frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    mock_detect = mocker.patch.object(detekcja._klasyfikator, 'detectMultiScale')
+
+    # First two detections return None (streak < STREAK_REQUIRED)
+    mock_detect.return_value = np.array([[50, 50, 80, 80]])
+    assert detekcja.wykryj(fake_frame) is None  # streak=1
+    assert detekcja.wykryj(fake_frame) is None  # streak=2
+    assert detekcja.wykryj(fake_frame) is not None  # streak=3, passes filter
+```
+
+**Flask API guard** (`web/server.py`):
+```python
+def test_state_endpoint_returns_503_before_init():
+    from web.server import app
+    client = app.test_client()
+    response = client.get('/api/state')
+    assert response.status_code == 503
+```
+
+**Vision target loading** (`src/vision.py`):
+```python
+def test_load_target_returns_false_for_missing_file(tmp_path):
+    vision = HybridVision()
+    assert vision.load_target_image(str(tmp_path / "nonexistent.jpg")) is False
+```
+
+## What to Mock
+
+**Mock these:**
 - `cv2.VideoCapture` and frame reads for camera tests
 - `face_recognition.face_encodings` and `face_recognition.compare_faces` for vision tests
 - `cv2.CascadeClassifier.detectMultiScale` for detection tests
 - `PanTiltSystem` (or use its built-in mock mode) for tracker tests
 - `threading.Thread` starts for async verification tests
 
-**What NOT to mock:**
+**Do NOT mock these — test real behavior:**
 - `src/config.py` constants — test with real values
 - PID controller math (`simple_pid.PID`) — test actual behavior
 - State machine transitions in `TrackerMachine` / `MaszynaStanow` — test real logic
+- Angle clamping in `PanTiltSystem` — test real math
 
 ## Coverage
 
@@ -142,103 +204,6 @@ except cv2.error:
 pip install pytest pytest-cov pytest-mock
 pytest --cov=src --cov-report=term-missing
 ```
-
-## Test Types
-
-**Unit Tests (not yet implemented, highest priority):**
-
-*TrackerMachine state machine* (`src/tracker.py`) — best candidate for first tests:
-```python
-# Example test pattern:
-def test_tracker_transitions_to_scanning_after_timeout():
-    tracker = TrackerMachine()
-    tracker.start_pipeline()
-    assert tracker.state == "SCANNING"
-
-    # Simulate no target for TIME_TO_LOST_SEC
-    tracker.logic_tick(bbox=(100, 100, 50, 50), w=640, h=480, is_target=True)
-    assert tracker.state == "TRACKING"
-
-    # After timeout with no bbox
-    import time; time.sleep(config.TIME_TO_LOST_SEC + 0.1)
-    tracker.logic_tick(bbox=None, w=640, h=480, is_target=False)
-    assert tracker.state == "SCANNING"
-```
-
-*PID tracking direction* (`src/tracker.py`):
-```python
-def test_pid_moves_toward_target():
-    tracker = TrackerMachine()
-    tracker.start_pipeline()
-    initial_pan = tracker.hardware.pan_angle
-    # Target is to the right of center
-    tracker.do_tracking(bbox=(400, 240, 50, 50), frame_w=640, frame_h=480)
-    # Pan should move right (negative correction due to negation)
-    assert tracker.hardware.pan_angle != initial_pan
-```
-
-*Hardware angle clamping* (`src/hardware.py`):
-```python
-def test_set_angles_clamps_to_limits():
-    hw = PanTiltSystem()  # Mock mode on non-RPi
-    hw.set_angles(999, -999)
-    assert hw.pan_angle == config.PAN_LIMIT_MAX   # 60
-    assert hw.tilt_angle == config.TILT_LIMIT_MIN  # -30
-```
-
-*Vision target loading* (`src/vision.py`) — requires mocking face_recognition:
-```python
-def test_load_target_returns_false_for_missing_file(tmp_path):
-    vision = HybridVision()
-    assert vision.load_target_image(str(tmp_path / "nonexistent.jpg")) is False
-```
-
-**Integration Tests (not yet implemented):**
-
-*Flask API endpoints* (`web/server.py`) — use Flask test client:
-```python
-def test_state_endpoint_returns_503_before_init():
-    from web.server import app
-    client = app.test_client()
-    response = client.get('/api/state')
-    assert response.status_code == 503
-```
-
-**E2E Tests:**
-- Not applicable for automated testing due to hardware dependency
-- `run_test_tracker.py` serves as a manual E2E test
-- Full system E2E requires RPi4 + camera + servos + pigpiod
-
-## Barriers to Automated Testing
-
-1. **No test framework installed** — needs pytest added to `requirements.txt`
-2. **Global state in `web/server.py`** — module-level globals (`stream`, `vision`, `tracker`) prevent clean test isolation. Each test would need to reset these globals or the module needs refactoring to use dependency injection.
-3. **No dependency injection** — `TrackerMachine.__init__()` creates `PanTiltSystem()` directly. To unit test the state machine without hardware concerns, inject the hardware dependency.
-4. **Threading complexity** — `trigger_async_verification()` spawns daemon threads. Testing async verification requires either mocking the thread or using `threading.Event` synchronization.
-5. **Camera dependency** — `VideoStream` opens `cv2.VideoCapture` in `__init__`. Needs mock or lazy initialization for testing.
-
-## Validation Scripts
-
-**`scripts/validate-all.sh`:**
-- Master validation runner
-- Calls: `validate-workflows.sh`, `validate-skills.sh`, `validate-templates.sh`
-- Returns exit code 0 if all pass, 1 if any fail
-- These validate GSD methodology files only, not application code
-
-**`scripts/validate-workflows.sh`:**
-- Checks `.agent/workflows/*.md` files
-- Validates: frontmatter present (starts with `---`), `description:` field exists
-- Warns if `<process>` tag missing
-
-**`scripts/validate-skills.sh`:**
-- Checks `.agent/skills/*/SKILL.md` files
-- Validates: file exists, frontmatter present, `name:` and `description:` fields
-
-**`scripts/validate-templates.sh`:**
-- Checks `.gsd/templates/*.md` files
-- Validates: title heading (`# `), `Last updated` marker, minimum 200 chars
-
-**No application-level validation scripts exist.** No syntax check, import verification, or smoke test scripts.
 
 ## Priority Test Implementation Plan
 
@@ -258,4 +223,4 @@ def test_state_endpoint_returns_503_before_init():
 
 ---
 
-*Testing analysis: 2026-03-27*
+*Testing analysis: 2026-03-29*

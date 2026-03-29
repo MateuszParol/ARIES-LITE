@@ -1,6 +1,6 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-03-27
+**Analysis Date:** 2026-03-29
 
 ## Naming Patterns
 
@@ -97,7 +97,7 @@ from src import config
       logger.error(f"Nie mozna uruchomic pigpio...: {e}")
       self._mock_mode = True
   ```
-- Camera retry with counter in `src/modes/test_tracker.py` lines 95-119: retries up to `CAMERA_MAX_RETRIES` with delay, then stops
+- Camera retry with counter in `src/modes/test_tracker.py` lines 95-131: retries up to `CAMERA_MAX_RETRIES` (3) with `CAMERA_RETRY_DELAY` (1s), then stops system
 
 **No custom exceptions.** All error handling uses built-in `Exception` catches.
 
@@ -143,6 +143,12 @@ logger = logging.getLogger(__name__)
 - `logger.error(f"Verify thread exception: {e}")`
 - `logger.info("Hardware servos with PiGPIO initialized successfully.")`
 
+**Levels used:**
+- `logger.info()` — state transitions, initialization events, operational milestones
+- `logger.warning()` — clamp limits hit, fallback modes activated, missing optional resources
+- `logger.error()` — camera failures, face recognition failures, hardware init failures
+- `logger.debug()` — not used anywhere (add for PID tuning data if needed)
+
 **Convention for new code:** Use Polish log messages. Create module-level logger with `logging.getLogger(__name__)`. Use INFO for state transitions, ERROR for failures, WARNING for degraded operation.
 
 ## Comments
@@ -172,6 +178,13 @@ class HybridVision:
 # Zawężono zakres dla bezpieczeństwa taśmy od kamery
 ```
 
+**Section separators** in config and module-level constants:
+```python
+# --- PID Controller Settings ---
+# --- Limity Skanowania i Ruchu Serw (Kąty) ---
+# --- Stałe modułowe ---
+```
+
 **Param docs** (`:param` style) in `src/hardware.py`:
 ```python
 :param pan: Docelowy kat X (horyzontalnie)
@@ -190,6 +203,7 @@ class HybridVision:
 - Tuples for multi-value returns: `Tuple[Optional[Tuple[int, int, int, int]], bool]`
 - `bool` for success/failure: `load_target_image() -> bool`
 - `Optional` for nullable returns: `odczytaj() -> Optional[np.ndarray]`
+- `str` for state returns: `tick() -> str`
 - `None` implicit return for void operations
 
 ## Module Design
@@ -220,7 +234,7 @@ t = threading.Thread(target=heavy_task)
 t.daemon = True
 t.start()
 ```
-All background threads are daemon threads so they die with the main process.
+All background threads are daemon threads so they die with the main process. Alternative form: `threading.Thread(target=fn, daemon=True).start()`.
 
 **Graceful hardware degradation:**
 ```python
@@ -243,6 +257,7 @@ Register signal handlers in the entry point. The handler calls a `shutdown()` or
 - All tuning parameters live in `src/config.py`
 - No environment variables, no `.env` files
 - Import as `from . import config` then reference as `config.PID_PAN_P`
+- Module-specific constants at module top-level (e.g., `STREAK_REQUIRED` in `src/modes/test_tracker.py`)
 
 **State machine as string constants:**
 ```python
@@ -251,7 +266,7 @@ STATE_SCANNING = "SCANNING"
 STATE_TRACKING = "TRACKING"
 STATE_IDLE = "IDLE"
 ```
-States are string constants in `src/config.py`. State transitions happen by direct assignment: `self.state = config.STATE_SCANNING`. No enum class is used.
+States are string constants in `src/config.py`. Additional states like `STATE_TARGET_LOST = "TARGET_LOST"` defined locally in `src/modes/test_tracker.py`. State transitions happen by direct assignment: `self.state = config.STATE_SCANNING`. No enum class is used.
 
 **Flask module globals pattern** (`web/server.py`):
 ```python
@@ -264,4 +279,4 @@ Globals are initialized once in the startup function. Protected by `init_event =
 
 ---
 
-*Convention analysis: 2026-03-27*
+*Convention analysis: 2026-03-29*

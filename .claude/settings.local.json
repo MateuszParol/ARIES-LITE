@@ -31,7 +31,16 @@
       "Bash(grep -l \"## Validation Architecture\" \".planning/phases/07-pid-sign-correctness\"/*-RESEARCH.md)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(cat /Users/mattparol/Desktop/Projekty/ARIES-LITE/ARIES-LITE/.planning/phases/07-pid-sign-correctness/*-VERIFICATION.md)"
+      "Bash(cat /Users/mattparol/Desktop/Projekty/ARIES-LITE/ARIES-LITE/.planning/phases/07-pid-sign-correctness/*-VERIFICATION.md)",
+      "Bash(for summary:*)",
+      "Bash(do echo:*)",
+      "Read(//home/parolisko/ARIES-LITE/**)",
+      "Bash(done)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(cat /home/parolisko/ARIES-LITE/.planning/phases/10-detection-fix/*-VERIFICATION.md)",
+      "Bash(git -C /home/parolisko/ARIES-LITE log --oneline)",
+      "Bash(git -C /home/parolisko/ARIES-LITE show a5fa317 --stat)",
+      "Bash(git -C /home/parolisko/ARIES-LITE diff a5fa317~1 a5fa317 -- src/modes/test_tracker.py)"
     ]
   }
 }
