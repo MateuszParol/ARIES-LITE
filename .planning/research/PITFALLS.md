@@ -1,250 +1,284 @@
-# Pitfalls Research — v1.8 Critical Hardware Fix
+# Pitfalls Research — v1.9 Stabilizacja Ruchu i Obrazu
 
-**Domain:** Debugging persistent hardware failures in RPi4 pan-tilt face tracking (Picamera2 + pigpio + simple_pid + HAAR)
+**Domain:** Fixing servo tilt dead axis, jerky servo motion, AWB green tint, and PID tracking escape in an existing RPi4 pan-tilt face tracker (Picamera2 + pigpio + simple_pid + OpenCV DNN)
 **Researched:** 2026-03-29
-**Confidence:** HIGH (code-derived pitfalls) / MEDIUM (AWB API sequencing alternatives)
+**Confidence:** HIGH (code-derived pitfalls from direct analysis of src/) / MEDIUM (AWB ISP pipeline internals, servo pulse-width mechanics)
 
-**Scope:** This document targets v1.8 — bugs that survived v1.7 code changes but do NOT work on hardware.
-v1.7 applied four fixes; all four appear syntactically correct in the current `src/modes/test_tracker.py`.
-The bugs are still present on hardware. This means the root cause of each failure is NOT what v1.7 targeted.
+**Scope:** v1.9 milestone — adds four targeted fixes to a working but misbehaving system. The prior system (v1.8) has DNN detection validated, PID structure validated, and AWB lock code present. The bugs are integration and sequencing failures, not architectural. This document focuses entirely on common mistakes when *adding* these fixes to the existing codebase.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Tilt PID Negation Applied But Tilt Still Frozen — The State Machine Is Never Calling _sledz()
+### Pitfall 1: Tilt Servo Wired or Commanded But Scan Hardcodes Tilt to Zero
 
 **What goes wrong:**
-The v1.7 fix added `-self.pid_tilt(blad_tilt)` (line 276 of `test_tracker.py`). This negation is present in the current code. Yet the HUD shows `Tilt: 0.0` frozen. This means the negation fix is syntactically correct but irrelevant to the actual failure. The `_sledz()` method is either not being called at all, or `set_angles()` is being called with zero tilt every time.
+`_skanuj()` in `MaszynaStanow` calls `self.hardware.set_angles(pan, 0.0)` with a literal `0.0` for tilt. If tilt servo wiring or config is wrong, the SCANNING state will never expose the bug because it always writes zero. The developer tests with a face in frame, enters TRACKING, and sees tilt move in `_sledz()` — but only if TRACKING is actually reached. If tilt is frozen at zero the developer may blame `_sledz()` or the PID sign when the problem is actually that SCANNING masks the tilt path entirely.
 
-The HUD reads `tilt = self.maszyna.hardware.tilt_angle` — this is a pure software variable. It reflects whatever `set_angles()` last stored. If `tilt_angle` stays at 0.0, exactly one of these must be true:
-
-1. `_sledz()` is never called (state machine stays in SCANNING — face never detected by HAAR)
-2. `_sledz()` is called but `blad_tilt = srodek_y - ramka_cy` is always near zero (face always vertically centered)
-3. `_sledz()` is called but `pid_tilt(blad_tilt)` returns 0.0 (sample_time not elapsed)
-4. `nowy_tilt = self.hardware.tilt_angle + korekta_tilt` is always 0.0 (korekta_tilt exactly cancels current tilt)
-5. `set_angles()` is called with non-zero tilt but something in the call path resets it to 0
-
-The most likely root cause given "no green rectangles visible" is case 1: HAAR never detects a face with `HAAR_MIN_NEIGHBORS=8` and `HAAR_MIN_SIZE=(80, 80)` at 320x240 resolution. If no face is ever detected, the state machine stays in SCANNING permanently, `_skanuj()` always calls `set_angles(pan, 0.0)` with hardcoded tilt=0, and HUD shows Tilt frozen at 0.0. This is not a PID sign bug — it is a detection failure masquerading as a PID bug.
+The deeper trap: the HUD reads `self.maszyna.hardware.tilt_angle` which is a software float updated unconditionally in `set_angles()`. Tilt shows `0.0` during SCANNING not because the servo is broken but because the scan formula writes `0.0`. This is correct behavior, not a bug. Misreading the HUD here causes false diagnosis.
 
 **Why it happens:**
-`HAAR_MIN_SIZE=(80, 80)` on a 320x240 frame requires the face bounding box to be at least 80 pixels wide and 80 pixels tall. At 320px wide, this means the face must occupy at least 25% of the frame width — approximately 40-50cm distance from camera at normal field of view. The user must be extremely close to the camera and perfectly frontal.
-
-`HAAR_MIN_NEIGHBORS=8` is significantly higher than the OpenCV default of 3. Each candidate region must be confirmed by 8 overlapping detections at different scales. This eliminates almost all non-frontal, partially occluded, or angled faces. Combined with the 80x80 minimum, this explains "requires perfect frontal face at very short distance."
+Developers check the HUD to assess servo state. During SCANNING, tilt is intentionally zero. If TRACKING never triggers (face detection issue, short timeout, etc.), tilt is *always* zero. The developer concludes tilt is broken when it may be fine.
 
 **How to avoid:**
-Reduce HAAR parameters to more permissive values for 320x240:
-- `HAAR_MIN_SIZE = (40, 40)` — detects faces from 0.5-2m at normal FOV
-- `HAAR_MIN_NEIGHBORS = 4` — still filters noise but detects non-perfect frontal faces
-- Keep `STREAK_REQUIRED=3` to compensate for the increased false positive rate from looser parameters
-
-Alternatively, replace HAAR entirely with OpenCV DNN (res10_300x300_ssd_iter_140000) or MediaPipe BlazeFace. Both provide better detection at angles and partial occlusion. DNN on RPi4 runs at 5-8 FPS; MediaPipe at ~10 FPS. Since the tracker loop already runs at ~30 FPS, running detection every 3-4 frames with DNN is viable.
+Before declaring tilt broken, issue a direct `set_angles(0.0, 15.0)` call at startup in `inicjalizuj()` (or a temporary test command), confirm the physical servo moves, then revert. This isolates the hardware path from the state machine. Use `smooth_move_to(0, 20)` then `smooth_move_to(0, 0)` — if tilt physically moves, the servo and wiring are functional.
 
 **Warning signs:**
-- HUD shows no green rectangles ever — confirms zero detection
-- State machine log shows only SCANNING entries, never TRACKING
-- `DetekcjaTwarzy._streak` counter stays at 0 (add a log line to verify)
-- Moving face very close to camera (20-30cm, perfectly frontal) suddenly triggers detection
+- Tilt shows `0.0` in HUD during SCANNING (expected — not a bug)
+- Tilt shows `0.0` in HUD during TRACKING with face clearly below/above center (actual bug)
+- Clamp warnings for tilt never appear in logs despite expected large corrections
+- `pid_tilt.components` shows non-zero P/I/D but `nowy_tilt` equals `0.0 + korekta_tilt` where `korekta_tilt` is very small
 
 **Phase to address:**
-Detection fix — must come first before any PID or AWB debugging. A system that never detects faces cannot be used to validate PID behavior.
+Phase 1 (tilt fix) — begin with a direct hardware test call before any state machine analysis.
 
 ---
 
-### Pitfall 2: Diagnosing PID Behavior Without Confirmed Detection — All PID "Fixes" Are Invalid
+### Pitfall 2: Tilt Sign Fixed But Axis Inverted Relative to Physical Mount
 
 **What goes wrong:**
-v1.7 applied a PID sign fix and a phase offset fix. Neither can be validated if the face detector never triggers. If HAAR is too restrictive and detects only in ideal conditions, then:
-- Any PID sign observation ("pan runs away") is based on 1-2 frames of detection before the face is lost
-- The "runaway" behavior may be the scan sinusoid (pan oscillating ±45°) being mistaken for PID runaway
-- The phase offset fix for smooth scan resume cannot be tested because TRACKING is never sustained
-
-The developer makes code changes to PID, observes hardware behavior, and concludes the fix "didn't work" — but the behavior observed was not PID behavior at all. It was scan behavior with occasional 1-frame detection interruptions.
-
-**Why it happens:**
-When the detector is barely triggering, TRACKING state lasts for one tick (one frame). The state transition SCANNING→TRACKING→TARGET_LOST→SCANNING happens in 2-3 frames. The pan servo barely moves. This looks identical to "PID sign fix didn't work" or "pan still runs away."
-
-The scan sinusoid with `SCAN_AMPLITUDE=45°` and `SCAN_FREQUENCY=0.1 Hz` moves the camera ±45° over 10 seconds. If the user sees the camera panning to a limit during "tracking," it may be the end of a scan cycle coinciding with a brief 1-frame detection, not a PID runaway.
-
-**How to avoid:**
-Before any PID diagnosis:
-1. Confirm TRACKING state is sustained for at least 10 consecutive frames (add a frame counter to the TRACKING branch log)
-2. Confirm `bbox` is non-None for those frames and the face is consistently off-center
-3. Only then examine PID correction values and servo motion
-
-**Warning signs:**
-- HUD shows rapid SCANNING/TRACKING/TARGET_LOST cycling
-- Total TRACKING duration per session is under 1 second
-- Camera motion looks sinusoidal even during "tracking"
-
-**Phase to address:**
-Detection fix must precede PID validation. Do not touch PID code until detection is stable.
-
----
-
-### Pitfall 3: AWB ColourGains — capture_metadata() Returns None on Lores-Only YUV420 Configuration
-
-**What goes wrong:**
-The current `Picamera2Stream.start()` code (lines 78-87) calls `time.sleep(2.0)` then `self._picam2.capture_metadata()` and reads `metadata.get("ColourGains")`. The code already handles the `None` case with a fallback to `(2.5, 1.9)` and logs a warning. However, the observed symptom is "blue tint still present from startup" and "ColourGains log line not observed."
-
-If the warning line `"ColourGains niedostępne, używam fallback (2.5, 1.9)"` is not appearing in logs, it means one of:
-1. `ColourGains` is NOT None (metadata returns a value) but `set_controls()` is not applying it
-2. The `start()` method is completing but the AWB lock code is not executing (exception swallowed before it)
-3. The `set_controls()` call is being issued but not taking effect because of a sequencing conflict
-
-Picamera2 issue #977 (reported March 2024, Bookworm 64-bit) documents that `AwbMode` has no effect and `AwbEnable` True/False does not work as expected in certain Bookworm versions. Setting `ColourGains` directly is the confirmed workaround.
-
-The forum thread for issue #365052 confirmed that `set_controls` must be called after `configure`, but the current code calls it after `start()` — which is also valid. However, issue #933 documents that the maintainer explicitly warns that setting `AwbEnable: False` alongside `ColourGains` in the same `set_controls()` call can cause sequencing conflicts in some versions. The current code does NOT set `AwbEnable`, which is correct.
-
-The most likely cause of persistent blue tint when the code appears correct: the `controls` parameter was passed to `create_video_configuration` in an earlier version and is now absent. An alternative confirmed method is passing `controls={"ColourGains": (r, b)}` directly to `create_video_configuration()` — this applies the control value at configure time before the ISP starts, guaranteeing it takes effect on the very first frame.
-
-**Why it happens:**
-Two confirmed Picamera2 behaviors contribute:
-1. Controls set via `set_controls()` after `start()` take effect 2-3 frames later due to the kernel driver request queue
-2. In Bookworm with certain libcamera versions, `capture_metadata()["ColourGains"]` may return the auto-converged value correctly, but `set_controls({"ColourGains": gains})` may be applied but then overridden by the still-running AWB algorithm if there is a version bug in AWB disabling
-
-The safest approach (confirmed working across Bookworm versions) is to pass `ColourGains` in the `controls` dict of `create_video_configuration()` so it is applied before `start()` and before any AWB algorithm runs. This also means `capture_metadata()` is not needed for this path.
-
-**How to avoid:**
-Use the two-phase approach for maximum reliability:
+The current code applies double negation to both axes in `_sledz()`:
 ```python
-# Phase 1: set at configure time (takes effect from first frame)
+korekta_pan = -self.pid_pan(blad_pan)
+korekta_tilt = -self.pid_tilt(blad_tilt)  # negacja — oś tilt działa jak pan
+```
+The comment claims "oś tilt działa jak pan" — this was the v1.7 finding. If the physical mount orientation changed between v1.7 and v1.9 testing (camera flipped, bracket reversed), the sign that worked before will cause runaway in the opposite direction.
+
+The consequence: tilt detects face below center (`blad_tilt > 0`), PID outputs positive correction, negation gives negative, system moves tilt *upward* instead of downward, face moves further from center, error grows, servo hits limit.
+
+**Why it happens:**
+Physical mount conventions are not captured in code — only "negation was applied." If the mount changes (or the v1.7 observation was wrong), there is no in-code record of *why* the negation is correct. "Oś tilt działa jak pan" is an undocumented empirical claim.
+
+**How to avoid:**
+Establish mounting convention explicitly:
+1. With face in frame, hold face above center horizontally. Log `blad_tilt`.
+2. Expected: `blad_tilt = srodek_y - ramka_cy < 0` (face Y-center is above frame center in pixel space).
+3. Expected servo reaction: tilt angle should *increase* (tilt up) to follow face.
+4. Trace: `korekta_tilt = -pid_tilt(blad_tilt)`. If `blad_tilt < 0`, PID outputs negative, negation makes it positive, `nowy_tilt = tilt_angle + positive` = increases. Correct.
+5. If physical tilt moves the wrong way, the sign of the negation must be reversed — not the PID gains.
+
+Document the result in a comment: `# blad_tilt < 0 = face above center → korekta_tilt > 0 = tilt servo moves up. Mount: bracket forward-facing, tilt pin=13`.
+
+**Warning signs:**
+- Face above center but servo tilts down (or vice versa) — verified by eye during TRACKING
+- Servo immediately hits TILT_LIMIT and clamp warnings flood logs
+- Tracking converges on pan but tilt escapes immediately on entry
+
+**Phase to address:**
+Phase 1 (tilt fix) — sign verification must be empirical on the actual physical hardware with the actual mount before any other tilt work.
+
+---
+
+### Pitfall 3: ColourGains (1.0, 1.0) Is Semantically Wrong — Green Because Red and Blue Are Suppressed
+
+**What goes wrong:**
+`AWB_FALLBACK_GAINS = (1.0, 1.0)` is present in the current code (line 38 of `test_tracker.py`). This value is intuitive as "neutral" but is wrong for IMX219. The Picamera2 `ColourGains` tuple is `(red_gain, blue_gain)` — it multiplies the red and blue channels of the Bayer demosaiced output. The green channel has no gain parameter because it is the reference channel.
+
+On IMX219 under typical indoor lighting, auto-AWB converges to approximately `(1.6–2.0, 1.4–1.9)`. These non-unity values are needed to compensate for the sensor's natural bias toward green (IMX219 has 2 green pixels per 4 in the Bayer RGGB pattern — so green is inherently twice as represented). Setting `ColourGains=(1.0, 1.0)` does *not* produce neutral white — it suppresses red and blue relative to what the ISP's AWB computed, making green dominant. This is the "green tint that does not change with scene."
+
+The v1.8 fix set `(1.0, 1.0)` thinking it replaced the previous `(2.5, 1.9)` — it did eliminate the blue tint from overcorrected blue, but introduced green tint by undercorrecting red and blue.
+
+**Why it happens:**
+The name "ColourGains" suggests 1.0 = neutral. In absolute terms, 1.0 means "apply no amplification to this channel." But neutral white balance requires *relative* balance between channels, which for IMX219 requires both gains above 1.0 to match the sensor's green bias.
+
+**How to avoid:**
+Never hardcode `(1.0, 1.0)` as the fallback. The correct approach:
+1. Let the camera run in auto-AWB for 3–5 seconds (no `ColourGains` set)
+2. Read `metadata = cam.capture_metadata(); gains = metadata.get("ColourGains")`
+3. Log the settled value — this is the correct neutral for this sensor in this lighting
+4. Use *that* value as `AWB_FALLBACK_GAINS`
+
+For IMX219 in indoor lighting without ceiling fluorescent, expect approximately `(1.7–2.0, 1.4–1.7)`. If the `capture_metadata()` approach fails (returns None), try `(1.8, 1.5)` as a safer fallback than `(1.0, 1.0)`.
+
+The configure-time lock (`controls={"ColourGains": gains}` in `create_video_configuration()`) is still the correct sequencing — just use a valid non-unity value.
+
+**Warning signs:**
+- Green channel value in skin tones does not change when moving camera to different-colored surfaces
+- `ColourGains` log at startup shows `(R=1.00, B=1.00)` — this is the fallback path firing
+- Image looks correct outdoors but green-tinted indoors (scene-independent G dominance confirms fixed gains)
+- `capture_metadata()["ColourGains"]` returns the fallback value, not auto-converged value
+
+**Phase to address:**
+Phase 2 (AWB fix) — before changing any ColourGains value, read the auto-converged value from a 5-second warm-up run and use that as the basis. Do not guess the fallback.
+
+---
+
+### Pitfall 4: AWB Re-Lock After Warm-Up Sets Gains From Metadata But ISP May Revert
+
+**What goes wrong:**
+The current `Picamera2Stream.start()` sequence:
+1. Configure with `controls={"ColourGains": AWB_FALLBACK_GAINS}` (correct — ensures frame-1 color)
+2. Sleep 2 seconds
+3. `capture_metadata()["ColourGains"]` → reads settled auto-AWB values
+4. `set_controls({"ColourGains": (float(r), float(b))})` → attempts to lock at settled values
+
+Step 4 has a known failure mode on some Picamera2/libcamera versions: if `AwbEnable` is not explicitly set to `False` alongside the `ColourGains` re-lock, the AWB algorithm may continue running and override the gains within 1–2 seconds. The result: color is correct for 2 seconds then drifts.
+
+The existing code does NOT set `AwbEnable: False`. Per issue #322, setting `ColourGains` alone *should* disable AWB implicitly, but per issue #825 this behavior is version-dependent. If the installed libcamera version does not treat `ColourGains` as an implicit AWB disable, the gains will not hold.
+
+**Why it happens:**
+Picamera2/libcamera API behavior for AWB disable is version-dependent and underdocumented. The implicit AWB-disable-via-ColourGains behavior was added in a specific libcamera version. Systems that have not been updated may not have this behavior.
+
+**How to avoid:**
+Add explicit `AwbEnable: False` only in the re-lock `set_controls()` call, NOT in the configure-time controls (configure-time `AwbEnable: False` before warm-up prevents auto-convergence from computing correct gains):
+```python
+# Phase 1: configure-time lock at safe fallback (no AwbEnable: False here)
 video_config = self._picam2.create_video_configuration(
-    lores={"size": (self._width, self._height), "format": "YUV420"},
+    lores={"size": (w, h), "format": "YUV420"},
     controls={"ColourGains": AWB_FALLBACK_GAINS}
 )
 self._picam2.configure(video_config)
 self._picam2.start()
 
-# Phase 2: read settled auto-values and re-lock after warm-up
+# Phase 2: warm-up, then lock at auto-converged values
 time.sleep(2.0)
-metadata = self._picam2.capture_metadata()
-gains = metadata.get("ColourGains")
-if gains is not None and gains != (0.0, 0.0):
-    self._picam2.set_controls({"ColourGains": (float(gains[0]), float(gains[1]))})
-    logger.info(f"ColourGains zablokowane po warm-up: (R={gains[0]:.2f}, B={gains[1]:.2f})")
-else:
-    logger.info(f"ColourGains zablokowane fallback: {AWB_FALLBACK_GAINS}")
+meta = self._picam2.capture_metadata()
+gains = meta.get("ColourGains")
+if gains and gains != (0.0, 0.0):
+    self._picam2.set_controls({
+        "AwbEnable": False,
+        "ColourGains": (float(gains[0]), float(gains[1]))
+    })
 ```
 
-Setting `ColourGains=(0.0, 0.0)` in Picamera2 is interpreted as "re-enable AWB." Always check for this before re-applying.
+If adding `AwbEnable: False` causes issues (Picamera2 version conflict per issue #825), remove it and verify the implicit disable works by checking that gains do not drift after 30 seconds.
 
 **Warning signs:**
-- Blue tint from the very first frame (suggests configure-time gains not applied)
-- Blue tint for first 2-3 seconds then correct color (suggests set_controls timing issue only)
-- No log line from the ColourGains lock code (suggests exception before that line)
-- `capture_metadata()["ColourGains"]` returns `(0.0, 0.0)` (means AWB is still running)
+- Color correct at startup but drifts after 2–5 seconds
+- `ColourGains` re-read after re-lock shows different values than what was set
+- Warm scenes produce warm drift, cold scenes produce blue drift (AWB still running)
 
 **Phase to address:**
-AWB fix — use configure-time `controls` dict as the primary lock, keep post-start `set_controls` as the secondary re-lock after warm-up.
+Phase 2 (AWB fix) — test lock stability over at least 30 seconds before declaring AWB fixed.
 
 ---
 
-### Pitfall 4: Pan Runaway Is Phase Offset Math Producing a Non-Convergent Initial Scan Value
+### Pitfall 5: PID Output Clamped at ±10° But servo_angle += correction Accumulates Unbounded
 
 **What goes wrong:**
-v1.7 added phase offset calculation in `_przejdz_do()` (line 291-292):
+`PID_OUTPUT_LIMIT = 10.0` and `pid.output_limits = (-10.0, 10.0)` cap each tick's correction to ±10°. But the application code does:
 ```python
-raw = self.hardware.pan_angle / SCAN_AMPLITUDE
-self._scan_phase_offset = math.asin(max(-1.0, min(1.0, raw)))
+nowy_pan = self.hardware.pan_angle + korekta_pan
+nowy_tilt = self.hardware.tilt_angle + korekta_tilt
+self.hardware.set_angles(nowy_pan, nowy_tilt)
 ```
 
-This is mathematically correct: it finds the phase angle such that `SCAN_AMPLITUDE * sin(phase_offset) == current_pan_angle`. On the next `_skanuj()` tick, the formula is:
-```python
-pan = SCAN_AMPLITUDE * math.sin(2.0 * math.pi * SCAN_FREQUENCY * t + self._scan_phase_offset)
-```
+`self.hardware.pan_angle` is the last clamped software value. The *new* target is `pan_angle + correction`, which is only limited by `PAN_LIMIT_MIN/MAX` (±60°) in `set_angles()`. A sequence of ±10° corrections over 6 consecutive frames will move the servo from 0° to 60° (hitting the hard limit) in 6 ticks = 200ms at 30 FPS.
 
-The problem: `t = time.time()` is an absolute Unix timestamp (approximately 1.7 billion seconds). At the moment the phase offset is computed, `2.0 * pi * 0.1 * t` is a very large number. The arcsin of `pan_angle/SCAN_AMPLITUDE` gives the correct geometric offset, but this offset must cancel the `2.0 * pi * f * t_transition` term from the transition time. Since `t` advances continuously, the phase offset becomes stale the instant time advances even by milliseconds.
+The root cause of "servo escapes immediately on TRACKING entry": the integral term (`I`) of the PID may have been accumulating during SCANNING (if `pid.reset()` was not called cleanly), and the moment TRACKING starts, the accumulated integral produces a large first correction that saturates the output at ±10° every tick for several frames.
 
-Specifically: if the transition happens at time `t0`, then `phase_offset = asin(pan/A)`. On the next tick at `t0 + dt`, the scan value is `A * sin(2*pi*f*(t0+dt) + asin(pan/A))`. This is NOT equal to `pan` at `t0+dt` — the scan has already moved. For `f=0.1 Hz` and `dt=33ms`, the scan has moved by `2*pi*0.1*0.033 = 0.0207 radians`, equivalent to `45 * 0.0207 = 0.93°` per frame. Over 10 frames this is almost 10° of unexplained pan movement.
-
-This is a minor issue for smooth scan resume, not a runaway. The actual pan runaway is almost certainly the detection failure (Pitfall 2) combined with incorrect diagnosis.
+The `simple_pid` library resets integral accumulation on `reset()` call. `_przejdz_do()` calls `pid_pan.reset()` and `pid_tilt.reset()` when entering SCANNING. But `_przejdz_do()` does NOT reset PIDs when entering TRACKING. If the system exits TRACKING, transitions through TARGET_LOST, returns to SCANNING (PIDs reset), then immediately detects a face and enters TRACKING — the PIDs are freshly reset and this is fine. But if TRACKING is entered from SCANNING after only 1 scan tick (face detected very quickly), there may be a small non-zero integral from that one tick. More dangerous: if the initial error at TRACKING entry is large (face is at the frame edge, `blad_pan = ±160` pixels for a 320-wide frame), the P-term alone produces `0.05 * 160 = 8.0°` per tick, and with no I windup at all, 6 consecutive ticks hit the ±60° limit.
 
 **Why it happens:**
-Using absolute `time.time()` for the phase argument means the phase offset must account for the current position of the sinusoid in absolute time, not relative time. The correct approach uses relative time from a reference point, or stores the absolute time of the transition and adjusts the formula. The current formula computes the geometric offset but ignores the temporal offset.
+PID gains (`P=0.05`) were validated on a face that was roughly centered (`blad_pan` small). A face at the edge of frame (`blad_pan = 150+`) produces full-saturation output from P-term alone, every tick. The servo moves at maximum speed until it hits the limit. This looks like "runaway" but is actually correct PID behavior for a large initial error — the system is not misbehaving, it is correcting aggressively.
 
 **How to avoid:**
-Track a `_scan_start_time` that resets at each SCANNING entry:
-```python
-def _przejdz_do(self, nowy_stan: str) -> None:
-    if nowy_stan == config.STATE_SCANNING:
-        self.pid_pan.reset()
-        self.pid_tilt.reset()
-        raw = self.hardware.pan_angle / SCAN_AMPLITUDE
-        t_now = time.time()
-        # Solve: A*sin(2*pi*f*(t_now - t_ref) + 0) = current_pan
-        # t_ref = t_now - asin(raw) / (2*pi*f)
-        self._scan_start_time = t_now - math.asin(max(-1.0, min(1.0, raw))) / (2.0 * math.pi * SCAN_FREQUENCY)
-```
+Two complementary approaches:
+1. **Derivative-on-measurement**: Use `simple_pid` with `differential_on_measurement=True` (default is False) to avoid derivative kick when error jumps suddenly at TRACKING entry.
+2. **Startup output limit reduction**: For the first 3–5 ticks of a new TRACKING entry, cap the per-tick correction to a smaller value (e.g. `PID_OUTPUT_LIMIT_STARTUP = 3.0`), then restore normal limits after the servo has moved toward the face.
+3. **Dead zone**: Add a center dead zone — if `abs(blad_pan) < 10` pixels, do not apply PID correction. This prevents jitter when centered and reduces escapes at entry (the servo will approach more slowly).
 
-Then `_skanuj()` uses `t - self._scan_start_time` instead of `t + phase_offset`.
+Verify with logging: at every TRACKING entry, log `blad_pan`, `blad_tilt`, and `korekta_pan`, `korekta_tilt` for the first 5 ticks. If corrections are at the ±10° limit for 5+ consecutive ticks, the initial error is too large and needs entry-time correction limiting.
 
 **Warning signs:**
-- Small pan jerk at every TRACKING→SCANNING transition
-- Pan position immediately after transition does not match pan position just before
-- Logging `pan` value at transition vs first scan tick shows a discontinuity
+- Servo hits limit clamp (`WARNING: Clamp pan`) within 1–2 seconds of TRACKING entry
+- TRACKING lasts less than 1 second before TARGET_LOST (servo escapes, face leaves frame)
+- `blad_pan` or `blad_tilt` at TRACKING entry is above 100 pixels (out of 160/120 for 320x240)
+- `korekta_pan` at ±10.0 (saturated at limit) for first 5+ ticks after TRACKING entry
 
 **Phase to address:**
-Scan continuity fix — lower priority than detection and AWB, but needed for smooth behavior after detection is working.
+Phase 3 (PID/tracking fix) — must address initial-error correction limiting separately from steady-state gain tuning.
 
 ---
 
-### Pitfall 5: HUD Tilt Display Shows Software State, Not Hardware State — Mock Mode Is Invisible
+### Pitfall 6: smooth_move_to() Is Blocking — Using It in Main Loop Stalls Camera Capture
 
 **What goes wrong:**
-`_rysuj_hud()` reads `self.maszyna.hardware.tilt_angle` — a Python float stored in `PanTiltSystem`. This value is updated unconditionally in `set_angles()` regardless of `_mock_mode`:
+`smooth_move_to()` in `hardware.py` is a blocking while-loop with `time.sleep(0.05)` per step. Moving from 0° to 45° with `SERVO_STEP=1.0` takes `45 * 0.05 = 2.25 seconds`. If `smooth_move_to()` is called from the main tracking loop thread (or from `inicjalizuj()` before the loop starts), it blocks frame capture for the entire duration.
 
-```python
-# hardware.py set_angles():
-self.pan_angle = pan_clamped
-self.tilt_angle = tilt_clamped     # always updated
-if not self._mock_mode and self.pan_servo and self.tilt_servo:
-    self.pan_servo.angle = self.pan_angle    # only in real mode
-    self.tilt_servo.angle = self.tilt_angle  # only in real mode
-```
+On startup this is acceptable — `inicjalizuj()` runs before `_running = True` and before the camera capture thread serves frames to the main loop. The safe start is designed to block.
 
-This means: if `pigpiod` is not running and `_mock_mode=True`, the HUD will show moving `Pan:` and `Tilt:` values (software state), but the physical servos will not move. The developer may conclude the PID is working correctly based on HUD values, while the actual hardware is frozen.
-
-Conversely, if `_mock_mode=False` but `pigpiod` crashes or disconnects mid-session, subsequent `set_angles()` calls in gpiozero may silently fail or raise exceptions caught elsewhere, causing the physical servos to stop while the HUD continues to show "correct" values.
+The trap appears when `smooth_move_to()` is proposed as the fix for "jerky motion during scan." A developer sees jerky scan behavior, looks at `_skanuj()` which calls `set_angles()` directly, and decides to replace it with `smooth_move_to()`. This is wrong — `smooth_move_to()` is a one-shot blocking move, not a real-time incremental step function. Calling it inside `_skanuj()` (which runs every frame) would cause each scan step to block for up to 2+ seconds.
 
 **Why it happens:**
-`PanTiltSystem.__init__` catches `Exception` during gpiozero initialization and falls back to mock mode. The log message "Uruchamiono obsluge serw w srodowisku okrojonym MOCK" is the only indicator. If the developer is not watching startup logs carefully (especially when connecting via SSH), this message is easily missed.
+The name `smooth_move_to` suggests it is the right tool for any smooth motion. It is actually a Safe Start utility — it exists to prevent brownout at startup, not for real-time scan motion.
 
 **How to avoid:**
-1. At startup, explicitly log `maszyna.hardware._mock_mode` at INFO level in `TestTracker.uruchom()` before the main loop
-2. Add mock mode indicator to the HUD: append `[MOCK]` to the state label when `_mock_mode=True`
-3. Verify `pigpiod` is running before launching: `systemctl is-active pigpiod` must return `active`
+Scan smoothness must be achieved through the sinusoidal formula in `_skanuj()`, not by replacing `set_angles()` with `smooth_move_to()`. If scan appears jerky on hardware, investigate:
+1. PWM frame timing — is `pigpiod` running? Software PWM from RPi.GPIO produces visible jitter even at hardware GPIO
+2. Loop timing — is the main loop consistently executing at 30 FPS or dropping frames?
+3. Servo pulse calibration — default gpiozero `min_pulse_width=1ms, max_pulse_width=2ms` may not match MG90S physical range. MG90S typical: 0.5ms–2.4ms. Using defaults maps only the center portion of the servo's physical range, causing each angular step to produce less physical movement and non-linearity.
 
 **Warning signs:**
-- HUD shows Pan/Tilt values changing smoothly but physical servos do not move
-- Startup log contains "MOCK" after the hardware init line
-- `sudo systemctl status pigpiod` shows inactive or failed
+- System freezes for 2+ seconds between scan positions
+- Camera frames stop updating while servo is moving
+- `_skanuj()` log messages appear with multiple-second gaps
 
 **Phase to address:**
-Pre-flight diagnostic — add mock mode indicator to HUD and startup check before any hardware debugging.
+Phase 4 (smooth scan fix) — separate scan smoothness from servo hardware calibration. Address pulse width calibration as a hardware.py change, not a change to `_skanuj()`.
 
 ---
 
-### Pitfall 6: AWB Fallback Gains (2.5, 1.9) May Produce Wrong Colors for Specific Lighting
+### Pitfall 7: MG90S Pulse Width Defaults Cause Non-Linear Motion and Apparent Jerkiness
 
 **What goes wrong:**
-The fallback `AWB_FALLBACK_GAINS = (2.5, 1.9)` is used when `capture_metadata()["ColourGains"]` returns `None`. For IMX219 (Camera Module V2), typical indoor LED lighting has converged gains around `(1.6, 1.5)` to `(2.0, 1.7)`. A fallback of `(2.5, 1.9)` may produce a warm/yellow tint instead of blue, which will be reported as "AWB fix partially worked" or "different color problem."
+`PanTiltSystem.__init__` creates:
+```python
+self.pan_servo = AngularServo(pan_pin, min_angle=-90, max_angle=90, pin_factory=factory)
+self.tilt_servo = AngularServo(tilt_pin, min_angle=-90, max_angle=90, pin_factory=factory)
+```
 
-Additionally, `ColourGains = (r, b)` where `r` is red gain and `b` is blue gain — a high `r` value reduces red (counter-intuitive naming: the gain multiplies the channel, so a high value means the ISP is applying more red correction because the sensor has a red deficit). Outdoor daylight typically needs `(1.4, 1.8)`, indoor fluorescent needs `(1.7, 1.4)`. The fallback values should be empirically determined for the actual deployment lighting, not hardcoded from documentation examples.
+The gpiozero `AngularServo` default pulse widths are `min_pulse_width=1/1000` (1ms) and `max_pulse_width=2/1000` (2ms). The MG90S datasheet specifies 500µs–2400µs as the full range. The defaults only cover 1000–2000µs, which corresponds to roughly ±60° of the physical ±90° range. Within the covered range, the mapping is linear. Near the edges (approaching the ±60° soft limit), the servo may still physically move but the commanded steps produce smaller physical movement, appearing as "going dead" near limits.
+
+More importantly: if the actual servo's center position corresponds to a different pulse width than gpiozero's default midpoint (1500µs), `angle=0` will not produce physical 0°. The servo will appear to start off-center and the scan will not be symmetric.
 
 **Why it happens:**
-IMX219 color response depends on the lens module, the sensor revision, and ambient lighting. There is no universal "correct" fallback. The camera tuning file (`imx219.json`) has factory-calibrated defaults, but these are overridden when `ColourGains` is set manually.
+MG90S "typical" specs vary by manufacturer batch. The gpiozero defaults are for a generic 180° servo assuming 1ms–2ms = -90° to +90°. MG90S from some suppliers uses 500µs–2500µs for the full range. Using defaults causes the servo to only use the middle third of its physical range.
 
 **How to avoid:**
-Run the camera for 5 seconds in auto-AWB mode, then call `capture_metadata()["ColourGains"]` and log the result. Use that as the fallback value for the specific hardware and lighting environment. This value should be hardcoded per deployment, not fixed in source code.
+Calibrate pulse widths empirically. Start with the wider range:
+```python
+self.pan_servo = AngularServo(
+    pan_pin,
+    min_angle=-90, max_angle=90,
+    min_pulse_width=0.0005,   # 500µs
+    max_pulse_width=0.0024,   # 2400µs
+    pin_factory=factory
+)
+```
+Command angle=0, measure physical position. Command angle=+60, measure. If 60° command = 60° physical, calibration is correct. If not, adjust `min_pulse_width` and `max_pulse_width` until the physical movement matches the commanded angle. This affects scan amplitude accuracy and PID convergence.
 
 **Warning signs:**
-- Warm/yellow cast instead of blue (over-corrected red)
-- Skin tones look orange or green (wrong channel emphasis)
-- `capture_metadata()["ColourGains"]` after 5 seconds of auto-AWB shows values very different from the fallback
+- Servo moves but scan amplitude appears less than `SCAN_AMPLITUDE=45°` visually
+- Servo seems to stop responding before reaching angle limits (hits mechanical stop before software limit)
+- Center position (angle=0) does not visually center the camera
+- Scan pattern is not symmetric (larger swing one direction than the other)
 
 **Phase to address:**
-AWB fix — empirically determine correct fallback gains for the deployment environment before hardcoding.
+Phase 4 (smooth scan fix) — pulse width calibration is a hardware.py constant change. Do this before any PID gain tuning as it changes the effective gain of the servo actuator.
+
+---
+
+### Pitfall 8: DNN skip_every=5 Creates Stale BBox During Rapid Motion — PID Tracks Old Position
+
+**What goes wrong:**
+`DetekcjaTwarzy.wykryj()` runs DNN forward pass only when `klatka_licznik % DNN_SKIP_EVERY == 0`. Between forward passes, it returns `self._ostatni_bbox` unchanged — the last detected position. If the face moves rapidly (or the servo moves rapidly after entering TRACKING), the bounding box is stale for up to 4 frames. The PID corrects toward an old position, overshoots, and may exit TRACKING.
+
+At 10 FPS (which is realistic for the DNN path on RPi4), `skip_every=5` means forward pass runs at 2 FPS. Between forward passes, the bbox is 500ms stale. If the face is moving at 1 pixel/ms (normal head movement), the bbox center may be 500 pixels stale — larger than the entire 320px frame width.
+
+**Why it happens:**
+`skip_every=5` was set for computational efficiency (validated in Phase 13). But the TRACKING state uses bbox without any staleness weighting — it treats the 4-frame-old bbox as current ground truth.
+
+**How to avoid:**
+During TRACKING, add a bbox staleness flag: track which frame number produced the last DNN result. If the current frame is more than 2 frames past the last DNN result, reduce the PID correction weight or skip the correction entirely. Alternatively, use a CSRT tracker (as the main `vision.py` does) between DNN forward passes to propagate the bbox smoothly. For v1.9 scope, a simpler approach: reduce correction magnitude when using cached bbox, or only apply PID correction on frames where DNN ran.
+
+**Warning signs:**
+- Servo oscillates at 2 Hz during TRACKING (matching DNN forward pass frequency at 10 FPS with skip=5)
+- Convergence takes longer than expected given P gain
+- TRACKING exits to TARGET_LOST immediately after DNN forward pass that returns None (face moved, old bbox was accurate, new DNN detects nothing at old position)
+
+**Phase to address:**
+Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary PID fixes do not resolve escape behavior. Do not over-engineer this in v1.9; note as a known limitation.
 
 ---
 
@@ -252,11 +286,11 @@ AWB fix — empirically determine correct fallback gains for the deployment envi
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| Hardcoded `AWB_FALLBACK_GAINS` | No on-device tuning needed | Wrong colors in different lighting | Never — read from capture_metadata() at startup or make configurable |
-| `HAAR_MIN_NEIGHBORS=8` and `HAAR_MIN_SIZE=(80, 80)` | Zero false positives | System never detects faces in practice | Never — use (4, (40,40)) baseline, tune streak for false positive filtering |
-| Absolute `time.time()` in scan formula | Simple code | Phase offset arcsin fix has no effect on smooth resume | Acceptable until smooth resume is a requirement — replace with relative time reference |
-| `_mock_mode` silent in HUD | Clean display | Invisible hardware failure during debugging | Never during active debugging — always show mock mode in HUD |
-| Single `capture_metadata()` call for ColourGains | Simple code | Returns None on some Picamera2/libcamera combinations | Use configure-time `controls` dict as primary lock; metadata as secondary verification |
+| `AWB_FALLBACK_GAINS = (1.0, 1.0)` | "Neutral" fallback, no on-device tuning needed | Green tint — wrong for all IMX219 deployments | Never — replace with empirically read auto-converged values |
+| `set_angles(pan, 0.0)` hardcoded in `_skanuj()` | Simple code, tilt stays still during scan | Masks tilt hardware failures; no two-axis scan possible | Acceptable for pan-only scan intent — but must be explicitly documented as intentional |
+| `PID_OUTPUT_LIMIT = 10.0` with no entry-time damping | Simple constant limit | Saturated output at every TRACKING entry with large initial error | Acceptable if face is always near-centered; must add dead-zone or startup damping if face enters at frame edges |
+| `SERVO_STEP = 1.0` with `delay=0.05` in `smooth_move_to()` | Works for safe start | Inappropriate for real-time motion; calling in main loop blocks for seconds | Only for `inicjalizuj()` — never for real-time scan or tracking |
+| Default gpiozero pulse widths (1ms–2ms) | No calibration needed | Non-linear motion, wrong center position, limited range | Never for final hardware — calibrate min/max pulse widths to physical servo specification |
 
 ---
 
@@ -264,13 +298,15 @@ AWB fix — empirically determine correct fallback gains for the deployment envi
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Picamera2 AWB lock | `set_controls` before `start()` — silently ignored | Pass `controls={"ColourGains": gains}` in `create_video_configuration()`, also re-apply after `start()` + sleep |
-| Picamera2 AWB lock | Setting `AwbEnable: False` alongside `ColourGains` — sequencing conflict | Set only `ColourGains`; it implicitly disables AWB |
-| Picamera2 ColourGains | Integer tuple `(2, 1)` instead of float `(2.0, 1.0)` | Always pass explicit floats; int input causes TypeError on some Picamera2 versions |
-| gpiozero AngularServo | Assuming `pan_servo.angle` reads back hardware state | `pan_servo.angle` reads the last commanded value, not physical servo position — no encoder exists |
-| gpiozero AngularServo | Not verifying `pigpiod` is running before init | Init exception falls back to mock mode silently; check `systemctl is-active pigpiod` first |
-| simple_pid | Calling `pid.reset()` on face re-acquisition | Reset only at SCANNING entry — resetting during TRACKING loses integral that holds servo on target |
-| HAAR CascadeClassifier | Same `minNeighbors`/`minSize` as desktop detection | 320x240 frames require `minSize=(40,40)`, `minNeighbors=4` — desktop defaults miss faces entirely |
+| Picamera2 ColourGains | Setting `(1.0, 1.0)` as "neutral fallback" | Read auto-converged gains from `capture_metadata()` after 2s warm-up; use those as fallback |
+| Picamera2 ColourGains | Setting `(r, b)` before `start()` via `set_controls()` — silently ignored | Set in `create_video_configuration(controls=...)` for configure-time guarantee |
+| Picamera2 AWB lock | Not setting `AwbEnable: False` in the re-lock `set_controls()` call | Add `"AwbEnable": False` alongside `ColourGains` in the post-warm-up `set_controls()` call |
+| Picamera2 ColourGains | Integer tuple `(1, 1)` instead of float `(1.0, 1.0)` | Always pass `float(r), float(b)` — int input causes TypeError on some versions |
+| gpiozero AngularServo | Default pulse widths `1ms–2ms` for MG90S | Use `min_pulse_width=0.0005, max_pulse_width=0.0024` and verify physical angle at 0° |
+| gpiozero AngularServo | Calling `smooth_move_to()` in real-time scan/tracking loop | `smooth_move_to()` is blocking — only valid in `inicjalizuj()` before loop starts |
+| pigpio / gpiozero | Assuming `pan_servo.angle` reads back hardware position | `pan_servo.angle` reflects last commanded value only — no feedback from physical servo |
+| simple_pid | Not resetting PID on SCANNING entry after long TRACKING session | `_przejdz_do()` already resets on SCANNING entry — do NOT add reset on TRACKING entry, it discards valid integral |
+| DNN bbox skip | Using stale bbox as ground truth during TRACKING | Track `klatka_licznik` modulo; reduce weight or skip correction on non-DNN frames if oscillation detected |
 
 ---
 
@@ -278,23 +314,28 @@ AWB fix — empirically determine correct fallback gains for the deployment envi
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| `cv2.imshow` resize 2x every frame | High CPU on RPi4 | Resize only when display is active; skip in headless mode | Always on RPi4 — headless mode avoids this entirely |
-| HAAR on every frame at 320x240 | ~5ms/frame = 20% of 33ms budget | Acceptable at 320x240; DNN would need frame-skip | Breaks if resolution increases or DNN is substituted without frame-skip |
-| `capture_array("lores")` + `cvtColor` in capture thread | Extra copy per frame | Acceptable at 320x240; profile if latency increases | At higher resolutions or with multiple downstream consumers |
-| `time.sleep(2.0)` blocking in `Picamera2Stream.start()` | 2s startup delay | Expected and documented; do not reduce below 1s | Not a performance trap — necessary for AWB convergence |
+| `cv2.resize()` 2x in main loop | CPU spike, FPS drops | Skip resize in headless mode (already guarded) | At 320x240 to 640x480 resize, ~3ms/frame — acceptable at 10 FPS; expensive at 30 FPS |
+| DNN `forward()` in main loop thread without skip | 100ms+ per frame = 1 FPS | `skip_every=5` already in place; never remove | Breaks immediately without skip on RPi4 |
+| `time.sleep(0.01)` in capture thread | Caps camera FPS at ~100 frames/s | Correct for 320x240 — do not reduce below 0.005 | Not a trap at current resolution; becomes one if resolution increases |
+| `smooth_move_to()` blocking 2+ seconds | Camera freezes, state machine stalls | Only call at startup in `inicjalizuj()`, never in main loop | Always a trap if called in main loop at any scale |
+| PID integral accumulation between TRACKING sessions | Servo escape on next TRACKING entry | `pid.reset()` on SCANNING entry (already in `_przejdz_do()`) — verify it executes every transition | Breaks if `_przejdz_do()` is bypassed or if direct state assignment is used |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **AWB fix:** `ColourGains` log line appears in startup output — verify `R=` and `B=` values are non-zero and non-`(0.0, 0.0)`
-- [ ] **AWB fix:** Color is neutral from the very first frame — not just after 2 seconds of warm-up
-- [ ] **HAAR detection:** Green rectangles visible in HUD when face is 1m away, slightly off-angle — not only at 0.3m perfectly frontal
-- [ ] **Tilt tracking:** `Tilt:` HUD value changes when face is held above/below horizontal centerline
-- [ ] **Mock mode:** Startup log confirms `_mock_mode=False` and `PIGPIO_AVAILABLE=True`
-- [ ] **PID tracking:** TRACKING state sustained for at least 3 seconds without dropping to TARGET_LOST
-- [ ] **Scan resume:** No pan jerk visible when transitioning from TRACKING back to SCANNING
-- [ ] **Soft limits:** No continuous clamp warnings in logs during normal operation
+- [ ] **Tilt hardware**: `smooth_move_to(0, 20)` then `(0, 0)` at startup — verify physical tilt moves before touching state machine code
+- [ ] **Tilt sign**: Face held above center during TRACKING — verify `tilt_angle` increases in HUD (servo follows up, not down)
+- [ ] **AWB fix**: Color neutral from frame 1 — not just after 2s warm-up delay
+- [ ] **AWB fallback value**: Startup log shows `(R=X.XX, B=X.XX)` with both values above 1.4, not `(1.00, 1.00)`
+- [ ] **AWB stability**: Color does not drift after 30 seconds of TRACKING across different scene areas
+- [ ] **PID entry behavior**: Log `blad_pan` at every TRACKING entry — if above 100 pixels, entry-time damping needed
+- [ ] **PID convergence**: TRACKING sustained 5+ seconds with face roughly centered — servo not continuously clamping
+- [ ] **Clamp frequency**: Clamp warnings appear only at physical boundaries, not on every tracking tick
+- [ ] **Scan symmetry**: Camera sweeps equal angle left and right of center — verify `set_angles(0, 0)` is true physical center
+- [ ] **Pulse width calibration**: `angle=0` command produces visually centered camera; `angle=45` produces approximately 45° physical movement
+- [ ] **Mock mode**: Startup log confirms `PIGPIO_AVAILABLE=True` and `mock_mode=False` before any hardware test
+- [ ] **pigpiod active**: `systemctl is-active pigpiod` returns `active` before running any test
 
 ---
 
@@ -302,12 +343,14 @@ AWB fix — empirically determine correct fallback gains for the deployment envi
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Detection never triggers (HAAR too restrictive) | LOW | Reduce `HAAR_MIN_SIZE` to `(40,40)` and `HAAR_MIN_NEIGHBORS` to 4 in `test_tracker.py` constants — no architectural change |
-| AWB blue tint persists | LOW | Add `controls={"ColourGains": AWB_FALLBACK_GAINS}` to `create_video_configuration()` call — one line change at configure time |
-| AWB wrong fallback gains | LOW | Run camera for 5s in auto mode, read `capture_metadata()["ColourGains"]`, update `AWB_FALLBACK_GAINS` constant |
-| Mock mode active silently | LOW | Add `logger.info(f"Mock mode: {self._mock_mode}")` in `MaszynaStanow.__init__`; run `sudo pigpiod` if missing |
-| Phase offset non-convergent | MEDIUM | Replace `_scan_phase_offset` with `_scan_start_time` reference; change `_skanuj()` to use relative time |
-| Pan runaway (true PID sign bug) | LOW | Verify with `set_angles(+10, 0)` directly — confirm pan+ moves camera right; then re-derive sign from first principles |
+| Tilt frozen — hardware path not called | LOW | Add `smooth_move_to(0, 20)` test in `inicjalizuj()`; if physical tilt moves, hardware OK — problem is state machine |
+| Tilt inverted — servo moves wrong direction | LOW | Change `korekta_tilt = -self.pid_tilt(blad_tilt)` to `korekta_tilt = self.pid_tilt(blad_tilt)` — one sign change |
+| AWB green tint from (1.0, 1.0) fallback | LOW | Read `capture_metadata()["ColourGains"]` after 5s auto warm-up; update `AWB_FALLBACK_GAINS` constant with result |
+| AWB gains not holding after lock | LOW | Add `"AwbEnable": False` to the post-warm-up `set_controls()` call; verify with re-read |
+| PID escape on TRACKING entry | MEDIUM | Add per-entry correction cap: `min(abs(korekta_pan), 3.0) * sign(korekta_pan)` for first 5 ticks; add dead zone ±10 pixels |
+| Servo jitter from software PWM | LOW | Verify `pigpiod` running with `PiGPIOFactory`; already in `hardware.py` — check startup log for successful pigpio init |
+| Non-linear/wrong-range servo motion | LOW | Add `min_pulse_width=0.0005, max_pulse_width=0.0024` to `AngularServo()` constructor in `hardware.py`; verify physical angle |
+| Scan not smooth from sinusoid | MEDIUM | Check loop FPS — if below 10 FPS, scan appears stepped; reduce DNN `skip_every` or optimize main loop timing |
 
 ---
 
@@ -315,31 +358,33 @@ AWB fix — empirically determine correct fallback gains for the deployment envi
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| HAAR too restrictive — no detection | Phase 1: Detection fix | Green rectangles visible at 1m, slight angle; TRACKING sustained 3+ seconds |
-| Diagnosing PID without stable detection | Phase 1: Detection fix | Confirm TRACKING lasts 10+ frames before any PID analysis |
-| AWB blue tint — configure-time lock missing | Phase 2: AWB fix | Color neutral from frame 1; ColourGains lock log shows non-zero floats |
-| AWB fallback gains wrong for lighting | Phase 2: AWB fix | Read and log auto-settled gains; update `AWB_FALLBACK_GAINS` to match |
-| Mock mode invisible in HUD | Phase 0 (pre-flight) | Add `[MOCK]` to HUD state label; verify pigpiod active before run |
-| Phase offset non-convergent scan resume | Phase 3: Scan fix | No pan jerk at TRACKING→SCANNING transition |
-| Soft limits masking PID corrections | All phases | Clamp warning logs appear only at boundaries, not continuously |
+| Tilt frozen — scan hardcodes 0.0 / state machine never reaches TRACKING | Phase 1: tilt fix | `smooth_move_to(0, 20)` test moves physically; TRACKING state sustained with non-zero tilt |
+| Tilt inverted — wrong sign for physical mount | Phase 1: tilt fix | Face above center → tilt HUD increases; face below center → tilt HUD decreases |
+| AWB green tint from (1.0, 1.0) fallback | Phase 2: AWB fix | Fallback value above 1.4 in both channels; neutral skin tone from frame 1 |
+| AWB gains drifting after lock | Phase 2: AWB fix | `ColourGains` re-read after 30s matches locked value within ±0.1 |
+| PID escape on large initial error | Phase 3: PID/tracking fix | Clamp warnings absent for first 5 ticks of TRACKING; TRACKING sustained 5+ seconds |
+| DNN stale bbox during rapid motion | Phase 3: PID/tracking fix | No 2 Hz oscillation during TRACKING; secondary investigation only |
+| smooth_move_to() blocking in loop | Phase 4: smooth scan fix | Never call smooth_move_to() in scan — scan uses sinusoidal set_angles() only |
+| MG90S pulse width miscalibration | Phase 4: smooth scan fix | Physical angle matches commanded angle at 0°, ±45°; scan appears symmetric |
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence — direct code analysis)
-- `src/modes/test_tracker.py` — `HAAR_MIN_NEIGHBORS=8`, `HAAR_MIN_SIZE=(80, 80)`, `_przejdz_do()` phase offset formula, `Picamera2Stream.start()` AWB sequence, `_rysuj_hud()` HUD value source
-- `src/hardware.py` — `set_angles()` always updates software state regardless of `_mock_mode`; gpiozero init exception falls back to mock silently
-- `src/config.py` — `PAN_LIMIT_MIN=-60`, `TILT_LIMIT_MIN=-30`, PID gains; `SCAN_AMPLITUDE=45.0`, `SCAN_FREQUENCY=0.1`
+- `src/modes/test_tracker.py` — `AWB_FALLBACK_GAINS = (1.0, 1.0)`, `_skanuj()` hardcoded tilt=0.0, `pid.output_limits = (-10.0, 10.0)`, `DNN_SKIP_EVERY = 5`, double negation in `_sledz()`
+- `src/hardware.py` — `AngularServo(min_angle=-90, max_angle=90)` with no pulse width calibration; `smooth_move_to()` blocking while-loop with `time.sleep(0.05)`, `set_angles()` software-state updates regardless of `_mock_mode`
+- `src/config.py` — `PID_PAN_P = 0.05`, `PAN_LIMIT_MIN = -60`, `TILT_LIMIT_MIN = -30`, `SERVO_STEP = 1.0`
+- `.planning/PROJECT.md` — v1.9 problem statement; v1.7 "tilt negation fix" history; v1.8 "ColourGains=(1.0,1.0) turned blue→green" history
 
-### Secondary (MEDIUM-HIGH confidence — verified community sources)
-- [GitHub raspberrypi/picamera2 issue #977](https://github.com/raspberrypi/picamera2/issues/977) — AwbMode has no effect on Bookworm 64-bit (March 2024); `ColourGains` direct set is the working workaround
-- [GitHub raspberrypi/picamera2 issue #933](https://github.com/raspberrypi/picamera2/issues/933) — Maintainer: "setting a control value does not mean it has happened immediately"; controls in `create_video_configuration()` apply at configure time and guarantee first-frame values
-- [GitHub raspberrypi/picamera2 issue #825](https://github.com/raspberrypi/picamera2/issues/825) — `AwbEnable: False` + `ColourGains` in same `set_controls()` causes sequencing conflicts; set only `ColourGains`
-- [GitHub raspberrypi/picamera2 discussions #592](https://github.com/raspberrypi/picamera2/discussions/592) — Maintainer confirms: setting `ColourGains` implicitly disables AWB; `capture_metadata()["ColourGains"]` returns settled auto values; `(0.0, 0.0)` means AWB still running
-- [RPi Forums t=365052](https://forums.raspberrypi.com/viewtopic.php?t=365052) — AWB lock sequence: `set_controls` must follow `configure`; engineer confirms `calling configure wipes out any other settings`
-- OpenCV HAAR documentation — `minNeighbors=3` is the standard default; values above 5 significantly reduce detection rate; `minSize` must be scaled for target resolution
+### Secondary (MEDIUM-HIGH confidence — official and community sources)
+- [Picamera2 issue #322](https://github.com/raspberrypi/picamera2/issues/322) — AWB disable preserves CCM at moment of disable; `ColourGains=(1.0, 1.0)` does not produce neutral white on IMX219
+- [Picamera2 issue #825](https://github.com/raspberrypi/picamera2/issues/825) — `AwbEnable: False` + `ColourGains` in same `set_controls()` call causes sequencing issues on some Bookworm versions
+- [Picamera2 issue #933](https://github.com/raspberrypi/picamera2/issues/933) — maintainer: controls in `create_video_configuration()` are guaranteed to apply at configure time; `set_controls()` after `start()` takes 2–3 frames
+- [gpiozero RPi Forums #331790](https://forums.raspberrypi.com/viewtopic.php?t=331790) — MG90S-class servos require 500–2500µs range; default 1000–2000µs gpiozero defaults produce limited motion
+- [gpiozero documentation 2.0.1](https://gpiozero.readthedocs.io/en/stable/api_output.html) — `AngularServo` `min_pulse_width` and `max_pulse_width` parameters; PiGPIOFactory for hardware PWM
+- [Anti-windup via output clamping — simple_pid](https://github.com/m-lundberg/simple-pid) — `output_limits` provides clamping; `reset()` clears integral; derivative-on-measurement available via constructor flag
 
 ---
-*Pitfalls research for: v1.8 Critical Hardware Fix — ARIES-LITE RPi4 pan-tilt face tracker*
+*Pitfalls research for: v1.9 Stabilizacja Ruchu i Obrazu — ARIES-LITE RPi4 pan-tilt face tracker*
 *Researched: 2026-03-29*

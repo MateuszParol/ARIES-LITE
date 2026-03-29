@@ -1,417 +1,384 @@
 # Architecture Research
 
-**Domain:** Embedded real-time face tracking (RPi4) — v1.8 Critical Hardware Fix
+**Domain:** Embedded real-time vision + servo control (RPi4 / Picamera2 / PID) — v1.9 Stabilizacja Ruchu i Obrazu
 **Researched:** 2026-03-29
-**Confidence:** HIGH (bezpośredni audit kodu v1.7 + kontekst hardware z PROJECT.md/STATE.md)
+**Confidence:** HIGH (kod odczytany bezpośrednio, bugi przetracowane do konkretnych linii)
+
+---
 
 ## Standard Architecture
 
-### System Overview — istniejąca architektura (v1.7, stan wejściowy dla v1.8)
+### System Overview (stan aktualny — ścieżka test trackera)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    run_test_tracker.py                           │
-│                    TestTracker.uruchom()                         │
-├─────────────────────────────────────────────────────────────────┤
-│  WARSTWA WEJŚCIA                                                 │
-│  ┌─────────────────────────────────────────────────────────┐    │
-│  │  Picamera2Stream (wątek daemon)                          │    │
-│  │  YUV420 lores (320x240) → BGR konwersja                  │    │
-│  │  AWB: sleep(2) → capture_metadata() → set_controls()    │    │
-│  │  [PROBLEM v1.8: brak AwbEnable:False, logi niewystarczające] │
-│  └──────────────────────────┬──────────────────────────────┘    │
-│                             │ odczytaj() → Optional[np.ndarray] │
-├─────────────────────────────┼───────────────────────────────────┤
-│  WARSTWA DETEKCJI                                                │
-│  ┌──────────────────────────▼──────────────────────────────┐    │
-│  │  DetekcjaTwarzy.wykryj()                                 │    │
-│  │  HAAR cascade + streak filter (N=3)                      │    │
-│  │  minNeighbors=8, minSize=(80,80)                         │    │
-│  │  [PROBLEM v1.8: brak zielonych prostokątów na hardware,  │    │
-│  │   wymaga idealnej pozycji frontalnej]                    │    │
-│  └──────────────────────────┬──────────────────────────────┘    │
-│                             │ Optional[Tuple[x, y, w, h]]       │
-├─────────────────────────────┼───────────────────────────────────┤
-│  WARSTWA STEROWANIA                                              │
-│  ┌──────────────────────────▼──────────────────────────────┐    │
-│  │  MaszynaStanow.tick(bbox, w, h)                          │    │
-│  │  SCANNING → TRACKING → TARGET_LOST → SCANNING            │    │
-│  │  _sledz(): PID dual-axis → korekta → set_angles()        │    │
-│  │  [PROBLEM v1.8: TILT zamrożony na 0.0 w HUD,            │    │
-│  │   PAN ucieka do limitu — brak logów diagnostycznych]    │    │
-│  └──────────────────────────┬──────────────────────────────┘    │
-│                             │ set_angles(pan, tilt)              │
-├─────────────────────────────┼───────────────────────────────────┤
-│  WARSTWA HARDWARE                                                │
-│  ┌──────────────────────────▼──────────────────────────────┐    │
-│  │  PanTiltSystem.set_angles()                              │    │
-│  │  soft limits → WARNING log → pan/tilt_angle → H-PWM     │    │
-│  │  GPIO12 (pan), GPIO13 (tilt), pigpiod                    │    │
-│  │  [STATUS: poprawny, logi clampa już działają]            │    │
-│  └──────────────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────────────┤
-│  WARSTWA HUD                                                     │
-│  _rysuj_hud() → cv2.imshow 640x480 (lub headless fallback)      │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Przepływ danych per-klatka (główna pętla uruchom())
-
-```
-klatka = kamera.odczytaj()               # None → sleep(0.01), skip
-    ↓
-bbox = detekcja.wykryj(klatka)           # HAAR + streak → Optional bbox
-    ↓
-stan = maszyna.tick(bbox, w, h)          # State machine + PID → set_angles()
-    ↓
-resetuj_streak() przy TARGET_LOST entry  # (stan==TARGET_LOST && poprzedni==TRACKING)
-    ↓
-_rysuj_hud(klatka, bbox, stan)           # cv2 overlay: bbox rect, stan, kąty, FPS
-    ↓
-cv2.imshow(resize 2x → 640x480)          # lub headless fallback
+run_test_tracker.py
+    │
+    └─ TestTracker.uruchom()
+           │
+           ├─ Picamera2Stream.odczytaj()                ← kamera YUV420 320x240
+           │       └─ _petla_przechwytywania()          ← daemon thread
+           │              capture_array("lores")
+           │              → cvtColor(YUV420p2BGR)       ← BUG-3: powinno 2RGB → zielony tint
+           │
+           ├─ DetekcjaTwarzy.wykryj()                   ← DNN co DNN_SKIP_EVERY=5 klatek + streak=3
+           │
+           └─ MaszynaStanow.tick()
+                   │
+                   ├─ SCANNING → _skanuj()
+                   │       set_angles(pan=sin(t), tilt=0.0)   ← BUG-1: tilt zawsze 0 podczas skanowania
+                   │       DNN blokuje co 5 klatek ~150ms      ← BUG-2: nieregularny interwał → szarpanie
+                   │
+                   ├─ SCANNING→TRACKING: _przejdz_do(TRACKING)
+                   │       brak PID reset()                    ← BUG-4: nagromadzony integral powoduje ucieczkę
+                   │
+                   ├─ TRACKING → _sledz()
+                   │       PID(blad_pan/tilt) → korekta → set_angles()
+                   │       [poprawna logika, ale przez BUG-4 initial output może być duży]
+                   │
+                   └─ PanTiltSystem.set_angles(pan, tilt)
+                           pan_servo.angle = pan_clamped    ← GPIO 12, pigpiod H-PWM
+                           tilt_servo.angle = tilt_clamped  ← GPIO 13, pigpiod H-PWM
 ```
 
 ### Component Responsibilities
 
-| Komponent | Odpowiedzialność | Plik | Status v1.8 |
-|-----------|-----------------|------|-------------|
-| `Picamera2Stream` | Przechwytywanie YUV420→BGR w tle, retry, AWB lock | `test_tracker.py` | MODYFIKOWANY |
-| `DetekcjaTwarzy` | HAAR + streak filter, wybór największej twarzy | `test_tracker.py` | ZASTĘPOWANY |
-| `MaszynaStanow` | Przejścia stanów, PID dual-axis, sinusoidal scan | `test_tracker.py` | MODYFIKOWANY (_sledz) |
-| `PanTiltSystem` | Soft limits, zapis kątów, H-PWM pigpiod | `hardware.py` | BEZ ZMIAN |
-| `TestTracker` | Orkiestrator: łączy warstwy, HUD, graceful shutdown | `test_tracker.py` | MINIMALNE ZMIANY |
+| Komponent | Plik | Odpowiedzialność | Dotknięty przez fix |
+|-----------|------|------------------|---------------------|
+| `Picamera2Stream` | `test_tracker.py:55–170` | Capture YUV420→BGR, AWB lock, retry | BUG-3: zmiana stałej cvtColor |
+| `DetekcjaTwarzy` | `test_tracker.py:173–239` | DNN inference co 5 klatek, streak filter | Pośrednio BUG-2 (DNN blokuje pętlę) |
+| `MaszynaStanow` | `test_tracker.py:242–345` | State machine + dual-axis PID + skanowanie | BUG-1, BUG-2, BUG-4 |
+| `PanTiltSystem` | `hardware.py:15–109` | Servo abstraction, soft limits, smooth_move_to | Bez zmian |
+| `TestTracker` | `test_tracker.py:348–468` | Orchestrator: camera + detect + tick + HUD | Bez zmian |
 
-## Recommended Project Structure
+---
 
-Struktura plików pozostaje niezmieniona. Wszystkie zmiany v1.8 mieszczą się w jednym pliku:
+## Recommended Project Structure (niezmieniona)
+
+Wszystkie 4 fixy mieszczą się w jednym pliku — `src/modes/test_tracker.py`.
+Żaden fix nie wymaga zmian w `hardware.py`, `config.py` ani `run_test_tracker.py`.
 
 ```
-src/
-├── modes/
-│   └── test_tracker.py     # JEDYNY plik modyfikowany w v1.8:
-│                           #  - Picamera2Stream.start(): AWB diagnostics + AwbEnable:False
-│                           #  - DetekcjaTwarzy → DetekcjaTwarzyDNN (nowa klasa, ten sam interfejs)
-│                           #  - MaszynaStanow._sledz(): logi diagnostyczne PID (P1-P4)
-├── hardware.py             # BEZ ZMIAN
-├── config.py               # EWENTUALNE ROZSZERZENIE o próg pewności DNN
-└── ...
+ARIES-LITE/
+├── src/
+│   ├── config.py               # stałe — bez zmian
+│   ├── hardware.py             # PanTiltSystem — bez zmian
+│   └── modes/
+│       └── test_tracker.py     # JEDYNY plik modyfikowany (wszystkie 4 fixy)
+├── models/                     # DNN weights — bez zmian
+├── run_test_tracker.py         # entry point — bez zmian
+└── requirements.txt            # bez zmian
 ```
 
-Uzasadnienie: Jeden plik = minimalne ryzyko regresji w stabilnych warstwach (hardware, flask).
-Nie tworzymy pakietu `detectors/` — nowa klasa detektora to ~40 linii kodu wewnątrz
-tego samego pliku.
+---
 
 ## Architectural Patterns
 
-### Pattern 1: Zamiana detektora — interfejs bez zmiany orkiestratora
+### Pattern 1: Izolacja zmian w jednym pliku
 
-**Co:** Kontrakt `wykryj(klatka) → Optional[Tuple[int,int,int,int]]` pozostaje niezmieniony.
-`TestTracker.uruchom()` nie wie nic o technologii detekcji. Podmiana to wyłącznie zmiana
-jednej linii w `TestTracker.__init__` oraz nowa klasa z tym samym interfejsem publicznym.
+**Co:** Wszystkie 4 fixy dotyczą `src/modes/test_tracker.py`. Brak zmian w stabilnych modułach
+(`hardware.py`, `config.py`, `run_test_tracker.py`).
 
-**Kiedy:** Zawsze przy zamianie HAAR na DNN/MediaPipe w v1.8.
+**Dlaczego:** Minimalizuje ryzyko regresji. `hardware.py` i `config.py` są sprawdzone empirycznie
+na RPi4. Każda zmiana tam wymaga ponownej weryfikacji sprzętowej.
 
-**Trade-offs:** Pros — zero zmian w orkiestratorze, maszynie stanów i HUD.
-Cons — jeśli nowy detektor zwraca coords relatywne (0.0–1.0), trzeba je skonwertować
-do pikseli wewnątrz nowej klasy zanim wróci `Tuple[int,int,int,int]`.
+**Trade-off:** Gęsty plik modułu. Akceptowalne dla projektu tej skali (solo developer, embedded).
 
-**Punkt integracji:**
+---
+
+### Pattern 2: YUV420 konwersja — BUG-3 (green tint)
+
+**Co:** `cv2.COLOR_YUV420p2BGR` zamienia kanały R i B w konwersji YUV→BGR.
+Wynik ma kanały B i R zamienione — obraz wygląda jak dominacja kanału G (zielony tint)
+bo czerwień i niebieskość trafiają na złe pozycje.
+
+**Mechanism:** Picamera2 dostarcza YUV420 z libcamera. Konwencja nazewnictwa libcamera
+i OpenCV są wzajemnie odwrócone. Oficjalny przykład Picamera2 (`examples/yuv_to_rgb.py`)
+używa `cv2.COLOR_YUV420p2RGB` aby uzyskać poprawny BGR dla OpenCV.
+
+**Potwierdzenie:** GitHub issue #848 raspberrypi/picamera2 — maintainer dodał ostrzeżenie
+do dokumentacji o tym zachowaniu. Oficjalny plik przykładowy potwierdza `COLOR_YUV420p2RGB`.
+
+**Lokalizacja buga:** `test_tracker.py:118` w `_petla_przechwytywania()`:
 ```python
-# TestTracker.__init__() — linia 299–301 — jedyna zmiana w orkiestratorze:
-# PRZED:
-self.detekcja = DetekcjaTwarzy()
-# PO:
-self.detekcja = DetekcjaTwarzyDNN()   # ten sam interfejs wykryj() i resetuj_streak()
-
-# uruchom() linia 332 — NIE zmienia się:
-bbox = self.detekcja.wykryj(klatka)
+# PRZED (błąd):
+klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)
+# PO (fix):
+klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2RGB)
 ```
 
-**Rekomendowany detektor: OpenCV DNN z modelem YuNet (`face_detection_yunet_2023mar.onnx`)**
-- Model ~380 KB, wbudowany w `cv2.FaceDetectorYN` od OpenCV 4.5.4
-- Działa na CPU RPi4 ~20-30ms/klatka (15-20 FPS pipeline)
-- Nie wymaga dodatkowych instalacji poza `opencv-python`
-- Zwraca bbox + confidence — prosty filtr progu
+**Note:** Istniejący mechanizm AWB lock (sleep 2s → capture_metadata → set_controls) jest
+architekturalnie poprawny. Zielony tint pochodzi z błędnej konwersji YUV, nie z AWB.
+`G stały, niezależny od sceny` — to klasyczny objaw R↔B swap, nie problem gain.
+Kanał G w libcamera ColourGains jest zawsze 1.0 (tylko R i B są regulowane przez ColourGains).
 
-**Alternatywa: MediaPipe BlazeFace**
-- Szybszy (~15ms) ale wymaga `pip install mediapipe` (~100MB) — ciężkie na RPi4
-- Wyższe opóźnienie przy imporcie, bardziej skomplikowany setup
-- Rekomendacja: użyć YuNet najpierw; MediaPipe jako fallback jeśli YuNet niedokładny
+**Confidence:** HIGH — potwierdzone oficjalnym przykładem i issue trackerem Picamera2.
 
-### Pattern 2: Dodanie logów PID bez zmiany logiki sterowania
+---
 
-**Co:** `MaszynaStanow._sledz()` to jedyne miejsce produkcji wyjścia PID i wywołania
-`set_angles()`. Cała diagnostyka PID ląduje tu — bez modyfikacji innych metod.
+### Pattern 3: Tilt w skanowaniu — BUG-1
 
-**Kiedy:** Debugowanie zamrożonego tilta (HUD `Tilt:+0.0`) i runaway pana.
+**Co:** `_skanuj()` hardkoduje `tilt=0.0` zawsze (`test_tracker.py:302`).
+Serwo tilt stoi w miejscu podczas skanowania. Twarze na różnych wysokościach nie są wykrywane.
 
-**Trade-offs:** Pros — precyzyjne pomiary w 4 punktach (błąd → wyjście PID → korekta →
-po clampie) bez szumu z innych ścieżek. Cons — przy 20 FPS logi zalewają stderr;
-throttle co 10-30 klatek lub użycie `logger.debug` (aktywny tylko przy `--log-level DEBUG`).
+**Root cause:** Implementacja skanowania jest 1D (tylko oś pan).
 
-**Punkty pomiarowe w _sledz():**
+**Fix:** Dodać sinusoidę tilt z inną częstotliwością (Lissajous pattern pokrywa 2D przestrzeń):
+
+Nowe stałe modułowe (dodać do sekcji L25–36):
 ```python
-def _sledz(self, bbox, w, h):
-    x, y, bw, bh = bbox
-    srodek_x = x + bw // 2
-    srodek_y = y + bh // 2
-    ramka_cx = w // 2
-    ramka_cy = h // 2
-
-    blad_pan  = srodek_x - ramka_cx  # P1: błąd w pikselach
-    blad_tilt = srodek_y - ramka_cy
-
-    korekta_pan  = -self.pid_pan(blad_pan)    # P2: wyjście PID w stopniach
-    korekta_tilt = -self.pid_tilt(blad_tilt)
-
-    nowy_pan  = self.hardware.pan_angle + korekta_pan   # P3: żądany kąt przed clampem
-    nowy_tilt = self.hardware.tilt_angle + korekta_tilt
-
-    # DODAĆ — diagnostyka (throttle: co 10 klatek lub logger.debug):
-    logger.debug(
-        f"PID sledz: "
-        f"err=({blad_pan:+.1f}px,{blad_tilt:+.1f}px) "
-        f"korekta=({korekta_pan:+.3f}deg,{korekta_tilt:+.3f}deg) "
-        f"cur=({self.hardware.pan_angle:+.1f},{self.hardware.tilt_angle:+.1f}) "
-        f"req=({nowy_pan:+.1f},{nowy_tilt:+.1f})"
-    )
-
-    self.hardware.set_angles(nowy_pan, nowy_tilt)
-    # P4: hardware.pan_angle / tilt_angle po set_angles() = wartości po clampie
-    # Logi WARNING clampa już istnieją w PanTiltSystem.set_angles() — nie duplikować
+SCAN_AMPLITUDE_TILT = 15.0    # mniejszy zakres niz pan — limit TILT_LIMIT_MAX=30
+SCAN_FREQUENCY_TILT = 0.07    # wolniejszy od pan — unika powtorzenia trasy
 ```
 
-**Diagnoza na podstawie logów:**
-
-| Objaw | P1 (błąd) | P2 (korekta) | P4 (po clampie) | Wniosek |
-|-------|-----------|--------------|-----------------|---------|
-| Tilt=0 w HUD, twarz nie wycentrowana | `blad_tilt != 0` | `korekta_tilt != 0` | `tilt_angle = 0` | clamp w set_angles lub serwo nie reaguje |
-| Tilt=0 w HUD, brak detekcji | `blad_tilt = 0` | `korekta_tilt = 0` | `tilt_angle = 0` | bbox=None, detekcja nie działa |
-| PAN ucieka od razu | `blad_pan mały` | `korekta_pan duża` | WARNING: clamp | wzmocnienie PID za duże lub błędny sign |
-| PAN ucieka od razu | `blad_pan rośnie` | `korekta_pan rośnie` | — | pozytywne sprzężenie — błędny sign korekty |
-
-### Pattern 3: AWB diagnostics — weryfikacja mechanizmu lock
-
-**Co:** Mechanizm AWB lock (sleep 2s → capture_metadata → set_controls) jest poprawny
-architekturalnie. Problem v1.8: brak potwierdzenia że lock faktycznie zadziałał + brak
-`AwbEnable: False` powoduje że AWB może nadpisać gains po locku.
-
-**Kiedy:** Blue tint od startu lub chwilowy tint po dłuższej pracy.
-
-**Trade-offs:** Pros — zero ryzyka, tylko logi + jeden parametr. Cons — nie naprawia
-złych gains automatycznie (ale logi umożliwiają ręczne dostrojenie fallback).
-
-**Punkt integracji — Picamera2Stream.start() linie 78-87:**
+Zmodyfikowana metoda (L299–303):
 ```python
-# Po istniejącym sleep(2.0) i capture_metadata():
-logger.info(f"AWB metadata kompletna: {metadata}")   # pełny dump — ujawnia AwbEnable, ColourGains, etc.
-
-gains = metadata.get("ColourGains")
-if gains is None:
-    logger.warning("ColourGains niedostępne, używam fallback (2.5, 1.9)")
-    gains = AWB_FALLBACK_GAINS
-
-# ZMIANA: dodać AwbEnable: False — wyłącza dalsze modyfikacje przez algorytm AWB
-self._picam2.set_controls({
-    "AwbEnable": False,    # KLUCZOWE — bez tego AWB może nadpisać ColourGains po locku
-    "ColourGains": gains
-})
-r, b = gains
-logger.info(f"ColourGains zablokowane (AWB disabled): R={r:.2f}, B={b:.2f}")
+def _skanuj(self) -> None:
+    """Skanowanie Lissajous: pan = A_pan * sin(2π*f_pan*t), tilt = A_tilt * sin(2π*f_tilt*t)."""
+    t = time.time()
+    pan = SCAN_AMPLITUDE * math.sin(2.0 * math.pi * SCAN_FREQUENCY * t + self._scan_phase_offset)
+    tilt = SCAN_AMPLITUDE_TILT * math.sin(2.0 * math.pi * SCAN_FREQUENCY_TILT * t)
+    self.hardware.set_angles(pan, tilt)
 ```
 
-**Drugi punkt integracji — reinit w _petla_przechwytywania linie 122-127:**
-Ta sama zmiana musi być w `create_video_configuration` w ścieżce reinit, żeby AWB
-był wyłączony po reinicjalizacji kamery przy błędzie.
+**Note tilt w TRACKING:** W trybie TRACKING tilt działa poprawnie — `_sledz()` oblicza
+`nowy_tilt = hardware.tilt_angle + korekta_tilt` i wysyła do `set_angles()`. Serwo tilt
+nie reaguje w TRACKING tylko gdy: (a) twarz jest idealnie wycentrowana wertykalnie (blad_tilt=0)
+— co jest poprawnym zachowaniem, lub (b) BUG-4 powoduje ucieczke zanim tilt zdaży reagować.
+
+**Confidence:** HIGH — analiza kodu.
+
+---
+
+### Pattern 4: Smooth scanning — BUG-2 (szarpanie)
+
+**Co:** DNN inference blokuje pętlę co `DNN_SKIP_EVERY=5` klatek (~50–150ms na RPi4).
+W tym czasie `set_angles()` nie jest wywoływane. Po powrocie z inference, pętla wysyła
+wartość `sin(time.time())` — serwo skacze do nowej pozycji bez interpolacji.
+
+**Mechanism:** Pętla główna nie ma stałego timingu. DNN blokuje: 5 szybkich klatek
+(brak inference, ~2ms każda) + 1 wolna klatka (DNN ~50–150ms). Serwo odbiera:
+5 regularnych sygnałów → długa przerwa → jeden duży skok → 5 regularnych → itd.
+
+**Fix options:**
+
+*Opcja A — minimalna (zmiana DNN_SKIP_EVERY):*
+Zwiększyć `DNN_SKIP_EVERY` z 5 do 10. Mniej stallów DNN = rzadsze, ale nie mniejsze skoki.
+Zmiana jednej stałej. Weryfikacja: czy skoki są subiektywnie mniejsze.
+
+*Opcja B — właściwa (servo control thread):*
+Oddzielić wątek servo od pętli detekcji:
+- Pętla główna: oblicza `target_pan`, `target_tilt` (bez `set_angles()`)
+- Servo thread: co 50ms interpoluje aktualną pozycję w kierunku target, woła `set_angles()`
+- Komunikacja: `threading.Lock` + dwa float volatile (target_pan, target_tilt)
+
+*Opcja C — prosta interpolacja w pętli:*
+Nie wysyłać `set_angles()` bezpośrednio z `_skanuj()`. Zamiast tego: każdy tick porównuje
+aktualny kąt z docelowym i wykonuje krok max `SERVO_STEP=1.0°`. Przy 10 FPS pipeline
+i kroku 1°, skok może wynosić max 1° na tick zamiast 10°+.
+
+**Recommendation:** Etap 1: zmień `DNN_SKIP_EVERY=10` (minimalne ryzyko, szybka weryfikacja).
+Jeśli skoki nadal widoczne — wdrożyć Opcja B (servo thread).
+
+**Files changed:** `test_tracker.py` — stała `DNN_SKIP_EVERY` L29 lub nowy wątek.
+
+---
+
+### Pattern 5: PID reset przy TRACKING entry — BUG-4
+
+**Co:** `_przejdz_do()` (L336–345) resetuje PID tylko przy wejściu w `STATE_SCANNING`.
+Przy SCANNING→TRACKING, integral accumulator PID zachowuje wartość z poprzedniej sesji.
+
+**Mechanism:**
+- Poprzednia sesja TRACKING trwa 5s z twarzą 50px poza centrum (blad_tilt=50)
+- Integral ≈ `50 * (5s / 0.033s_sample_time)` = 7575 "pixel-ticks"
+- `simple-pid` output_limits klampuje OUTPUT ale nie integral (windup nadal rośnie)
+- Po powrocie do SCANNING → twarz znika → TARGET_LOST → SCANNING → nowa twarz → TRACKING
+- Przy pierwszym `_sledz()` tick: `I * integral = 0.001 * 7575 = 7.57°` → klampa do 10°
+- Serwo natychmiast skacze do limitu zanim twarz zdąży być stabilnie wycentrowana
+
+**Fix:** Dodać `reset()` przy wejściu w TRACKING:
+```python
+def _przejdz_do(self, nowy_stan: str) -> None:
+    logger.info(f"Zmiana stanu: {self.stan} → {nowy_stan}")
+    self.stan = nowy_stan
+    self._czas_ostatniego_celu = time.time()
+    if nowy_stan == config.STATE_SCANNING:
+        self.pid_pan.reset()
+        self.pid_tilt.reset()
+        raw = self.hardware.pan_angle / SCAN_AMPLITUDE
+        self._scan_phase_offset = math.asin(max(-1.0, min(1.0, raw)))
+    elif nowy_stan == config.STATE_TRACKING:     # NOWE
+        self.pid_pan.reset()                     # NOWE
+        self.pid_tilt.reset()                    # NOWE
+```
+
+**Dlaczego `reset()` jest bezpieczne:** `simple-pid reset()` zeruje integral i last_error.
+Przy pierwszym `_sledz()` po reset, PID startuje od 0 — output = P * blad + 0 + D * blad.
+To jest poprawne zachowanie przy wejściu w nowe śledzenie. Bez reset() system startuje
+z "pamięcią" poprzedniej sesji — błędne.
+
+**Confidence:** HIGH — `simple-pid` dokumentuje `reset()` jako oczyszczenie stanu wewnętrznego.
+Zasada sterowania: zawsze resetuj PID przy wejściu do nowego trybu sterowania.
+
+---
 
 ## Data Flow
 
-### Przepływ detekcji — nowy detektor YuNet (OpenCV DNN)
+### Przepływ po zastosowaniu wszystkich fixów
 
 ```
-klatka BGR (320x240)
+Picamera2 (YUV420)
     ↓
-DetekcjaTwarzyDNN.wykryj(klatka)
-    ├─ cv2.FaceDetectorYN.detect(klatka)
-    │   → (retval, faces) gdzie faces: ndarray shape (N, 15)
-    │     [x, y, w, h, x_re, y_re, x_le, y_le, x_nt, y_nt, x_rcm, y_rcm, x_lcm, y_lcm, score]
-    ├─ filtr: faces[i, 14] >= DNN_CONFIDENCE_THRESHOLD (np. 0.5)
-    ├─ wybór największej twarzy wg faces[i, 2] * faces[i, 3]
-    ├─ streak filter (identyczny mechanizm jak HAAR — reużyty)
-    └─ return (int(x), int(y), int(w), int(h))  ← ten sam typ co HAAR
+cvtColor(YUV420p2RGB)           ← [FIX-3: poprawna konwersja, brak zielonego tintu]
+    ↓
+DetekcjaTwarzy.wykryj()         ← DNN co DNN_SKIP_EVERY klatek (zwiększone do 10)
+    ↓
+MaszynaStanow.tick(bbox, w, h)
+    │
+    ├─ SCANNING → _skanuj()
+    │       pan = A_pan * sin(2π * f_pan * t + offset)
+    │       tilt = A_tilt * sin(2π * f_tilt * t)      ← [FIX-1: tilt skanuje sinusoidą]
+    │       set_angles(pan, tilt)
+    │       [DNN_SKIP_EVERY=10 → rzadsze stalle]       ← [FIX-2: mniej szarpania]
+    │
+    ├─ SCANNING→TRACKING: _przejdz_do(TRACKING)
+    │       pid_pan.reset()                             ← [FIX-4: czysty start PID]
+    │       pid_tilt.reset()
+    │
+    └─ TRACKING → _sledz()
+            blad_pan  = face_cx - frame_cx
+            blad_tilt = face_cy - frame_cy
+            korekta_pan  = -pid_pan(blad_pan)
+            korekta_tilt = -pid_tilt(blad_tilt)
+            set_angles(pan + Δpan, tilt + Δtilt)        ← tilt reaguje poprawnie
+            ↓
+    PanTiltSystem.set_angles(pan_clamped, tilt_clamped)
+    pan_servo.angle = pan_clamped   ← GPIO 12, pigpiod
+    tilt_servo.angle = tilt_clamped ← GPIO 13, pigpiod
 ```
 
-### Przepływ PID z diagnostyką (v1.8)
+---
+
+## Integration Points — macierz zmian
+
+| Fix | Plik | Linia | Metoda | Typ zmiany | Ryzyko |
+|-----|------|-------|--------|------------|--------|
+| BUG-1: tilt scanning | `test_tracker.py` | L25–36, L299–303 | moduł top + `_skanuj` | MODIFY — +stałe, +sin tilt | NISKIE |
+| BUG-2: smooth scan | `test_tracker.py` | L29 | stała `DNN_SKIP_EVERY` | MODIFY — wartość 5→10 | NISKIE |
+| BUG-3: green tint | `test_tracker.py` | L118 | `_petla_przechwytywania` | MODIFY — stała cvtColor | MINIMALNE |
+| BUG-4: PID escape | `test_tracker.py` | L336–345 | `_przejdz_do` | MODIFY — +2 linie reset | NISKIE |
+
+**Pliki NIE zmieniane:**
+- `src/hardware.py` — `PanTiltSystem` jest poprawny, logi WARNING na clamp już istnieją
+- `src/config.py` — stałe PID i limity serw są OK; nowe stałe scan tilt trafią do `test_tracker.py`
+- `run_test_tracker.py` — entry point jest poprawny
+
+---
+
+## Build Order
+
+Kolejność implementacji respektuje zależności weryfikacyjne i ryzyko:
 
 ```
-bbox (x, y, bw, bh)  ← z nowego detektora
-    ↓
-[LOG P1] blad_pan  = srodek_x - ramka_cx    (piksele, ±160 max dla 320px)
-[LOG P1] blad_tilt = srodek_y - ramka_cy    (piksele, ±120 max dla 240px)
-    ↓
-pid_pan(blad_pan)   → output (stopnie, ograniczone do ±10 przez output_limits)
-pid_tilt(blad_tilt) → output
-    ↓
-[LOG P2] korekta_pan  = -output_pan
-[LOG P2] korekta_tilt = -output_tilt
-    ↓
-[LOG P3] nowy_pan  = hardware.pan_angle  + korekta_pan
-[LOG P3] nowy_tilt = hardware.tilt_angle + korekta_tilt
-    ↓
-hardware.set_angles(nowy_pan, nowy_tilt)
-    ↓
-[LOG P4 — już istnieje] WARNING jeśli clamp zastosowany
-soft_clamp: pan ∈ [-60, +60], tilt ∈ [-30, +30]
-    ↓
-pan_servo.angle / tilt_servo.angle  (H-PWM GPIO12/GPIO13)
+Etap 1: BUG-3 — AWB/YUV fix (test_tracker.py L118)
+    Niezależny od reszty. Jednolinijkowa zmiana.
+    Weryfikacja: kolory normalne od pierwszej klatki, brak zielonego tintu
+    Ryzyko: bliskie zeru — jedna stała w jednej linii
+
+Etap 2: BUG-4 — PID reset na TRACKING entry (test_tracker.py L336-345)
+    Niezależny od fix 1 i 3. Dwie linie kodu.
+    Weryfikacja: wejście w TRACKING bez natychmiastowego skoku serwa
+    Ryzyko: niskie — reset() jest udokumentowanym mechanizmem simple-pid
+
+Etap 3: BUG-1 — tilt w skanowaniu (test_tracker.py L25-36 + L299-303)
+    Zależy od: potwierdzenia działania sprzętu tilt z Etap 2 (TRACKING tilt działa → serwo OK)
+    Weryfikacja: HUD pokazuje Tilt:+X.X (≠ 0.0) podczas SCANNING
+    Nowe stałe: SCAN_AMPLITUDE_TILT=15.0, SCAN_FREQUENCY_TILT=0.07
+
+Etap 4: BUG-2 — smooth scan (test_tracker.py L29)
+    Zależy od: Etap 3 (nie ma sensu wygładzać zanim tilt działa w skanowaniu)
+    Weryfikacja: subiektywna gładkość ruchu na RPi4, brak widocznych skoków
+    Pierwsza próba: DNN_SKIP_EVERY 5→10
+    Jeśli niewystarczające: wdrożyć servo interpolation thread (Opcja B)
 ```
 
-### Krytyczne punkty pomiarowe
-
-| Punkt | Co mierzyć | Gdzie w kodzie | Co ujawnia |
-|-------|-----------|----------------|------------|
-| P1 | `blad_pan`, `blad_tilt` w pikselach | `_sledz()` przed PID | czy detekcja daje prawidłowe bbox |
-| P2 | `korekta_pan`, `korekta_tilt` w stopniach | `_sledz()` po PID | czy PID produkuje niezerowe wyjście dla obu osi |
-| P3 | `nowy_pan`, `nowy_tilt` przed clampem | `_sledz()` przed set_angles | czy wartości mieszczą się w limitach |
-| P4 | `hardware.pan/tilt_angle` po clampie | `set_angles()` (już logowane) | potwierdzenie zapisu do servo |
-| P5 | `ColourGains` (R, B) z metadata | `Picamera2Stream.start()` | diagnostyka blue tint |
-| P6 | `AwbEnable` status po locku | `Picamera2Stream.start()` | czy AWB faktycznie wyłączone |
-
-## Scaling Considerations
-
-Projekt single-device embedded — skalowanie nie dotyczy. Ograniczenia wydajnościowe v1.8:
-
-| Komponent | Obecny koszt (RPi4) | Po zamianie DNN | Akceptowalność |
-|-----------|---------------------|-----------------|----------------|
-| HAAR detectMultiScale | ~8-12ms/klatka | — | — |
-| YuNet FaceDetectorYN | — | ~20-35ms/klatka | TAK (15-20 FPS) |
-| MediaPipe BlazeFace | — | ~12-20ms/klatka | TAK (~20 FPS) |
-| PID tick (_sledz) | <1ms | bez zmiany | TAK |
-| AWB warm-up (jednorazowy) | 2s startup | bez zmiany | TAK |
-| Logi PID (dodane) | ~0.1ms/klatka | bez zmiany | TAK |
-
-Minimalny akceptowalny FPS dla śledzenia PID: 10 FPS. YuNet przy 320x240 mieści się.
+---
 
 ## Anti-Patterns
 
-### Anti-Pattern 1: Naprawa PID przez modyfikację hardware.py
+### Anti-Pattern 1: Naprawa YUV przez zmianę AWB gains
 
-**Co robią:** Zmieniają soft limits, dodają filtrowanie wyjścia albo offset w `set_angles()`.
+**Co robią:** Próbują korygować zielony tint przez zmianę `AWB_FALLBACK_GAINS` z (1.0,1.0)
+na inne wartości (np. (0.8, 1.2)).
 
-**Dlaczego złe:** `set_angles()` to warstwa hardware — chroni fizyczny kabel kamery.
-Dodanie logiki korekcji PID ukrywa problem zamiast go naprawić. Logging clampa (WARNING)
-już istnieje i jest wystarczający do diagnozy.
+**Dlaczego złe:** Problem nie leży w gains. R i B są zamienione przez błędną konwersję YUV.
+Żadna kombinacja ColourGains (R, B) nie koryguje zamiany kanałów — kanał G pozostaje
+dominujący bo R wylądował na miejscu B i vice versa.
 
-**Zamiast tego:** Diagnoza przez logi P1-P4 w `_sledz()`. Naprawa w `_sledz()` lub
-`config.py` (PID_TILT_P, PID_TILT_I, PID_TILT_D).
+**Zamiast tego:** Zmień `COLOR_YUV420p2BGR` na `COLOR_YUV420p2RGB` w `_petla_przechwytywania`.
 
-### Anti-Pattern 2: Nowy detektor ze zmienionym typem zwracanym
+---
 
-**Co robią:** Nowa klasa detektora zwraca listę bboxów, słownik, `detection_result` obiekty
-lub landmarks — wymuszając zmiany w `TestTracker.uruchom()` i `MaszynaStanow.tick()`.
+### Anti-Pattern 2: Reset PID tylko przy wejściu w STATE_SCANNING
 
-**Dlaczego złe:** Zmiany w orkiestratorze = ryzyko regresji w logice stanów i HUD.
-Dwa miejsca do debugowania zamiast jednego.
+**Co robią:** `_przejdz_do()` resetuje PID tylko `if nowy_stan == STATE_SCANNING`.
 
-**Zamiast tego:** Nowy detektor MUSI implementować ten sam interfejs:
-`wykryj(klatka: np.ndarray) -> Optional[Tuple[int,int,int,int]]`
-`resetuj_streak() -> None`
-Konwersja coords relatywnych → piksele wewnątrz nowej klasy, przed return.
+**Dlaczego złe:** Integral accumulates during TRACKING session. Re-entry into TRACKING
+with leftover integral causes immediate max-output spike ("escape").
 
-### Anti-Pattern 3: Zamiana Picamera2 na cv2.VideoCapture "dla uproszczenia"
+**Zamiast tego:** Reset PID przy KAŻDYM wejściu w stan gdzie kontroler startuje od nowa —
+zarówno SCANNING jak i TRACKING.
 
-**Co robią:** Przechodzą na VideoCapture bo prostsze.
+---
 
-**Dlaczego złe:** Picamera2 to natywny backend libcamera na Bookworm 64-bit — daje
-niższe opóźnienie i pełną kontrolę ColourGains (VideoCapture tego nie ma). Blue tint
-to błąd konfiguracji AWB lock (`AwbEnable: False` brakuje), nie wada Picamera2.
+### Anti-Pattern 3: Skanowanie 1D (tylko pan)
 
-**Zamiast tego:** Dodać `"AwbEnable": False` do `set_controls()` i zalogować pełne metadata.
+**Co robią:** `set_angles(pan=sin(t), tilt=0.0)` — tilt zawsze zerowy.
 
-### Anti-Pattern 4: Logi PID na poziomie INFO co klatkę
+**Dlaczego złe:** Twarze na różnych wysokościach są pomijane. System "szuka" tylko
+w poziomej linii, nie w 2D przestrzeni.
 
-**Co robią:** `logger.info(f"PID: ...")` w `_sledz()` bez ograniczenia częstotliwości.
+**Zamiast tego:** Lissajous pattern: pan i tilt z różnymi częstotliwościami sinusoidalnymi.
+`SCAN_AMPLITUDE_TILT=15.0` (bezpieczny margines od `TILT_LIMIT_MAX=30`),
+`SCAN_FREQUENCY_TILT=0.07` (wolniejszy od pan=0.1 → nieperiodyczne pokrycie).
 
-**Dlaczego złe:** 20 FPS = 1200 linii/min, 72 000 linii/godz. Przepełnienie logu,
-spowolnienie I/O na RPi4 (SD card), utrudnia czytanie innych logów.
+---
 
-**Zamiast tego:** `logger.debug()` (aktywny tylko przy `--log-level DEBUG`) lub wewnętrzny
-counter `self._log_counter` z modulo 30 (log co ~1.5s przy 20 FPS).
+### Anti-Pattern 4: Modyfikacja hardware.py dla fixów PID/scan
 
-## Integration Points
+**Co robią:** Zmieniają soft limits, dodają offset lub filtrowanie w `set_angles()`.
 
-### Nowe vs. zmodyfikowane komponenty v1.8
+**Dlaczego złe:** `PanTiltSystem` to warstwa hardware — chroni fizyczny kabel kamery (ribbon).
+Logika sterowania należy do `MaszynaStanow`, nie do `PanTiltSystem`.
+Logi WARNING na clamp w `set_angles()` już istnieją i są wystarczające do diagnostyki.
 
-| Komponent | Status | Zakres zmiany | Ryzyko regresji |
-|-----------|--------|---------------|-----------------|
-| `Picamera2Stream.start()` | ZMODYFIKOWANY | +`AwbEnable:False` do set_controls(), +pełny metadata log | NISKIE |
-| `Picamera2Stream._petla_przechwytywania` reinit | ZMODYFIKOWANY | Ta sama zmiana AWB w ścieżce reinit | NISKIE |
-| `DetekcjaTwarzy` | ZASTĄPIONY przez `DetekcjaTwarzyDNN` | Nowa klasa, identyczny interfejs publiczny | NISKIE (stara klasa zostaje jako fallback) |
-| `MaszynaStanow._sledz()` | ZMODYFIKOWANY | +logi P1-P4 jako `logger.debug` | ZERO (tylko logi) |
-| `MaszynaStanow._skanuj()` | BEZ ZMIAN | — | — |
-| `MaszynaStanow._przejdz_do()` | BEZ ZMIAN | — | — |
-| `TestTracker.__init__()` | ZMODYFIKOWANY | Podmiana `self.detekcja = DetekcjaTwarzyDNN()` | NISKIE |
-| `TestTracker.uruchom()` | BEZ ZMIAN | — | — |
-| `PanTiltSystem` (`hardware.py`) | BEZ ZMIAN | — | — |
-| `config.py` | EWENTUALNE ROZSZERZENIE | +`DNN_CONFIDENCE_THRESHOLD = 0.5` | ZERO |
+**Zamiast tego:** Diagnoza przez logi PID w `_sledz()`. Naprawa w `_przejdz_do()` (reset)
+lub `_skanuj()` (tilt sinusoida).
 
-### Kolejność implementacji — zależności
+---
 
-```
-Krok 1: AWB diagnostics (Picamera2Stream.start + reinit)
-    - Niezależne od wszystkiego
-    - Zerowe ryzyko: tylko logi + jeden parametr AwbEnable
-    - Ujawnia czy AWB jest źródłem blue tint NA HARDWARE
-    ↓
-Krok 2: PID debug logging (MaszynaStanow._sledz)
-    - Niezależne od detektora
-    - Zerowe ryzyko: tylko logger.debug bez zmiany logiki
-    - Uruchomić na RPi4 z HAAR, zbierać logi, potwierdzić co jest zamrożone
-    ↓
-Krok 3: Analiza logów z kroków 1-2 na hardware
-    - Logi P1-P4 ujawnią: czy tilt=0 bo korekta=0 (błąd sign?) czy clamp (wychodzi poza limit?)
-    - Logi P5/P6 ujawnią: czy AWB lock zadziałał, jakie gains
-    - Na podstawie logów decydujemy czy potrzebna naprawa sign/gain/config
-    ↓
-Krok 4: Ewentualna naprawa PID (config.py lub _sledz sign)
-    - Tylko jeśli logi z kroku 2-3 to potwierdzą
-    - Zmiana w _sledz() lub config.py PID_TILT_*
-    ↓
-Krok 5: Zamiana detektora DetekcjaTwarzy → DetekcjaTwarzyDNN (YuNet)
-    - Ostatnia, bo wymaga testowania na RPi4 z kamerą
-    - Niezależna od AWB i PID fix
-    - Weryfikacja: zielone prostokąty pojawiają się bez idealnej pozycji frontalnej
-```
+## Architecture Invariants (nie naruszać)
 
-### Internal Boundaries (niezmienione w v1.8)
-
-| Granica | Komunikacja | Niezmienność |
-|---------|-------------|--------------|
-| `Picamera2Stream` → `TestTracker` | `odczytaj() → Optional[np.ndarray]` | ZACHOWANA |
-| `DetekcjaTwarzy/DNN` → `TestTracker` | `wykryj() → Optional[Tuple]` | ZACHOWANA (nowa klasa, ten sam typ) |
-| `MaszynaStanow` → `PanTiltSystem` | `set_angles(pan, tilt)` | ZACHOWANA |
-| `MaszynaStanow` ←→ `DetekcjaTwarzy` | `resetuj_streak()` przez `TestTracker` | ZACHOWANA |
-
-### Architecture Invariants (nie wolno łamać w v1.8)
-
-1. `MaszynaStanow` nie importuje `DetekcjaTwarzy/DNN` — granica celowo utrzymana.
-2. `smooth_move_to()` pozostaje jedyną ścieżką startową do serw — bez bezpośredniego
-   `set_angles()` przed zakończeniem safe startup.
+1. `MaszynaStanow` nie importuje `DetekcjaTwarzy` — granica celowo utrzymana.
+2. `smooth_move_to()` pozostaje jedyną ścieżką safe startup do serw.
 3. `_przejdz_do()` pozostaje jedyną metodą zmiany stanu — brak inline `self.stan =` poza nią.
-4. Interfejs `wykryj()` zwraca `Optional[Tuple[int,int,int,int]]` — bez względu na detektor.
+4. `set_angles()` w `PanTiltSystem` pozostaje jedyną metodą wysyłania sygnału do serw.
+5. AWB lock (sleep 2s → capture_metadata → set_controls) pozostaje w `Picamera2Stream.start()`.
+
+---
 
 ## Sources
 
-- Bezpośredni audit kodu: `src/modes/test_tracker.py` v1.7 (wszystkie metody) — HIGH confidence
-- Bezpośredni audit kodu: `src/hardware.py` (PanTiltSystem) — HIGH confidence
-- Bezpośredni audit kodu: `src/config.py` (wszystkie stałe) — HIGH confidence
-- Kontekst hardware: `.planning/PROJECT.md` sekcja "Current Milestone v1.8" — HIGH confidence
-- Kontekst hardware: `.planning/STATE.md` sekcja "Accumulated Context" — HIGH confidence
-- OpenCV YuNet: `cv2.FaceDetectorYN` dostępny od OpenCV 4.5.4, model `face_detection_yunet_2023mar.onnx`
-  (https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet) — MEDIUM confidence
-- Picamera2 ColourGains + AwbEnable: libcamera controls API, wcześniej zweryfikowane na target hardware
-  w poprzednim milestone (SOURCE: istniejący ARCHITECTURE.md v1.7) — HIGH confidence
+- Kod: `src/modes/test_tracker.py` — odczytany bezpośrednio (HIGH confidence)
+- Kod: `src/hardware.py` — odczytany bezpośrednio (HIGH confidence)
+- Kod: `src/config.py` — odczytany bezpośrednio (HIGH confidence)
+- Kontekst: `.planning/PROJECT.md` sekcja "Current Milestone v1.9" — HIGH confidence
+- [Picamera2 yuv_to_rgb.py example](https://github.com/raspberrypi/picamera2/blob/main/examples/yuv_to_rgb.py) — oficjalny przykład, `COLOR_YUV420p2RGB` (HIGH confidence)
+- [Picamera2 issue #848 — RGB Colorspaces and opencv](https://github.com/raspberrypi/picamera2/issues/848) — dokumentuje R↔B swap problem (HIGH confidence)
+- [Picamera2 issue #322 — ColourCorrectionMatrix with AWB disabled](https://github.com/raspberrypi/picamera2/issues/322) — Green channel zawsze 1.0 w libcamera (MEDIUM confidence)
+- [simple-pid integral windup and reset](https://en.wikipedia.org/wiki/Integral_windup) — zasada sterowania (HIGH confidence — ogólna wiedza)
 
 ---
-*Architecture research for: ARIES-LITE v1.8 Critical Hardware Fix*
+
+*Architecture research for: ARIES-LITE v1.9 — Stabilizacja Ruchu i Obrazu*
 *Researched: 2026-03-29*
