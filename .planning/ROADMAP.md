@@ -67,7 +67,9 @@ Plans:
   1. Zielony prostokat pojawia sie na HUD przy odleglosci 40-100 cm od kamery
   2. Detekcja dziala przy odchyleniu glowy do ±30° od frontalnej pozycji — nie wymaga idealnego ustawienia
   3. Stan TRACKING jest utrzymywany przez co najmniej 3 sekundy bez przerwy po wejsciu
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 10-01-PLAN.md — HAAR_MIN_SIZE=(40,40) + HAAR_MIN_NEIGHBORS=4 + empiryczna weryfikacja na RPi4
 
 ### Phase 11: AWB Fix
 **Goal**: Kamera renderuje naturalne kolory od pierwszej klatki — brak blue tint w kazdych warunkach oswietlenia
@@ -112,7 +114,7 @@ Plans:
 | 7. PID Sign Correctness | v1.7 | 2/2 | Complete | 2026-03-27 |
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
-| 10. Detection Fix | v1.8 | 0/? | Not started | - |
+| 10. Detection Fix | v1.8 | 0/1 | Planned | - |
 | 11. AWB Fix | v1.8 | 0/? | Not started | - |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |
 | 13. DNN Detector | v1.8 | 0/? | Not started | - |
