@@ -2,84 +2,55 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Debugging & Optimization
-status: "Awaiting `/gsd:plan-phase 6`"
-stopped_at: Completed 08-01-PLAN.md — awaiting hardware checkpoint
-last_updated: "2026-03-27T16:01:56.053Z"
-last_activity: 2026-03-27 — Roadmap v1.7 created (Phases 6-8)
+status: "Milestone v1.7 complete — shipped 2026-03-29"
+stopped_at: Milestone complete
+last_updated: "2026-03-29"
+last_activity: 2026-03-29 — Milestone v1.7 archived and tagged
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 6
   completed_plans: 6
-  percent: 0
+  percent: 100
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-27)
+See: .planning/PROJECT.md (updated 2026-03-29)
 
-**Core value:** Naprawić krytyczne bugi w test_tracker.py — tilt, runaway camera, AWB, logika stanów
-**Current focus:** Ready to plan Phase 6
+**Core value:** Autonomous real-time face tracking on Raspberry Pi 4
+**Current focus:** Planning next milestone
 
 ## Current Position
 
-Phase: Phase 8 (in progress)
-Plan: 08-01 (Task 1 complete, Task 2 awaiting hardware verification)
-Status: **CHECKPOINT** — awaiting RPi4 hardware test results
-Last activity: 2026-03-27 — Phase 8 code implemented (commit 4d623cb), awaiting verification
-
-Progress: [░░░░░░░░░░] 0%
+Milestone v1.7 shipped. All 5 phases (04-08) complete, 6/6 plans executed.
+Next: `/gsd:new-milestone` to start next milestone cycle.
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0 (v1.7)
-- Average duration: —
-- Total execution time: —
-
-*Updated after each plan completion*
+- Total plans completed: 6 (v1.7)
+- Timeline: 4 days (2026-03-26 → 2026-03-29)
+- Files modified: 3 (test_tracker.py, hardware.py, requirements.txt)
 
 ## Accumulated Context
 
 ### Decisions
 
-- v1.7 scope: surgical bug fixes in test_tracker.py only — no architectural changes
-- Phase order: DIAG+AWB first (observability + visual baseline), PID sign second (highest impact), scan logic last (requires working tracking to verify)
-- Montaż standardowy potwierdzony: pan+ = prawo, tilt+ = dół
-- TRACKING stan stabilny — tilt nie rusza z powodu brakującej negacji (snap do soft-limitu w 2-3 klatkach)
-- Tilt fix is 1 character: `korekta_tilt = -self.pid_tilt(blad_tilt)` in `MaszynaStanow._sledz()`
-- AWB fix: `set_controls({"ColourGains": gains})` MUST follow `picam2.start()` + `time.sleep(2.0)` — controls before start() are silently ignored
-- PID reset: `_przejdz_do()` already calls reset — no change needed, only verification
-- Streak reset: move from SCANNING entry to TARGET_LOST entry in `TestTracker.uruchom()`
-- Do NOT add `AwbEnable: False` alongside `ColourGains` — causes ISP sequencing conflict
-- Do NOT change `cv2.COLOR_YUV420p2BGR` constant — correct for Picamera2 I420 output
-- Do NOT change Kp/Ki/Kd values — sign bug mimics gain problem but is distinct
-- [z v1.6] Picamera2 over OpenCV VideoCapture — Bookworm native libcamera
-- [z v1.6] HAAR_MIN_SIZE=(80,80), sample_time=0.033 na PID
-- [z v1.6] TARGET_LOST two-tick pattern: widoczny w HUD na jedną klatkę
-- [Phase 06]: Clamp WARNING fires before mock_mode check — active in both modes
-- [Phase 06]: AWB lock: set_controls ColourGains after start()+sleep(2.0); AwbEnable omitted (ISP conflict)
-- [Phase 07-pid-sign-correctness]: Tilt negation is 1-character fix: add minus sign to korekta_tilt in MaszynaStanow._sledz()
-- [Phase 07-pid-sign-correctness]: simple-pid pinned to >=2.0.1 (not ==) to allow patch releases while ensuring _last_error reset fix
-- [Phase 07-pid-sign-correctness]: Hardware verification approved: all three PID criteria (PID-01 tilt convergence, PID-02 pan direction, PID-03 no integrator jump) confirmed on RPi4 — Phase 7 closed
-- [Phase 08-scanning-logic]: SCAN-01: _scan_phase_offset = asin(clamp(pan/SCAN_AMPLITUDE)) computed at SCANNING entry — clamp prevents ValueError when pan > SCAN_AMPLITUDE
-- [Phase 08-scanning-logic]: SCAN-02: resetuj_streak() moved to TARGET_LOST entry so streak=0 before face can appear during lost-target window, enforcing 3-frame requirement
+Archived to `.planning/milestones/v1.7-ROADMAP.md`. Key decisions also in PROJECT.md Key Decisions table.
 
 ### Blockers/Concerns
 
-- AWB fallback gains (2.5, 1.9) may need empirical adjustment for specific indoor lighting
-- simple_pid version: verify `pip show simple-pid` on device — need >=2.0.0 for reliable anti-windup
-- SCAN-01 (phase offset for scan continuity) deferred by research — implement only if servo jerk confirmed visible after Phase 7 fixes
+None — milestone complete.
 
 ### Pending Todos
 
-- Verify `pip show simple-pid` version on RPi4 device before Phase 7
-- Read back `capture_metadata()["ColourGains"]` after warm-up in Phase 6 to tune fallback if needed
+None.
 
 ## Session Continuity
 
-Last session: 2026-03-27
-Stopped at: Phase 8, plan 08-01 — Task 1 committed (4d623cb), Task 2 awaiting hardware verification on RPi4
-Resume file: .planning/phases/08-scanning-logic/08-CHECKPOINT.md
+Last session: 2026-03-29
+Stopped at: Milestone v1.7 complete
+Resume file: none

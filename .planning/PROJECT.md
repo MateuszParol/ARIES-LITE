@@ -1,8 +1,8 @@
 # PROJECT.md — ARIES-LITE
 
 > **Full Name**: Autonomous Real-time Intelligent Eye System — Lightweight Edition
-> **Status**: Active (v1.7 in progress)
-> **Current Version**: v1.7.0-dev
+> **Status**: Active (v1.7 shipped)
+> **Current Version**: v1.7.0
 > **Target Platform**: Raspberry Pi 4 Model B
 
 ## Vision
@@ -15,11 +15,17 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 
 ## Current State
 
-**v1.5.0** stabilized the existing codebase:
-- All runtime bugs fixed (logger, face sorting, frame locking)
-- Graceful shutdown with signal handlers (servo detach, camera release)
-- Non-blocking CENTER command, startup race condition guard
-- Clean dependency tree (removed imutils), proper package exports
+**v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
+- Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
+- AWB warm-up + ColourGains lock eliminates blue tint on Picamera2/IMX219
+- Per-axis clamp WARNING logging in set_angles() for full observability
+- Sinusoidal scan resumes smoothly from current position (phase offset via math.asin)
+- Streak filter reset at TARGET_LOST prevents premature TRACKING re-entry
+- 12 Nyquist validation tests (SCAN-01, SCAN-02) — first automated tests in project
+- simple-pid>=2.0.1 pinned for reliable anti-windup reset()
+
+<details>
+<summary>Previous milestones</summary>
 
 **v1.6.0** delivered isolated test tracker module:
 - `src/modes/test_tracker.py` — standalone pętla sterowania bez Flaska
@@ -28,29 +34,22 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 - HAAR detekcja z streak filter, PID dual-axis, sinusoidal scan
 - Safe startup, graceful shutdown, headless fallback
 
-## Current Milestone: v1.7 Debugging & Optimization
+**v1.5.0** stabilized the existing codebase:
+- All runtime bugs fixed (logger, face sorting, frame locking)
+- Graceful shutdown with signal handlers (servo detach, camera release)
+- Non-blocking CENTER command, startup race condition guard
+- Clean dependency tree (removed imutils), proper package exports
 
-**Goal:** Naprawić krytyczne bugi w test_tracker.py wykryte podczas testów na hardware RPi4 — brak ruchu tilt, runaway camera (błąd znaku PID), blue tint AWB, logika przejść stanów.
-
-**Target fixes:**
-- Naprawa osi TILT — analiza znaku PID, weryfikacja czy korekta dociera do serwa GPIO 13
-- Runaway Camera — analiza matematyczna pętli sprzężenia zwrotnego, naprawa znaku regulatora
-- Blue tint (AWB) — konfiguracja Picamera2 AWB/color gains dla sensora IMX219
-- Logika skanowania — płynne przejście TRACKING→SCANNING z resetem I-term (anti-windup)
-
-**Kontekst hardware:**
-- **Montaż**: Standardowy — pan+ = prawo, tilt+ = dół
-- **Obserwacja**: TRACKING stabilny (nie flickeruje), tilt się nie rusza
-- **Hardware**: MG-90S serwa, GPIO 12 (pan) / GPIO 13 (tilt), zasilanie 6V (4xAA)
-- **Software**: pigpio + gpiozero, Picamera2, RPi OS Bookworm 64-bit
+</details>
 
 ## What Could Come Next
 
 Potential areas for future milestones:
 1. **Security**: Basic auth for API endpoints (network-accessible system)
 2. **Operations**: Systemd service, startup scripts, monitoring
-3. **Testing**: Automated unit/integration tests
+3. **Testing**: Expand automated test coverage beyond Nyquist validation
 4. **Features**: Multi-face tracking priority, recording, face database
+5. **Performance**: PID tuning optimization, FPS improvements
 
 ## Technical Decisions (Locked)
 
@@ -74,13 +73,17 @@ These architectural choices are validated and should not change:
 | Background thread for CENTER smooth_move | Good — unblocks Flask thread | v1.5 |
 | Picamera2 over OpenCV VideoCapture | Good — native libcamera on Bookworm | v1.6 |
 | Isolated test module over rewrite | Good — preserves stable v1.5 code | v1.6 |
-| Montaż standardowy: pan+=prawo, tilt+=dół | Potwierdzone empirycznie | v1.7 |
+| Montaz standardowy: pan+=prawo, tilt+=dol | Potwierdzone empirycznie | v1.7 |
+| Tilt negation: korekta_tilt = -pid_tilt | Good — convergent tracking | v1.7 |
+| AWB lock via set_controls after start()+2s sleep | Good — eliminates blue tint | v1.7 |
+| Phase offset via math.asin(clamp) | Good — smooth scan resume | v1.7 |
+| Streak reset at TARGET_LOST (not SCANNING) | Good — correct 3-frame enforcement | v1.7 |
 
 ## Team & Context
 
 - Solo developer project (research/IoT focus)
 - Development on Windows, deployment on Raspberry Pi 4
-- No CI/CD pipeline, empirical verification
+- No CI/CD pipeline, empirical verification + Nyquist validation tests
 - GSD methodology for project management
 
 ## Evolution
@@ -101,4 +104,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after v1.7 milestone start*
+*Last updated: 2026-03-29 after v1.7 milestone completion*
