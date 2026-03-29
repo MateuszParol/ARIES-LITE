@@ -66,10 +66,10 @@
   1. Obraz kamerowy nie ma zielonej poswiaty — skora wyglada naturalnie od pierwszej klatki po starcie
   2. Poruszanie kamera przed roznymi tlami nie zmienia dominujacego odcienia barwnego (kanal G nie jest staly)
   3. Log AWB warm-up pokazuje ColourGains z R > 1.4 i B > 1.4 — wartosci realistyczne dla IMX219
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 14-01: COLOR_YUV420p2BGR → COLOR_YUV420p2RGB + AWB_FALLBACK_GAINS (2.2, 1.8) + weryfikacja wizualna
+- [ ] 14-01-PLAN.md — COLOR_YUV420p2BGR → COLOR_YUV420p2RGB + AWB_FALLBACK_GAINS (2.2, 1.8) + weryfikacja wizualna
 
 ### Phase 15: PID Tracking Fix
 **Goal**: Przejscie w stan TRACKING nie powoduje natychmiastowej ucieczki serw do limitow
