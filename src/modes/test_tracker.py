@@ -35,7 +35,7 @@ SCAN_FREQUENCY = 0.1        # Hz (pełny cykl = 10s)
 PID_OUTPUT_LIMIT = 10.0
 CAMERA_MAX_RETRIES = 3
 CAMERA_RETRY_DELAY = 1.0  # sekundy miedzy probami ponownej inicjalizacji
-AWB_FALLBACK_GAINS = (1.0, 1.0)  # (Red, Blue) — neutralne, bez wzmocnienia
+AWB_FALLBACK_GAINS = (2.2, 1.8)  # (Red, Blue) — realistyczne dla IMX219 w swietle dziennym
 
 # Stan TARGET_LOST (przejściowy, wizualny)
 STATE_TARGET_LOST = "TARGET_LOST"
@@ -84,7 +84,7 @@ class Picamera2Stream:
         metadata = self._picam2.capture_metadata()
         gains = metadata.get("ColourGains")
         if gains is None or gains == (0.0, 0.0):
-            logger.warning("AWB still running lub ColourGains niedostepne, uzywam fallback (1.0, 1.0)")
+            logger.warning("AWB still running lub ColourGains niedostepne, uzywam fallback (2.2, 1.8)")
             gains = AWB_FALLBACK_GAINS
         self._picam2.set_controls({"ColourGains": (float(gains[0]), float(gains[1]))})
         r, b = gains
@@ -115,7 +115,7 @@ class Picamera2Stream:
                 _retry_count = 0  # reset po udanym przechwyceniu
 
                 # Konwersja YUV420 → BGR
-                klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)
+                klatka = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2RGB)
 
                 # Weryfikacja formatu na pierwszej klatce
                 if not _format_zweryfikowany:
