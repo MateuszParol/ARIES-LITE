@@ -49,21 +49,21 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 
 </details>
 
-## Current Milestone: v1.8 Critical Hardware Fix
+## Current Milestone: v1.9 Stabilizacja Ruchu i Obrazu
 
-**Goal:** System dziala poprawnie na RPi4 — tilt reaguje, PID nie ucieka, obraz bez blue tint, detekcja twarzy jest responsywna.
+**Goal:** System skanuje plynnie w obu osiach, kamera oddaje prawidlowe kolory, a tracking nie powoduje ucieczki serw.
 
 **Target fixes:**
-- Debugowanie TILT (zamrozony na 0.0 w HUD) — sciezka kodu PID → set_angles()
-- Naprawa runaway (pozytywne sprzezenie zwrotne na 1 osi, natychmiastowa ucieczka do limitu)
-- Naprawa blue tint (AWB warm-up nie wykonuje sie lub gains zle dobrane)
-- Zamiana detektora twarzy (HAAR za restrykcyjny → MediaPipe/OpenCV DNN)
+- Tilt nie reaguje w zadnym trybie (SCANNING ani TRACKING) — naprawic sciezke kodu tilt
+- Skanowanie szarpie/klatkuje — wprowadzic plynne poruszanie serw
+- Zielona poswiata od startu (G stale, niezalezne od sceny) — naprawic AWB/ColourGains
+- Serwa uciekaja natychmiast po wejsciu w TRACKING — naprawic PID/logike sterowania
 
-**Kontekst hardware:**
-- Montaz: kamera prosto na tilt, HUD obraz prawidlowy
-- Tilt: HUD zamrozony na 0.0, serwo nie reaguje
-- Pan: ucieka natychmiast po TRACKING, bardzo szybki ruch do limitu
-- Detekcja: brak zielonych prostokatow, wymaga idealnej pozycji frontalnej
+**Kontekst:**
+- Wszystkie problemy dotycza test trackera (run_test_tracker.py / src/modes/test_tracker.py)
+- Servo tilt fizycznie sprawne (stawia opor przy recznym ruchu)
+- Poprzedni fix AWB (ColourGains=1.0,1.0) zamienil blue tint na green tint
+- Kanal G staly — nie zmienia sie wraz z poruszaniem kamery
 
 ## What Could Come Next
 
@@ -127,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after Phase 13 (dnn-detector) completion — v1.8 milestone complete*
+*Last updated: 2026-03-29 after milestone v1.9 start — Stabilizacja Ruchu i Obrazu*
