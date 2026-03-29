@@ -38,6 +38,11 @@ class PanTiltSystem:
         if self._mock_mode:
             logger.info("Uruchamiono obsluge serw w srodowisku okrojonym MOCK (bez pigpio/win32).")
 
+    @property
+    def mock_mode(self) -> bool:
+        """Zwraca True gdy serwa sa w trybie symulacji (brak pigpiod)."""
+        return self._mock_mode
+
     def set_angles(self, pan: float, tilt: float) -> None:
         """
         Ustawia bezposredni kat na osi X i Y, uwzgledniajac zabezpieczenia (Soft Limits) dla obu osi.
