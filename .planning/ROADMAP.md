@@ -79,7 +79,9 @@ Plans:
   1. Pierwsza klatka wideo nie ma blue tint — skora wyglada naturalnie juz przy starcie aplikacji
   2. Log ColourGains pokazuje niezerowe wartosci R i B (np. `(2.5, 1.9)`) potwierdzone z `capture_metadata()`
   3. ColourGains sa ustawione w `create_video_configuration()` — nie tylko po `start()`
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 11-01-PLAN.md — AWB configure-time lock + fallback guard + weryfikacja wizualna
 
 ### Phase 12: PID Validation
 **Goal**: Oba serwomotory reaguja na ruch twarzy i konwerguja do srodka kadru bez ucieczki
@@ -115,6 +117,6 @@ Plans:
 | 8. Scanning Logic | v1.7 | 1/1 | Complete | 2026-03-27 |
 | 9. Diagnostics | v1.8 | 1/1 | Complete   | 2026-03-29 |
 | 10. Detection Fix | v1.8 | 1/1 | Complete    | 2026-03-29 |
-| 11. AWB Fix | v1.8 | 0/? | Not started | - |
+| 11. AWB Fix | v1.8 | 0/1 | Not started | - |
 | 12. PID Validation | v1.8 | 0/? | Not started | - |
 | 13. DNN Detector | v1.8 | 0/? | Not started | - |
