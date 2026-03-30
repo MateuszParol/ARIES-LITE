@@ -1,74 +1,138 @@
-# Requirements: ARIES-LITE
+# Requirements: ARIES-LITE v2.0
 
-**Defined:** 2026-03-29
-**Core Value:** System skanuje plynnie w obu osiach, prawidlowe kolory, tracking bez ucieczki serw
+**Defined:** 2026-03-30
+**Core Value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial dla plynnego sledzenia twarzy
 
-## v1.9 Requirements
+## v2.0 Requirements
 
-Requirements for milestone v1.9 Stabilizacja Ruchu i Obrazu.
+Requirements for distributed architecture milestone. Each maps to roadmap phases.
 
-### Kolory (AWB/Color)
+### Environment (ENV)
 
-- [ ] **COL-01**: Kamera oddaje prawidlowe kolory od pierwszej klatki (brak zielonej poswiaty)
-- [ ] **COL-02**: Konwersja YUV→RGB uzywa prawidlowej flagi OpenCV (nie BGR swap)
-- [ ] **COL-03**: AWB fallback gains odpowiadaja rzeczywistym wartosciom IMX219 (nie 1.0, 1.0)
+- [ ] **ENV-01**: Python 3.11 venv na RPi4 z zainstalowanym MediaPipe (weryfikacja empiryczna)
+- [ ] **ENV-02**: Arduino IDE/arduino-cli z bibliotekami QuickPID, Servo, LiquidCrystal gotowe do kompilacji firmware
 
-### Tracking (PID)
+### Serial Protocol (SER)
 
-- [ ] **TRK-01**: Serwa nie uciekaja do limitu po wejsciu w TRACKING
-- [ ] **TRK-02**: PID reset() wykonywany przy przejsciu do TRACKING (czysty accumulator)
-- [ ] **TRK-03**: PID output limit ogranicza maksymalna korekta per-tick do bezpiecznej wartosci
+- [ ] **SER-01**: Specyfikacja ramki binarnej (8 bajtow: start marker 0xAA + tryb + blad X/Y + rozmiar twarzy + checksum XOR)
+- [ ] **SER-02**: Arduino parser state-machine (non-blocking, WAIT_START → READ_PAYLOAD → VERIFY_CHECKSUM → DISPATCH)
+- [ ] **SER-03**: RPi nadajnik pyserial z dtr=False, timeout, low_latency na /dev/ttyACM0 @ 115200 baud
+- [ ] **SER-04**: Heartbeat TX z RPi co 200ms — Arduino rozpoznaje utrate komunikacji
+- [ ] **SER-05**: Echo test — RPi wysyla ramke, Arduino potwierdza odczyt poprawny (walidacja end-to-end)
 
-### Skanowanie (Scan)
+### Arduino Firmware (ARD)
 
-- [ ] **SCN-01**: Tilt porusza sie podczas skanowania (sinusoida, nie staly 0.0)
-- [ ] **SCN-02**: Skanowanie pokrywa obie osie (Lissajous pattern — pan + tilt)
-- [ ] **SCN-03**: Phase offset zachowany przy powrocie do SCANNING (brak skoku serw)
+- [ ] **ARD-01**: QuickPID dual-axis (pan + tilt) z anti-windup, deterministyczny loop 100Hz via millis()
+- [ ] **ARD-02**: Servo safe startup — plynny ruch do 90/90 przy starcie (nie skok)
+- [ ] **ARD-03**: Software watchdog (millis()) — powrot do trybu SCAN gdy brak ramek >500ms
+- [ ] **ARD-04**: Konfigurowalny kierunek serw (PAN_INVERT / TILT_INVERT define) dla empirycznej kalibracji
+- [ ] **ARD-05**: Maszyna stanow: IDLE → SCAN → TRACK z przejsciami sterowanymi przez ramki z RPi
+- [ ] **ARD-06**: Skanowanie sinusoidalne w trybie SCAN (autonomiczne, bez ramek z RPi)
 
-### Plynnosc (Smoothness)
+### RPi Vision (VIS)
 
-- [ ] **SMT-01**: Ruch serw podczas skanowania jest plynny (brak widocznego szarpania)
-- [ ] **SMT-02**: DNN inference nie blokuje petli sterowania na tyle by powodowac klatkowanie
+- [ ] **VIS-01**: MediaPipe Face Detection (BlazeFace, bbox only) na Picamera2 stream 320x240
+- [ ] **VIS-02**: Sticky tracking — priorytet dla najwiekszej twarzy (bbox area), stabilne sledzenie przy wielu twarzach
+- [ ] **VIS-03**: Obliczanie bledu X/Y wzgledem srodka klatki (znormalizowane do zakresu ramki)
+- [ ] **VIS-04**: AWB fix dla sensora IMX219 — poprawne kolory bez blue/green tint
+- [ ] **VIS-05**: Wysylanie ramek binarnych do Arduino przez SerialInterface (OOP)
+- [ ] **VIS-06**: Heartbeat TX co 200ms (nawet gdy brak detekcji twarzy)
+- [ ] **VIS-07**: Graceful shutdown — zamkniecie kamery, portu serial, czysty exit
 
-## Future Requirements
+### HMI (HMI)
 
-Deferred to future milestones.
+- [ ] **HMI-01**: LCD 1602 wyswietla tryb (SCAN/TRACK/IDLE) i blad X/Y — update max 5Hz (nie w petli PID!)
+- [ ] **HMI-02**: Buzzer (D8) krotki dzwiek przy przejsciu do TRACK ("Target Lock")
+- [ ] **HMI-03**: Przycisk akcji (D7, INPUT_PULLUP) — "Abort Track" przywraca tryb SCAN
+- [ ] **HMI-04**: LCD bootscreen z nazwa systemu przy starcie Arduino
 
-### Kalibracja
+### Migracja (MIG)
 
-- **KAL-01**: MG90S pulse width calibration w hardware.py (min_pulse_width, max_pulse_width)
-- **KAL-02**: AWB gains odczytane z capture_metadata() per-srodowisko
+- [ ] **MIG-01**: Stary kod monolitu przeniesiony do katalogu legacy/ jako referencja
+- [ ] **MIG-02**: Nowa struktura katalogow: src/arduino/ (firmware), src/vision/ (pi brain)
+
+### Integracja (INT)
+
+- [ ] **INT-01**: End-to-end tracking — twarz wykryta na RPi → blad wyslany → Arduino PID koryguje serwa → kamera sledzi twarz
+- [ ] **INT-02**: Poprawna logika kierunkow (negative feedback) — twarz po prawej = ruch serwa w prawo
+- [ ] **INT-03**: Os pionowa (tilt) dziala poprawnie w obu trybach (SCAN i TRACK)
+- [ ] **INT-04**: Kod modularny OOP: klasy VisionManager, SerialInterface, ServoPID
+- [ ] **INT-05**: Wszystkie komentarze w kodzie w jezyku polskim
+
+## v2.1 Requirements (Deferred)
+
+### Rozszerzenia protokolu
+
+- **SER-06**: ACK/NACK bidirectional feedback z Arduino do RPi
+- **SER-07**: Dynamiczna zmiana baudrate
+
+### Zaawansowany PID
+
+- **ARD-07**: Adaptywny PID — gain scheduling wg rozmiaru twarzy (blizej = mniejsze gainy)
+- **ARD-08**: Profil ruchu — acceleration/deceleration curves dla serw
+
+### Zaawansowana wizja
+
+- **VIS-08**: Face ID / re-identification across frames (persistent tracking)
+- **VIS-09**: Multi-model fallback (MediaPipe → DNN → HAAR)
+
+### Interfejs webowy
+
+- **WEB-01**: Flask web UI z MJPEG stream i panelem sterowania (port z legacy/)
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| PID gain retuning (P/I/D) | v1.8 Phase 12 zwalidowal gains empirycznie — nie zmieniac |
-| Servo interpolation thread | Zbyt zlozone; DNN_SKIP_EVERY + EMA wystarczy na ten milestone |
-| Multi-face tracking | Osobny milestone (features) |
-| Main app (server.py) fixes | v1.9 dotyczy wylacznie test trackera |
+| Hardware WDT na Arduino Leonardo | Caterina bootloader bug — ryzyko zbrickowania, uzywamy millis() watchdog |
+| Face Mesh (468 landmarks) | 4-5 FPS na RPi4 — za wolne, bbox wystarczy do trackingu |
+| Flask web UI w v2.0 | Konkuruje o CPU z MediaPipe, odlozone do v2.1 |
+| dlib face recognition | Za wolny na RPi4 (~2 FPS), MediaPipe zastepuje |
+| Binary protocol z ACK/NACK | Zbyt zlozony dla MVP, fire-and-forget wystarcza |
+| Animacje LCD (custom chars) | Nie krytyczne, mozliwe w v2.1 |
+| ROS integration | Overengineering dla projektu research/hobby |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| COL-01 | Phase 14 | Pending |
-| COL-02 | Phase 14 | Pending |
-| COL-03 | Phase 14 | Pending |
-| TRK-01 | Phase 15 | Pending |
-| TRK-02 | Phase 15 | Pending |
-| TRK-03 | Phase 15 | Pending |
-| SCN-01 | Phase 16 | Pending |
-| SCN-02 | Phase 16 | Pending |
-| SCN-03 | Phase 16 | Pending |
-| SMT-01 | Phase 17 | Pending |
-| SMT-02 | Phase 17 | Pending |
+| ENV-01 | — | Pending |
+| ENV-02 | — | Pending |
+| SER-01 | — | Pending |
+| SER-02 | — | Pending |
+| SER-03 | — | Pending |
+| SER-04 | — | Pending |
+| SER-05 | — | Pending |
+| ARD-01 | — | Pending |
+| ARD-02 | — | Pending |
+| ARD-03 | — | Pending |
+| ARD-04 | — | Pending |
+| ARD-05 | — | Pending |
+| ARD-06 | — | Pending |
+| VIS-01 | — | Pending |
+| VIS-02 | — | Pending |
+| VIS-03 | — | Pending |
+| VIS-04 | — | Pending |
+| VIS-05 | — | Pending |
+| VIS-06 | — | Pending |
+| VIS-07 | — | Pending |
+| HMI-01 | — | Pending |
+| HMI-02 | — | Pending |
+| HMI-03 | — | Pending |
+| HMI-04 | — | Pending |
+| MIG-01 | — | Pending |
+| MIG-02 | — | Pending |
+| INT-01 | — | Pending |
+| INT-02 | — | Pending |
+| INT-03 | — | Pending |
+| INT-04 | — | Pending |
+| INT-05 | — | Pending |
 
 **Coverage:**
-- v1.9 requirements: 11 total
-- Mapped to phases: 11
-- Unmapped: 0 ✓
+- v2.0 requirements: 31 total
+- Mapped to phases: 0
+- Unmapped: 31 (awaiting roadmap)
 
 ---
-*Requirements defined: 2026-03-29*
-*Last updated: 2026-03-29 — traceability uzupelniona po roadmap v1.9*
+*Requirements defined: 2026-03-30*
+*Last updated: 2026-03-30 after initial definition*
