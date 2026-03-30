@@ -61,7 +61,7 @@
 
 **Milestone Goal:** Calkowita przebudowa na architekture rozproszona — RPi4 (MediaPipe wizja + serial TX) + Arduino Leonardo (PID 100 Hz + HMI) polaczone USB Serial 115200 baud.
 
-- [ ] **Phase 18: Srodowisko + Protokol + Migracja** - MediaPipe zweryfikowany na RPi4, binarny protokol 8-bajtowy specyfikacja zamknieta, stary kod w legacy/
+- [x] **Phase 18: Srodowisko + Protokol + Migracja** - MediaPipe zweryfikowany na RPi4, binarny protokol 8-bajtowy specyfikacja zamknieta, stary kod w legacy/ (completed 2026-03-30)
 - [ ] **Phase 19: Serial Link + Echo Test** - SerialSender (RPi) + parser state-machine (Arduino) + end-to-end echo test
 - [ ] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny
 - [ ] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown
@@ -134,7 +134,7 @@ Plans:
 
 Plans:
 - [x] 18-01-PLAN.md — Specyfikacja protokolu binarnego + migracja monolitu do legacy/ + nowa struktura src/
-- [ ] 18-02-PLAN.md — Python 3.12 venv z MediaPipe + arduino-cli z weryfikacja kompilacji
+- [x] 18-02-PLAN.md — Python 3.12 venv z MediaPipe + arduino-cli z weryfikacja kompilacji
 
 ### Phase 19: Serial Link + Echo Test
 **Goal**: Warstwa szeregowa dziala end-to-end — RPi wysyla poprawne ramki binarne, Arduino parsuje je bez bledow i potwierdza odczyt przez Serial Monitor
@@ -216,7 +216,7 @@ Plans:
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
-| 18. Srodowisko + Protokol + Migracja | v2.0 | 1/2 | In Progress|  |
+| 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete   | 2026-03-30 |
 | 19. Serial Link + Echo Test | v2.0 | 0/? | Not started | - |
 | 20. Firmware Arduino PID + Servo | v2.0 | 0/? | Not started | - |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |

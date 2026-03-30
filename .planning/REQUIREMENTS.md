@@ -9,8 +9,8 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 ### Environment (ENV)
 
-- [ ] **ENV-01**: Python 3.12 venv na RPi4 (przez pyenv — Trixie nie ma 3.11) z zainstalowanym MediaPipe (weryfikacja empiryczna)
-- [ ] **ENV-02**: Arduino IDE/arduino-cli z bibliotekami QuickPID, Servo, LiquidCrystal gotowe do kompilacji firmware
+- [x] **ENV-01**: Python 3.12 venv na RPi4 (przez pyenv — Trixie nie ma 3.11) z zainstalowanym MediaPipe (weryfikacja empiryczna)
+- [x] **ENV-02**: Arduino IDE/arduino-cli z bibliotekami QuickPID, Servo, LiquidCrystal gotowe do kompilacji firmware
 
 ### Serial Protocol (SER)
 
@@ -96,8 +96,8 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENV-01 | Phase 18 | Pending |
-| ENV-02 | Phase 18 | Pending |
+| ENV-01 | Phase 18 | Complete |
+| ENV-02 | Phase 18 | Complete |
 | SER-01 | Phase 18 | Complete |
 | MIG-01 | Phase 18 | Complete |
 | MIG-02 | Phase 18 | Complete |
