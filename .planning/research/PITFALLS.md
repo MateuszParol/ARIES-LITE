@@ -1,284 +1,403 @@
-# Pitfalls Research — v1.9 Stabilizacja Ruchu i Obrazu
+# Pitfalls Research — v2.0 Architektura Rozproszona
 
-**Domain:** Fixing servo tilt dead axis, jerky servo motion, AWB green tint, and PID tracking escape in an existing RPi4 pan-tilt face tracker (Picamera2 + pigpio + simple_pid + OpenCV DNN)
-**Researched:** 2026-03-29
-**Confidence:** HIGH (code-derived pitfalls from direct analysis of src/) / MEDIUM (AWB ISP pipeline internals, servo pulse-width mechanics)
+**Domain:** Distributed RPi4 (vision/brain) + Arduino Leonardo (PID/HMI) face tracking system — migrating from monolithic Python PID to distributed USB Serial architecture.
+**Researched:** 2026-03-30
+**Confidence:** HIGH (serial/Arduino pitfalls from direct forum/issue analysis) / MEDIUM (MediaPipe-specific RPi4 integration) / HIGH (project-specific — builds on v1.7/v1.9 known failures)
 
-**Scope:** v1.9 milestone — adds four targeted fixes to a working but misbehaving system. The prior system (v1.8) has DNN detection validated, PID structure validated, and AWB lock code present. The bugs are integration and sequencing failures, not architectural. This document focuses entirely on common mistakes when *adding* these fixes to the existing codebase.
+**Scope:** v2.0 milestone only — adding USB Serial protocol, Arduino PID firmware, MediaPipe vision, LCD HMI, and watchdog to an existing working system. The legacy monolith (v1.8) is preserved in `legacy/`. The pitfalls below are *addition and migration* failures, not general embedded pitfalls. Every pitfall maps to a specific v2.0 risk.
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: Tilt Servo Wired or Commanded But Scan Hardcodes Tilt to Zero
+### Pitfall 1: MediaPipe Does Not Install on Python 3.13 (RPi OS Trixie / System Default)
 
 **What goes wrong:**
-`_skanuj()` in `MaszynaStanow` calls `self.hardware.set_angles(pan, 0.0)` with a literal `0.0` for tilt. If tilt servo wiring or config is wrong, the SCANNING state will never expose the bug because it always writes zero. The developer tests with a face in frame, enters TRACKING, and sees tilt move in `_sledz()` — but only if TRACKING is actually reached. If tilt is frozen at zero the developer may blame `_sledz()` or the PID sign when the problem is actually that SCANNING masks the tilt path entirely.
+`pip install mediapipe` on Raspberry Pi OS Trixie (Debian 13, Python 3.13) fails with "no matching distribution found" or ABI mismatch error. MediaPipe officially supports Python 3.9–3.12 only. Python 3.13 introduces pybind11 ABI incompatibilities that prevent pre-built wheels from loading and building from source fails at the Bazel step.
 
-The deeper trap: the HUD reads `self.maszyna.hardware.tilt_angle` which is a software float updated unconditionally in `set_angles()`. Tilt shows `0.0` during SCANNING not because the servo is broken but because the scan formula writes `0.0`. This is correct behavior, not a bug. Misreading the HUD here causes false diagnosis.
+The project currently runs Python 3.13.5 (per `STACK.md`). If the RPi is updated to Trixie or the active Python version is 3.13, MediaPipe installation will silently fail or produce wheels that segfault on import.
 
 **Why it happens:**
-Developers check the HUD to assess servo state. During SCANNING, tilt is intentionally zero. If TRACKING never triggers (face detection issue, short timeout, etc.), tilt is *always* zero. The developer concludes tilt is broken when it may be fine.
+MediaPipe pre-built wheels are compiled against specific Python ABI tags. The piwheels project provides `mediapipe` wheels for RPi, but only up to Python 3.12. Developers often `pip install mediapipe` without checking the active Python version first.
 
 **How to avoid:**
-Before declaring tilt broken, issue a direct `set_angles(0.0, 15.0)` call at startup in `inicjalizuj()` (or a temporary test command), confirm the physical servo moves, then revert. This isolates the hardware path from the state machine. Use `smooth_move_to(0, 20)` then `smooth_move_to(0, 0)` — if tilt physically moves, the servo and wiring are functional.
+1. Verify the active Python version on the RPi before starting v2.0: `python3 --version`. If it shows 3.13, MediaPipe will not install.
+2. RPi OS Bookworm (Debian 12) ships Python 3.11. Stay on Bookworm for v2.0. Do not `apt upgrade` to Trixie.
+3. If Python 3.13 is present, create a venv targeting 3.11 explicitly: `python3.11 -m venv venv --system-site-packages`. Verify: `python3 -c "import mediapipe; print(mediapipe.__version__)"`.
+4. Always use `--system-site-packages` to retain access to `python3-picamera2` (installed via apt, not pip).
 
 **Warning signs:**
-- Tilt shows `0.0` in HUD during SCANNING (expected — not a bug)
-- Tilt shows `0.0` in HUD during TRACKING with face clearly below/above center (actual bug)
-- Clamp warnings for tilt never appear in logs despite expected large corrections
-- `pid_tilt.components` shows non-zero P/I/D but `nowy_tilt` equals `0.0 + korekta_tilt` where `korekta_tilt` is very small
+- `pip install mediapipe` completes but `import mediapipe` raises `ImportError` or `Segmentation fault`
+- `pip install mediapipe` fails with `No matching distribution found for mediapipe`
+- `python3 --version` returns `3.13.x` on the RPi
 
 **Phase to address:**
-Phase 1 (tilt fix) — begin with a direct hardware test call before any state machine analysis.
+Phase 1 (Environment Setup / Pi Brain bootstrap) — MediaPipe installation must be verified as the first action before writing any vision code. Fail fast here rather than discovering it after writing `pi_brain.py`.
 
 ---
 
-### Pitfall 2: Tilt Sign Fixed But Axis Inverted Relative to Physical Mount
+### Pitfall 2: Arduino Leonardo Serial Port Disappears When Python Opens a New Connection (DTR Reset)
 
 **What goes wrong:**
-The current code applies double negation to both axes in `_sledz()`:
+When `pyserial` opens `/dev/ttyACM0`, it toggles the DTR line. On Arduino Leonardo (ATmega32U4 with native USB CDC), toggling DTR at 1200 baud triggers the bootloader reset. Even at 115200 baud, pyserial's default behavior sets DTR=True on open, which causes Leonardo to reset and re-enumerate as a new USB device — dropping the connection immediately.
+
+The symptom: `pi_brain.py` opens the serial port, immediately loses the connection with `OSError: [Errno 5] Input/output error` or the port disappears from `/dev/ttyACM0` for 2–3 seconds, then reappears. The first packet sent is lost and the Arduino's firmware state is reset.
+
+**Why it happens:**
+Arduino Leonardo uses hardware-implemented USB CDC, unlike Uno (which uses a separate FTDI/CH340 chip). The 1200-baud DTR trick is built into the bootloader. pyserial's default DTR behavior triggers this on every reconnection from the Python side.
+
+**How to avoid:**
+Open the serial port with DTR disabled:
 ```python
-korekta_pan = -self.pid_pan(blad_pan)
-korekta_tilt = -self.pid_tilt(blad_tilt)  # negacja — oś tilt działa jak pan
+ser = serial.Serial()
+ser.port = "/dev/ttyACM0"
+ser.baudrate = 115200
+ser.dtr = False   # prevent reset-on-open
+ser.open()
+time.sleep(2.0)   # wait for Arduino to enumerate if it did reset
+ser.reset_input_buffer()
 ```
-The comment claims "oś tilt działa jak pan" — this was the v1.7 finding. If the physical mount orientation changed between v1.7 and v1.9 testing (camera flipped, bracket reversed), the sign that worked before will cause runaway in the opposite direction.
+Alternatively: `serial.Serial("/dev/ttyACM0", 115200, dsrdtr=False)`.
 
-The consequence: tilt detects face below center (`blad_tilt > 0`), PID outputs positive correction, negation gives negative, system moves tilt *upward* instead of downward, face moves further from center, error grows, servo hits limit.
+After opening, add a 2-second delay before sending the first packet — Arduino takes ~1.5s to re-initialize USB CDC after a physical reset.
 
-**Why it happens:**
-Physical mount conventions are not captured in code — only "negation was applied." If the mount changes (or the v1.7 observation was wrong), there is no in-code record of *why* the negation is correct. "Oś tilt działa jak pan" is an undocumented empirical claim.
-
-**How to avoid:**
-Establish mounting convention explicitly:
-1. With face in frame, hold face above center horizontally. Log `blad_tilt`.
-2. Expected: `blad_tilt = srodek_y - ramka_cy < 0` (face Y-center is above frame center in pixel space).
-3. Expected servo reaction: tilt angle should *increase* (tilt up) to follow face.
-4. Trace: `korekta_tilt = -pid_tilt(blad_tilt)`. If `blad_tilt < 0`, PID outputs negative, negation makes it positive, `nowy_tilt = tilt_angle + positive` = increases. Correct.
-5. If physical tilt moves the wrong way, the sign of the negation must be reversed — not the PID gains.
-
-Document the result in a comment: `# blad_tilt < 0 = face above center → korekta_tilt > 0 = tilt servo moves up. Mount: bracket forward-facing, tilt pin=13`.
+Additionally, add a reconnection loop in `pi_brain.py` that re-opens the port on `SerialException`, since Leonardo may temporarily lose `/dev/ttyACM0` during OS USB suspend or after a programming upload.
 
 **Warning signs:**
-- Face above center but servo tilts down (or vice versa) — verified by eye during TRACKING
-- Servo immediately hits TILT_LIMIT and clamp warnings flood logs
-- Tracking converges on pan but tilt escapes immediately on entry
+- `dmesg` shows `cdc_acm 1-1:1.0: ttyACM0: USB ACM device` appearing/disappearing repeatedly
+- First `ser.read()` after open returns empty or raises `OSError`
+- Arduino HUD/LCD shows reboot (RESET state) seconds after Pi connects
 
 **Phase to address:**
-Phase 1 (tilt fix) — sign verification must be empirical on the actual physical hardware with the actual mount before any other tilt work.
+Phase 2 (Serial Protocol) — DTR handling must be in the initial `SerialManager` implementation. Do not assume "just open the port."
 
 ---
 
-### Pitfall 3: ColourGains (1.0, 1.0) Is Semantically Wrong — Green Because Red and Blue Are Suppressed
+### Pitfall 3: USB Serial Latency Is 16ms by Default on Linux — Kills 100 Hz PID Feedback Loop
 
 **What goes wrong:**
-`AWB_FALLBACK_GAINS = (1.0, 1.0)` is present in the current code (line 38 of `test_tracker.py`). This value is intuitive as "neutral" but is wrong for IMX219. The Picamera2 `ColourGains` tuple is `(red_gain, blue_gain)` — it multiplies the red and blue channels of the Bayer demosaiced output. The green channel has no gain parameter because it is the reference channel.
-
-On IMX219 under typical indoor lighting, auto-AWB converges to approximately `(1.6–2.0, 1.4–1.9)`. These non-unity values are needed to compensate for the sensor's natural bias toward green (IMX219 has 2 green pixels per 4 in the Bayer RGGB pattern — so green is inherently twice as represented). Setting `ColourGains=(1.0, 1.0)` does *not* produce neutral white — it suppresses red and blue relative to what the ISP's AWB computed, making green dominant. This is the "green tint that does not change with scene."
-
-The v1.8 fix set `(1.0, 1.0)` thinking it replaced the previous `(2.5, 1.9)` — it did eliminate the blue tint from overcorrected blue, but introduced green tint by undercorrecting red and blue.
+Linux USB CDC ACM serial ports have a default latency timer of ~16ms. This means even at 115200 baud with tiny packets, the OS will not deliver incoming data to the application until 16ms have elapsed. For a 100 Hz PID loop on Arduino, the Pi's feedback acknowledgment (or the Pi's error packets arriving at Arduino) will arrive in batches with 16ms gaps rather than at 10ms intervals. This destroys the real-time feel of the distributed system and may cause the watchdog to fire spuriously.
 
 **Why it happens:**
-The name "ColourGains" suggests 1.0 = neutral. In absolute terms, 1.0 means "apply no amplification to this channel." But neutral white balance requires *relative* balance between channels, which for IMX219 requires both gains above 1.0 to match the sensor's green bias.
+The Linux USB subsystem batches CDC ACM data transfers. The kernel latency timer (default 16ms) controls how often the USB host polls for new data. This is a well-known Linux USB serial issue — the pyserial maintainers added `low_latency` flag support in 2017 specifically for this reason.
 
 **How to avoid:**
-Never hardcode `(1.0, 1.0)` as the fallback. The correct approach:
-1. Let the camera run in auto-AWB for 3–5 seconds (no `ColourGains` set)
-2. Read `metadata = cam.capture_metadata(); gains = metadata.get("ColourGains")`
-3. Log the settled value — this is the correct neutral for this sensor in this lighting
-4. Use *that* value as `AWB_FALLBACK_GAINS`
-
-For IMX219 in indoor lighting without ceiling fluorescent, expect approximately `(1.7–2.0, 1.4–1.7)`. If the `capture_metadata()` approach fails (returns None), try `(1.8, 1.5)` as a safer fallback than `(1.0, 1.0)`.
-
-The configure-time lock (`controls={"ColourGains": gains}` in `create_video_configuration()`) is still the correct sequencing — just use a valid non-unity value.
-
-**Warning signs:**
-- Green channel value in skin tones does not change when moving camera to different-colored surfaces
-- `ColourGains` log at startup shows `(R=1.00, B=1.00)` — this is the fallback path firing
-- Image looks correct outdoors but green-tinted indoors (scene-independent G dominance confirms fixed gains)
-- `capture_metadata()["ColourGains"]` returns the fallback value, not auto-converged value
-
-**Phase to address:**
-Phase 2 (AWB fix) — before changing any ColourGains value, read the auto-converged value from a 5-second warm-up run and use that as the basis. Do not guess the fallback.
-
----
-
-### Pitfall 4: AWB Re-Lock After Warm-Up Sets Gains From Metadata But ISP May Revert
-
-**What goes wrong:**
-The current `Picamera2Stream.start()` sequence:
-1. Configure with `controls={"ColourGains": AWB_FALLBACK_GAINS}` (correct — ensures frame-1 color)
-2. Sleep 2 seconds
-3. `capture_metadata()["ColourGains"]` → reads settled auto-AWB values
-4. `set_controls({"ColourGains": (float(r), float(b))})` → attempts to lock at settled values
-
-Step 4 has a known failure mode on some Picamera2/libcamera versions: if `AwbEnable` is not explicitly set to `False` alongside the `ColourGains` re-lock, the AWB algorithm may continue running and override the gains within 1–2 seconds. The result: color is correct for 2 seconds then drifts.
-
-The existing code does NOT set `AwbEnable: False`. Per issue #322, setting `ColourGains` alone *should* disable AWB implicitly, but per issue #825 this behavior is version-dependent. If the installed libcamera version does not treat `ColourGains` as an implicit AWB disable, the gains will not hold.
-
-**Why it happens:**
-Picamera2/libcamera API behavior for AWB disable is version-dependent and underdocumented. The implicit AWB-disable-via-ColourGains behavior was added in a specific libcamera version. Systems that have not been updated may not have this behavior.
-
-**How to avoid:**
-Add explicit `AwbEnable: False` only in the re-lock `set_controls()` call, NOT in the configure-time controls (configure-time `AwbEnable: False` before warm-up prevents auto-convergence from computing correct gains):
+Set low-latency mode on the serial port via `setserial` or programmatically:
+```bash
+# One-time command (must repeat after each USB reconnect)
+setserial /dev/ttyACM0 low_latency
+```
+Or in Python via pyserial (Linux only):
 ```python
-# Phase 1: configure-time lock at safe fallback (no AwbEnable: False here)
-video_config = self._picam2.create_video_configuration(
-    lores={"size": (w, h), "format": "YUV420"},
+import fcntl, termios, struct
+ser = serial.Serial("/dev/ttyACM0", 115200)
+# Set ASYNC_LOW_LATENCY flag
+TIOCSSERIAL = 0x541F
+buf = struct.pack('2H8I2H', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x2000)  # ASYNC_LOW_LATENCY = 0x2000
+fcntl.ioctl(ser.fd, TIOCSSERIAL, buf)
+```
+For v2.0, the simpler path: add `setserial /dev/ttyACM0 low_latency` to the startup script or systemd unit, and document it as a required step.
+
+Additionally: Arduino sends only when there is new error data (face detected). Pi does not need to poll — it reads in a background thread and the 16ms latency only affects the Pi→Arduino direction for commands, not the real-time PID loop (which runs autonomously on Arduino anyway).
+
+**Warning signs:**
+- Serial data arrives in bursts of ~6 packets every 16ms instead of continuously at 100 Hz
+- `pi_brain.py` read loop shows timestamps clustered in 16ms windows
+- Watchdog on Arduino fires even when Pi is actively sending, because Pi packets arrive in bursts with >15ms gaps
+
+**Phase to address:**
+Phase 2 (Serial Protocol) — measure actual round-trip latency early in protocol testing. If bursting is observed, add `setserial low_latency` to startup procedure.
+
+---
+
+### Pitfall 4: Arduino PID Integral Windup When Servo Is at Physical Limit
+
+**What goes wrong:**
+When the Arduino PID runs at 100+ Hz and the servo is at its physical limit (face at extreme edge of frame), the integral term accumulates while the output is clamped. When the face returns to center, the accumulated integral causes the servo to overshoot significantly — often swinging to the opposite limit. For a face tracking system, this produces oscillation: servo sweeps left-right repeatedly rather than settling on the target.
+
+The br3ttb Arduino PID library does not enable anti-windup by default in older versions. Even with `SetOutputLimits()`, the internal integral sum continues growing beyond the output limits, and the clamped output just hides the windup until the setpoint changes.
+
+**Why it happens:**
+Anti-windup is not default behavior in the standard Arduino PID library. Developers add `SetOutputLimits(-limit, +limit)` thinking this prevents windup, but `SetOutputLimits` only clamps the *output*, not the integral accumulator. The windup still occurs internally.
+
+**How to avoid:**
+Use the QuickPID library (replaces br3ttb PID) which enables anti-windup by default via the `iAwCondition` mode:
+```cpp
+#include <QuickPID.h>
+QuickPID panPID(&pan_input, &pan_output, &pan_setpoint);
+panPID.SetOutputLimits(-PAN_LIMIT, PAN_LIMIT);
+panPID.SetAntiWindupMode(QuickPID::iAwCondition);  // default — best for servos
+panPID.SetMode(QuickPID::Control::automatic);
+```
+
+Alternatively with br3ttb PID: manually implement conditional integration — only add to the integral when the output is not saturated. This requires patching the library or using a wrapper.
+
+Also configure derivative-on-measurement (not derivative-on-error) to prevent derivative kick when the setpoint changes abruptly (new face detection, tracking loss and re-acquisition):
+```cpp
+panPID.SetProportionalMode(QuickPID::pOnError);
+panPID.SetDerivativeMode(QuickPID::dOnMeas);  // derivative on measurement — no kick
+```
+
+Starting PID gains from the empirically validated v1.8 values (P=0.05, I=0.001, D=0.005) is correct for initial tuning, but note that Arduino runs at 100 Hz while Python ran at ~30 Hz. The effective integral action is 3x stronger at 100 Hz for the same `I` gain — reduce `I` by 3x as the starting point: `I_arduino = 0.0003`.
+
+**Warning signs:**
+- Servo oscillates back and forth around center with increasing amplitude after face is centered
+- After face moves to frame edge and returns to center, servo overshoots to opposite edge
+- `panPID.GetPterm()` is small but `GetIterm()` is large despite face being centered
+- PID output stays at maximum for several seconds after face re-enters center region
+
+**Phase to address:**
+Phase 3 (Arduino Firmware — PID) — anti-windup configuration is a firmware design decision, not a tuning parameter. Address at firmware architecture level before any gain tuning.
+
+---
+
+### Pitfall 5: Serial Protocol Frame Sync Loss — Arduino Gets Partial Packet on Pi Reconnect
+
+**What goes wrong:**
+If the Pi restarts, crashes, or the serial connection drops mid-transmission, the Arduino may have partially received a frame. On reconnect, the Arduino's serial buffer contains the tail of the old packet concatenated with the start of the new packet. If the protocol uses `readline()` / newline delimiters, this produces a garbled line that fails parsing — and the parser may silently drop it or misinterpret the error values as valid, causing a brief servo jump.
+
+More dangerous: if the protocol uses binary framing without a sync byte, Arduino's `Serial.read()` gets out of phase with the packet boundaries and all subsequent packets are misinterpreted until the buffer is manually flushed.
+
+**Why it happens:**
+Serial communication has no implicit session concept. When a Python process re-opens `/dev/ttyACM0`, the Arduino's hardware UART buffer still contains whatever was there before. Arduino's `Serial.available()` will show bytes from before the reconnect.
+
+**How to avoid:**
+Use a text protocol with newline delimiter and a sync/heartbeat design:
+```
+SCAN\n
+TRACK,ex,ey,sz\n
+PING\n
+```
+Each line is self-contained. Arduino uses `Serial.readStringUntil('\n')` with a timeout. On parse failure (malformed tokens, wrong field count), Arduino discards the line and waits for the next `\n`. Partial packets from a prior session produce at most one malformed line, then the protocol self-heals.
+
+On the Pi side: after opening the port, send `PING\n` and wait for `OK\n` before sending tracking data. This drains stale bytes from Arduino's buffer and confirms the firmware is responsive.
+
+Additionally, define what Arduino does on parse failure: log to Serial (for Pi to monitor), keep the last valid command active (or revert to SCAN), never apply partial/corrupt error values to the PID.
+
+**Warning signs:**
+- Servo makes a brief unexpected jump immediately after Pi reconnects
+- Arduino Serial debug shows malformed tokens (non-numeric where number expected)
+- Tracking appears correct for most packets but has intermittent single-frame jumps
+- `Serial.parseInt()` returns 0 for fields that should be non-zero (parseInt returns 0 on parse failure)
+
+**Phase to address:**
+Phase 2 (Serial Protocol) — frame sync resilience must be in the protocol design specification before either Pi or Arduino code is written. Test by unplugging and re-plugging the USB cable during operation.
+
+---
+
+### Pitfall 6: Arduino Watchdog Timer Causes Bootloader Lock (32u4-Specific)
+
+**What goes wrong:**
+Enabling the hardware watchdog timer (`wdt_enable(WDTO_2S)`) on Arduino Leonardo can cause a permanent reboot loop that makes the board impossible to reprogram via USB. The sequence: WDT fires → Arduino resets → bootloader starts (Caterina, ~8 seconds window for upload) → main sketch starts immediately → WDT fires again before sketch can execute `wdt_disable()` in `setup()` → infinite reset loop. The USB port disappears and the board appears "bricked."
+
+This is a documented 32u4/Caterina bootloader interaction that does not affect Uno (Optiboot handles it cleanly).
+
+**Why it happens:**
+The Caterina bootloader on Leonardo does not call `wdt_disable()` at the start of the bootloader. When the WDT fires and the board resets, the WDT is still enabled with the short timeout. The bootloader runs for milliseconds, then the WDT fires again before the bootloader can enter the 8-second upload window.
+
+**How to avoid:**
+The correct and safe pattern for Leonardo WDT:
+```cpp
+#include <avr/wdt.h>
+
+void setup() {
+  // Disable WDT IMMEDIATELY as first line of setup()
+  // This catches the case where we rebooted due to WDT
+  MCUSR &= ~(1 << WDRF);  // clear WDT reset flag
+  wdt_disable();
+
+  // ... all other initialization ...
+  Serial.begin(115200);
+  // ... wait for serial ...
+
+  // Enable WDT only AFTER everything is initialized
+  // Use at least 2 seconds — never less than 1s on Leonardo
+  wdt_enable(WDTO_4S);
+}
+
+void loop() {
+  wdt_reset();  // pet the watchdog every iteration
+  // ... rest of loop ...
+}
+```
+
+Use `WDTO_4S` (4 seconds), not `WDTO_1S` or `WDTO_2S`. The 4-second window allows the Pi to restart and re-establish communication without triggering the watchdog during normal operation interruptions (Pi reboot takes ~25 seconds, so watchdog should trigger a return-to-SCAN, not a hardware reset).
+
+Implement the watchdog in firmware as a software timeout counter, not hardware WDT: count milliseconds since last valid serial packet; if > 3000ms, transition to SCAN mode. This provides watchdog behavior without the hardware bootloader risk.
+
+**Warning signs:**
+- Arduino becomes unresponsive to upload after enabling WDT in sketch
+- `dmesg` shows ttyACM0 appearing for ~100ms then disappearing repeatedly
+- Arduino IDE upload fails with "no device found on /dev/ttyACM0"
+
+**Phase to address:**
+Phase 3 (Arduino Firmware) — implement watchdog as a software timeout counter in the firmware's main loop. Avoid hardware WDT (`wdt_enable()`) entirely unless comfortable with the bootloader risk. Document the decision.
+
+---
+
+### Pitfall 7: Servo Direction Wrong on New Arduino Mount — Requires Re-Verification
+
+**What goes wrong:**
+The v1.7 validated servo direction convention (`pan+=right, tilt+=down`, `korekta_tilt = -pid_tilt`) was established for the RPi/gpiozero/pigpio hardware path. In v2.0, servo control moves to `Arduino.Servo` library via `servo.write(angle)` — a completely different control path. The angle→direction mapping depends on: (a) servo physical orientation in the bracket, (b) how the Servo library maps `write(0)` to `write(180)` in terms of pulse width direction, and (c) whether the Arduino PID's setpoint convention (0 = center = 90° for a servo, or 0 = center = 0°) matches the Pi's error sign convention.
+
+There is no guarantee the v1.7 sign convention survives the architecture migration.
+
+**Why it happens:**
+The Servo library `write(angle)` maps angle 0–180 to 1000–2000µs pulse width. If the servo is physically mounted with the shaft facing the opposite direction compared to the v1.7 mount, `write(90)` is still center but `write(91)` moves the opposite physical direction.
+
+**How to avoid:**
+Treat servo direction as empirically undefined on the new Arduino mount. Add a calibration routine to the Arduino firmware:
+```
+When Serial receives "CAL_PAN_PLUS", write pan servo to 100 (from 90 center) and log.
+When Serial receives "CAL_PAN_MINUS", write pan servo to 80 and log.
+```
+From the Pi, send these calibration commands and observe physical movement direction. Determine the correct sign mapping before any PID test. The error sign convention on the Pi side (`blad_x = face_cx - frame_cx`, positive = face is right of center → servo should move right) must match the Arduino PID's correction direction.
+
+Also: the MG90S on Arduino should use `servo.write(degrees)` with 0–180 range, not `servo.writeMicroseconds()`, unless pulse width calibration is needed for the new servos. Verify center position at `write(90)` before testing.
+
+**Warning signs:**
+- Servo moves away from face instead of toward it during TRACKING
+- Tracking oscillates: servo chases face to limit, face re-centers, servo goes to opposite limit
+- Pan converges correctly but tilt diverges (or vice versa) — one axis sign is wrong
+
+**Phase to address:**
+Phase 3 (Arduino Firmware) and Phase 4 (Integration Test) — always run direction verification as the first integration test before enabling PID in closed-loop mode.
+
+---
+
+### Pitfall 8: LCD Updates Block the Arduino Main Loop — Servo Jitter at PID Frequency
+
+**What goes wrong:**
+The LiquidCrystal library's `lcd.print()` and `lcd.setCursor()` use blocking `delayMicroseconds()` calls for LCD timing. On a 4-bit LCD 1602, writing one character takes ~37µs and clearing the display takes ~1500µs. If the Arduino main loop calls `lcd.clear()` and then prints two lines every iteration at 100 Hz (10ms intervals), the LCD operations consume 1500µs + 74µs per character × 32 characters = 4488µs ≈ 4.5ms per update — nearly half of the 10ms PID budget.
+
+This delay directly adds jitter to the servo PWM update rate. The Servo library on Leonardo uses Timer4 hardware interrupts for PWM, so the servo signals themselves are not blocked. However, the PID computation and the `servo.write()` call are delayed by the LCD blocking time, making the effective PID rate drop from 100 Hz to ~67 Hz and introducing irregular spacing between updates.
+
+**Why it happens:**
+Developers write `lcd.clear(); lcd.setCursor(0,0); lcd.print(...)` in the same loop as `pid.Compute()` and `servo.write()` without considering that LCD operations are not instantaneous.
+
+**How to avoid:**
+Update the LCD at a much lower rate than the PID loop. Use a non-blocking timer pattern:
+```cpp
+unsigned long lastLCDUpdate = 0;
+const unsigned long LCD_UPDATE_INTERVAL = 200;  // 5 Hz — sufficient for status display
+
+void loop() {
+  wdt_reset();
+  processSerial();      // parse incoming Pi packet
+  runPID();             // PID compute + servo.write()
+
+  // LCD only at 5 Hz — not every loop iteration
+  if (millis() - lastLCDUpdate >= LCD_UPDATE_INTERVAL) {
+    updateLCD();
+    lastLCDUpdate = millis();
+  }
+}
+```
+
+Never call `lcd.clear()` inside the high-rate loop — `clear()` has the longest blocking time. Instead, only update the LCD fields that changed by rewriting specific cursor positions.
+
+**Warning signs:**
+- Servo exhibits 5 Hz jitter (matching LCD update rate if LCD is called every loop)
+- `Serial.println(millis())` shows loop iterations with irregular ~4ms gaps in otherwise 10ms loop
+- Servo motion appears smooth during SCAN but jittery during TRACKING (when LCD prints error values every tick)
+
+**Phase to address:**
+Phase 3 (Arduino Firmware) — LCD update rate separation is a firmware architecture decision. Implement the `millis()`-based timer from the start; do not add it as a fix after observing jitter.
+
+---
+
+### Pitfall 9: pyserial readline() Blocks Forever Without a Timeout — Pi Brain Hangs
+
+**What goes wrong:**
+`serial.readline()` with `timeout=None` (pyserial default) blocks indefinitely waiting for a `\n` character. If the Arduino firmware is stuck in a WDT reset loop, rebooting, or the USB cable is unplugged, `readline()` in the Pi's receive thread never returns. The Pi brain's main loop hangs, face detection stops, and there is no way to recover without killing the process.
+
+This is especially dangerous during startup: `pi_brain.py` calls `readline()` waiting for the Arduino handshake `OK\n`, but if Arduino takes >2 seconds to enumerate (due to Leonardo USB re-enumeration), the call blocks forever.
+
+**Why it happens:**
+pyserial's default timeout is `None` (blocking mode). Developers who are used to Arduino's `Serial.readStringUntil()` (which has its own timeout) assume pyserial behaves similarly.
+
+**How to avoid:**
+Always set a timeout when opening the serial port:
+```python
+ser = serial.Serial("/dev/ttyACM0", 115200, timeout=1.0)  # 1-second read timeout
+```
+With `timeout=1.0`, `readline()` returns an empty bytes object `b""` after 1 second if no newline arrives. The receive loop must handle empty responses gracefully:
+```python
+line = ser.readline().decode("utf-8", errors="ignore").strip()
+if not line:
+    # timeout — no data from Arduino
+    handle_arduino_silence()
+    continue
+```
+Design the receive loop to be non-blocking: use `ser.in_waiting` to check if bytes are available before reading, or run the serial receive in a dedicated daemon thread so main vision loop continues regardless of serial state.
+
+**Warning signs:**
+- `pi_brain.py` starts but never reaches "connection established" log message
+- Process hangs on startup with no output after "opening serial port..."
+- CPU usage is 0% but the process is alive (blocked in system call)
+- `strace -p <pid>` shows process blocked on `read()` syscall
+
+**Phase to address:**
+Phase 2 (Serial Protocol) — timeout configuration is a baseline requirement for the `SerialManager` class. Test with Arduino disconnected to verify graceful degradation.
+
+---
+
+### Pitfall 10: AWB Blue/Green Tint Recurs With MediaPipe — New Camera Pipeline, Old Problem
+
+**What goes wrong:**
+The v1.7/v1.9 AWB fix (Picamera2 warm-up + ColourGains lock) was validated for the DNN/HAAR vision path. MediaPipe in v2.0 requires frames as RGB numpy arrays (not BGR). The conversion step changes: instead of `cv2.cvtColor(frame, cv2.COLOR_YUV420p2BGR)` (test tracker) or OpenCV VideoCapture BGR output (main app), `pi_brain.py` must provide RGB to MediaPipe.
+
+If the YUV420→RGB conversion uses `COLOR_YUV420p2BGR` and then `cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)`, the double conversion adds processing cost and may produce incorrect colors if the intermediate BGR step has a non-neutral white balance. Alternatively, using `COLOR_YUV420p2RGB` directly skips one conversion but may be affected by the same ISP AWB issues.
+
+More importantly: if `pi_brain.py` uses the Picamera2 `main` stream instead of `lores` for MediaPipe input, the default SRGGB10 (10-bit Bayer) raw format requires explicit ISP processing. Using the wrong stream format with MediaPipe produces a frame that looks like noise.
+
+**Why it happens:**
+MediaPipe's `FaceDetector.detect()` expects RGB. Developers port the YUV420→BGR pipeline from the test tracker and forget the MediaPipe RGB requirement, getting blue-shifted detections or no detections.
+
+**How to avoid:**
+Configure Picamera2 to provide a `main` stream in RGB888 format directly for MediaPipe, eliminating YUV conversion:
+```python
+config = picam2.create_preview_configuration(
+    main={"size": (640, 480), "format": "RGB888"},
     controls={"ColourGains": AWB_FALLBACK_GAINS}
 )
-self._picam2.configure(video_config)
-self._picam2.start()
-
-# Phase 2: warm-up, then lock at auto-converged values
-time.sleep(2.0)
-meta = self._picam2.capture_metadata()
-gains = meta.get("ColourGains")
-if gains and gains != (0.0, 0.0):
-    self._picam2.set_controls({
-        "AwbEnable": False,
-        "ColourGains": (float(gains[0]), float(gains[1]))
-    })
 ```
+`picam2.capture_array("main")` then returns an RGB numpy array compatible with MediaPipe without any conversion.
 
-If adding `AwbEnable: False` causes issues (Picamera2 version conflict per issue #825), remove it and verify the implicit disable works by checking that gains do not drift after 30 seconds.
+The v1.9 AWB fix (warm-up + ColourGains lock + `AwbEnable: False`) remains valid and must be carried over to `pi_brain.py`. Do not skip the AWB lock because "MediaPipe doesn't need accurate color for face detection" — the MJPEG stream and any future HUD display will show the tint, and consistent AWB makes frame-to-frame comparison more reliable.
 
 **Warning signs:**
-- Color correct at startup but drifts after 2–5 seconds
-- `ColourGains` re-read after re-lock shows different values than what was set
-- Warm scenes produce warm drift, cold scenes produce blue drift (AWB still running)
+- MediaPipe detections have correct bounding boxes but face landmarks are slightly off-color (blue faces in debug view)
+- Frame 1 from Picamera2 appears heavily blue/green before AWB warmup completes
+- MediaPipe `FaceDetector.detect()` returns `detections=[]` despite a visible face (wrong color format — BGRA or YUV passed as RGB)
 
 **Phase to address:**
-Phase 2 (AWB fix) — test lock stability over at least 30 seconds before declaring AWB fixed.
+Phase 1 (Pi Brain — MediaPipe vision) — camera format configuration is the first decision. Prefer `RGB888` main stream over YUV+conversion. Re-apply the v1.9 AWB fix in the new `pi_brain.py` camera init.
 
 ---
 
-### Pitfall 5: PID Output Clamped at ±10° But servo_angle += correction Accumulates Unbounded
+### Pitfall 11: MediaPipe Face Detection Confidence Threshold Too Permissive — False Triggers Under Mixed Lighting
 
 **What goes wrong:**
-`PID_OUTPUT_LIMIT = 10.0` and `pid.output_limits = (-10.0, 10.0)` cap each tick's correction to ±10°. But the application code does:
-```python
-nowy_pan = self.hardware.pan_angle + korekta_pan
-nowy_tilt = self.hardware.tilt_angle + korekta_tilt
-self.hardware.set_angles(nowy_pan, nowy_tilt)
-```
+MediaPipe `FaceDetector` default `min_detection_confidence=0.5` is permissive for a face tracking system. On RPi4 under fluorescent or backlit conditions, MediaPipe detects false positives in reflective surfaces, posters, and bright windows at confidence 0.5–0.7. These false positives cause the system to transition from SCAN to TRACK on non-face objects, sending incorrect error values to Arduino, causing unexpected servo movement.
 
-`self.hardware.pan_angle` is the last clamped software value. The *new* target is `pan_angle + correction`, which is only limited by `PAN_LIMIT_MIN/MAX` (±60°) in `set_angles()`. A sequence of ±10° corrections over 6 consecutive frames will move the servo from 0° to 60° (hitting the hard limit) in 6 ticks = 200ms at 30 FPS.
-
-The root cause of "servo escapes immediately on TRACKING entry": the integral term (`I`) of the PID may have been accumulating during SCANNING (if `pid.reset()` was not called cleanly), and the moment TRACKING starts, the accumulated integral produces a large first correction that saturates the output at ±10° every tick for several frames.
-
-The `simple_pid` library resets integral accumulation on `reset()` call. `_przejdz_do()` calls `pid_pan.reset()` and `pid_tilt.reset()` when entering SCANNING. But `_przejdz_do()` does NOT reset PIDs when entering TRACKING. If the system exits TRACKING, transitions through TARGET_LOST, returns to SCANNING (PIDs reset), then immediately detects a face and enters TRACKING — the PIDs are freshly reset and this is fine. But if TRACKING is entered from SCANNING after only 1 scan tick (face detected very quickly), there may be a small non-zero integral from that one tick. More dangerous: if the initial error at TRACKING entry is large (face is at the frame edge, `blad_pan = ±160` pixels for a 320-wide frame), the P-term alone produces `0.05 * 160 = 8.0°` per tick, and with no I windup at all, 6 consecutive ticks hit the ±60° limit.
+The v1.6/v1.7 system used a streak filter (3 consecutive HAAR detections required) to prevent this. MediaPipe returns a single-frame result with no built-in streak mechanism.
 
 **Why it happens:**
-PID gains (`P=0.05`) were validated on a face that was roughly centered (`blad_pan` small). A face at the edge of frame (`blad_pan = 150+`) produces full-saturation output from P-term alone, every tick. The servo moves at maximum speed until it hits the limit. This looks like "runaway" but is actually correct PID behavior for a large initial error — the system is not misbehaving, it is correcting aggressively.
+MediaPipe's face detection model is highly accurate but designed for general use cases. In a robotic tracking application where false positive tracking is physically observable (servo moves toward wrong target), the cost of a false positive is higher than in a photo application. The default threshold is tuned for recall over precision.
 
 **How to avoid:**
-Two complementary approaches:
-1. **Derivative-on-measurement**: Use `simple_pid` with `differential_on_measurement=True` (default is False) to avoid derivative kick when error jumps suddenly at TRACKING entry.
-2. **Startup output limit reduction**: For the first 3–5 ticks of a new TRACKING entry, cap the per-tick correction to a smaller value (e.g. `PID_OUTPUT_LIMIT_STARTUP = 3.0`), then restore normal limits after the servo has moved toward the face.
-3. **Dead zone**: Add a center dead zone — if `abs(blad_pan) < 10` pixels, do not apply PID correction. This prevents jitter when centered and reduces escapes at entry (the servo will approach more slowly).
+Use a higher confidence threshold for the tracking use case: `min_detection_confidence=0.75` as the starting point. Additionally, reimplement the streak filter concept: require N consecutive detections (N=3) of a face in roughly the same location (within 50px of bounding box center) before transitioning to TRACK mode. This prevents single-frame false positives from triggering servo movement.
 
-Verify with logging: at every TRACKING entry, log `blad_pan`, `blad_tilt`, and `korekta_pan`, `korekta_tilt` for the first 5 ticks. If corrections are at the ±10° limit for 5+ consecutive ticks, the initial error is too large and needs entry-time correction limiting.
+For "sticky tracking" (largest face wins), implement: if multiple faces detected, choose the one with the largest bounding box area. If the largest face switches to a different face in consecutive frames, require 2 frames of agreement before accepting the new tracking target.
 
 **Warning signs:**
-- Servo hits limit clamp (`WARNING: Clamp pan`) within 1–2 seconds of TRACKING entry
-- TRACKING lasts less than 1 second before TARGET_LOST (servo escapes, face leaves frame)
-- `blad_pan` or `blad_tilt` at TRACKING entry is above 100 pixels (out of 160/120 for 320x240)
-- `korekta_pan` at ±10.0 (saturated at limit) for first 5+ ticks after TRACKING entry
+- Arduino enters TRACK mode briefly when no person is in frame (servo moves toward background)
+- System tracks a poster or monitor in the background instead of the nearest person
+- Single-frame TRACK transitions that immediately return to SCAN (streaking false positive)
 
 **Phase to address:**
-Phase 3 (PID/tracking fix) — must address initial-error correction limiting separately from steady-state gain tuning.
-
----
-
-### Pitfall 6: smooth_move_to() Is Blocking — Using It in Main Loop Stalls Camera Capture
-
-**What goes wrong:**
-`smooth_move_to()` in `hardware.py` is a blocking while-loop with `time.sleep(0.05)` per step. Moving from 0° to 45° with `SERVO_STEP=1.0` takes `45 * 0.05 = 2.25 seconds`. If `smooth_move_to()` is called from the main tracking loop thread (or from `inicjalizuj()` before the loop starts), it blocks frame capture for the entire duration.
-
-On startup this is acceptable — `inicjalizuj()` runs before `_running = True` and before the camera capture thread serves frames to the main loop. The safe start is designed to block.
-
-The trap appears when `smooth_move_to()` is proposed as the fix for "jerky motion during scan." A developer sees jerky scan behavior, looks at `_skanuj()` which calls `set_angles()` directly, and decides to replace it with `smooth_move_to()`. This is wrong — `smooth_move_to()` is a one-shot blocking move, not a real-time incremental step function. Calling it inside `_skanuj()` (which runs every frame) would cause each scan step to block for up to 2+ seconds.
-
-**Why it happens:**
-The name `smooth_move_to` suggests it is the right tool for any smooth motion. It is actually a Safe Start utility — it exists to prevent brownout at startup, not for real-time scan motion.
-
-**How to avoid:**
-Scan smoothness must be achieved through the sinusoidal formula in `_skanuj()`, not by replacing `set_angles()` with `smooth_move_to()`. If scan appears jerky on hardware, investigate:
-1. PWM frame timing — is `pigpiod` running? Software PWM from RPi.GPIO produces visible jitter even at hardware GPIO
-2. Loop timing — is the main loop consistently executing at 30 FPS or dropping frames?
-3. Servo pulse calibration — default gpiozero `min_pulse_width=1ms, max_pulse_width=2ms` may not match MG90S physical range. MG90S typical: 0.5ms–2.4ms. Using defaults maps only the center portion of the servo's physical range, causing each angular step to produce less physical movement and non-linearity.
-
-**Warning signs:**
-- System freezes for 2+ seconds between scan positions
-- Camera frames stop updating while servo is moving
-- `_skanuj()` log messages appear with multiple-second gaps
-
-**Phase to address:**
-Phase 4 (smooth scan fix) — separate scan smoothness from servo hardware calibration. Address pulse width calibration as a hardware.py change, not a change to `_skanuj()`.
-
----
-
-### Pitfall 7: MG90S Pulse Width Defaults Cause Non-Linear Motion and Apparent Jerkiness
-
-**What goes wrong:**
-`PanTiltSystem.__init__` creates:
-```python
-self.pan_servo = AngularServo(pan_pin, min_angle=-90, max_angle=90, pin_factory=factory)
-self.tilt_servo = AngularServo(tilt_pin, min_angle=-90, max_angle=90, pin_factory=factory)
-```
-
-The gpiozero `AngularServo` default pulse widths are `min_pulse_width=1/1000` (1ms) and `max_pulse_width=2/1000` (2ms). The MG90S datasheet specifies 500µs–2400µs as the full range. The defaults only cover 1000–2000µs, which corresponds to roughly ±60° of the physical ±90° range. Within the covered range, the mapping is linear. Near the edges (approaching the ±60° soft limit), the servo may still physically move but the commanded steps produce smaller physical movement, appearing as "going dead" near limits.
-
-More importantly: if the actual servo's center position corresponds to a different pulse width than gpiozero's default midpoint (1500µs), `angle=0` will not produce physical 0°. The servo will appear to start off-center and the scan will not be symmetric.
-
-**Why it happens:**
-MG90S "typical" specs vary by manufacturer batch. The gpiozero defaults are for a generic 180° servo assuming 1ms–2ms = -90° to +90°. MG90S from some suppliers uses 500µs–2500µs for the full range. Using defaults causes the servo to only use the middle third of its physical range.
-
-**How to avoid:**
-Calibrate pulse widths empirically. Start with the wider range:
-```python
-self.pan_servo = AngularServo(
-    pan_pin,
-    min_angle=-90, max_angle=90,
-    min_pulse_width=0.0005,   # 500µs
-    max_pulse_width=0.0024,   # 2400µs
-    pin_factory=factory
-)
-```
-Command angle=0, measure physical position. Command angle=+60, measure. If 60° command = 60° physical, calibration is correct. If not, adjust `min_pulse_width` and `max_pulse_width` until the physical movement matches the commanded angle. This affects scan amplitude accuracy and PID convergence.
-
-**Warning signs:**
-- Servo moves but scan amplitude appears less than `SCAN_AMPLITUDE=45°` visually
-- Servo seems to stop responding before reaching angle limits (hits mechanical stop before software limit)
-- Center position (angle=0) does not visually center the camera
-- Scan pattern is not symmetric (larger swing one direction than the other)
-
-**Phase to address:**
-Phase 4 (smooth scan fix) — pulse width calibration is a hardware.py constant change. Do this before any PID gain tuning as it changes the effective gain of the servo actuator.
-
----
-
-### Pitfall 8: DNN skip_every=5 Creates Stale BBox During Rapid Motion — PID Tracks Old Position
-
-**What goes wrong:**
-`DetekcjaTwarzy.wykryj()` runs DNN forward pass only when `klatka_licznik % DNN_SKIP_EVERY == 0`. Between forward passes, it returns `self._ostatni_bbox` unchanged — the last detected position. If the face moves rapidly (or the servo moves rapidly after entering TRACKING), the bounding box is stale for up to 4 frames. The PID corrects toward an old position, overshoots, and may exit TRACKING.
-
-At 10 FPS (which is realistic for the DNN path on RPi4), `skip_every=5` means forward pass runs at 2 FPS. Between forward passes, the bbox is 500ms stale. If the face is moving at 1 pixel/ms (normal head movement), the bbox center may be 500 pixels stale — larger than the entire 320px frame width.
-
-**Why it happens:**
-`skip_every=5` was set for computational efficiency (validated in Phase 13). But the TRACKING state uses bbox without any staleness weighting — it treats the 4-frame-old bbox as current ground truth.
-
-**How to avoid:**
-During TRACKING, add a bbox staleness flag: track which frame number produced the last DNN result. If the current frame is more than 2 frames past the last DNN result, reduce the PID correction weight or skip the correction entirely. Alternatively, use a CSRT tracker (as the main `vision.py` does) between DNN forward passes to propagate the bbox smoothly. For v1.9 scope, a simpler approach: reduce correction magnitude when using cached bbox, or only apply PID correction on frames where DNN ran.
-
-**Warning signs:**
-- Servo oscillates at 2 Hz during TRACKING (matching DNN forward pass frequency at 10 FPS with skip=5)
-- Convergence takes longer than expected given P gain
-- TRACKING exits to TARGET_LOST immediately after DNN forward pass that returns None (face moved, old bbox was accurate, new DNN detects nothing at old position)
-
-**Phase to address:**
-Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary PID fixes do not resolve escape behavior. Do not over-engineer this in v1.9; note as a known limitation.
+Phase 1 (Pi Brain — vision logic) — confidence threshold and streak filter are pi_brain.py parameters, not Arduino parameters. Address in the vision layer before integration testing.
 
 ---
 
@@ -286,11 +405,12 @@ Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary 
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
-| `AWB_FALLBACK_GAINS = (1.0, 1.0)` | "Neutral" fallback, no on-device tuning needed | Green tint — wrong for all IMX219 deployments | Never — replace with empirically read auto-converged values |
-| `set_angles(pan, 0.0)` hardcoded in `_skanuj()` | Simple code, tilt stays still during scan | Masks tilt hardware failures; no two-axis scan possible | Acceptable for pan-only scan intent — but must be explicitly documented as intentional |
-| `PID_OUTPUT_LIMIT = 10.0` with no entry-time damping | Simple constant limit | Saturated output at every TRACKING entry with large initial error | Acceptable if face is always near-centered; must add dead-zone or startup damping if face enters at frame edges |
-| `SERVO_STEP = 1.0` with `delay=0.05` in `smooth_move_to()` | Works for safe start | Inappropriate for real-time motion; calling in main loop blocks for seconds | Only for `inicjalizuj()` — never for real-time scan or tracking |
-| Default gpiozero pulse widths (1ms–2ms) | No calibration needed | Non-linear motion, wrong center position, limited range | Never for final hardware — calibrate min/max pulse widths to physical servo specification |
+| Using `Serial.readStringUntil('\n')` on Arduino with no timeout | Simple parsing | Arduino blocks if `\n` never arrives (Pi crash, partial packet) | Never — always set `setTimeout()` before readStringUntil |
+| Hardcoding `/dev/ttyACM0` in Pi brain | Simple | Fails when ttyACM0 is ttyACM1 (e.g., another USB device present) | Only in early prototype — add configurable port in config.py |
+| Sending full TRACK packets every frame (30 Hz) | Simple Pi code | 30 Hz × packet size = unnecessary serial throughput; bursts when MediaPipe drops frames | Better: send only on new MediaPipe detection; otherwise send PING heartbeat at 5 Hz |
+| Hardware WDT with short timeout | Autonomous recovery | Leonardo bootloader lock (permanent bricking risk) | Never — use software timeout counter instead |
+| LCD `clear()` every loop iteration | Always shows fresh state | 1.5ms blocking overhead per clear → PID jitter | Never in PID loop — use cursor repositioning at 5 Hz instead |
+| PID I gain from Python simple_pid as-is on Arduino 100 Hz | Preserves validated gains | 3× stronger integral at 100 Hz vs 30 Hz — may cause oscillation | Only as starting point — expect I gain to need 3× reduction |
 
 ---
 
@@ -298,15 +418,16 @@ Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary 
 
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
-| Picamera2 ColourGains | Setting `(1.0, 1.0)` as "neutral fallback" | Read auto-converged gains from `capture_metadata()` after 2s warm-up; use those as fallback |
-| Picamera2 ColourGains | Setting `(r, b)` before `start()` via `set_controls()` — silently ignored | Set in `create_video_configuration(controls=...)` for configure-time guarantee |
-| Picamera2 AWB lock | Not setting `AwbEnable: False` in the re-lock `set_controls()` call | Add `"AwbEnable": False` alongside `ColourGains` in the post-warm-up `set_controls()` call |
-| Picamera2 ColourGains | Integer tuple `(1, 1)` instead of float `(1.0, 1.0)` | Always pass `float(r), float(b)` — int input causes TypeError on some versions |
-| gpiozero AngularServo | Default pulse widths `1ms–2ms` for MG90S | Use `min_pulse_width=0.0005, max_pulse_width=0.0024` and verify physical angle at 0° |
-| gpiozero AngularServo | Calling `smooth_move_to()` in real-time scan/tracking loop | `smooth_move_to()` is blocking — only valid in `inicjalizuj()` before loop starts |
-| pigpio / gpiozero | Assuming `pan_servo.angle` reads back hardware position | `pan_servo.angle` reflects last commanded value only — no feedback from physical servo |
-| simple_pid | Not resetting PID on SCANNING entry after long TRACKING session | `_przejdz_do()` already resets on SCANNING entry — do NOT add reset on TRACKING entry, it discards valid integral |
-| DNN bbox skip | Using stale bbox as ground truth during TRACKING | Track `klatka_licznik` modulo; reduce weight or skip correction on non-DNN frames if oscillation detected |
+| pyserial + Leonardo | `serial.Serial("/dev/ttyACM0", 115200)` default DTR reset | Open with `dtr=False`, wait 2s, `reset_input_buffer()` before first packet |
+| pyserial readline | `timeout=None` (blocks forever) | Always `timeout=1.0`; handle empty `b""` response in receive loop |
+| MediaPipe + Picamera2 | Passing BGR frame or YUV frame to `FaceDetector.detect()` | Configure Picamera2 `main` stream as `RGB888`; pass directly to MediaPipe |
+| MediaPipe + venv | `pip install mediapipe` fails on Python 3.13 | Verify Python ≤3.12 before install; use `--system-site-packages` venv for picamera2 access |
+| Arduino PID library | `SetOutputLimits()` used as anti-windup | Use QuickPID with `iAwCondition`; or implement conditional integration manually |
+| Arduino Servo + LCD | LiquidCrystal operations in PID loop | Update LCD at 5 Hz max using `millis()` timer; never `lcd.clear()` in main loop |
+| Arduino WDT | `wdt_enable(WDTO_2S)` on Leonardo | Use software timeout counter (`millis()` since last valid packet) instead of hardware WDT |
+| Serial protocol | Arduino `Serial.parseInt()` on malformed input | `parseInt()` returns 0 silently; use explicit field count validation, discard malformed lines |
+| USB serial latency | Pi reads at full speed but data arrives in 16ms bursts | `setserial /dev/ttyACM0 low_latency` in startup script; or design protocol tolerant of bursty delivery |
+| Servo direction | Assuming v1.7 sign convention carries to Arduino mount | Verify empirically: CAL_PAN_PLUS command → observe physical movement direction before enabling PID |
 
 ---
 
@@ -314,28 +435,28 @@ Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary 
 
 | Trap | Symptoms | Prevention | When It Breaks |
 |------|----------|------------|----------------|
-| `cv2.resize()` 2x in main loop | CPU spike, FPS drops | Skip resize in headless mode (already guarded) | At 320x240 to 640x480 resize, ~3ms/frame — acceptable at 10 FPS; expensive at 30 FPS |
-| DNN `forward()` in main loop thread without skip | 100ms+ per frame = 1 FPS | `skip_every=5` already in place; never remove | Breaks immediately without skip on RPi4 |
-| `time.sleep(0.01)` in capture thread | Caps camera FPS at ~100 frames/s | Correct for 320x240 — do not reduce below 0.005 | Not a trap at current resolution; becomes one if resolution increases |
-| `smooth_move_to()` blocking 2+ seconds | Camera freezes, state machine stalls | Only call at startup in `inicjalizuj()`, never in main loop | Always a trap if called in main loop at any scale |
-| PID integral accumulation between TRACKING sessions | Servo escape on next TRACKING entry | `pid.reset()` on SCANNING entry (already in `_przejdz_do()`) — verify it executes every transition | Breaks if `_przejdz_do()` is bypassed or if direct state assignment is used |
+| MediaPipe full-resolution frame on RPi4 | <5 FPS, Pi CPU at 100%, Arduino starved of updates | Use 640x480 `main` stream; MediaPipe face detection is fast on this size | Breaks at 1280x720+ on RPi4 |
+| Serial TX on every MediaPipe frame regardless of detection | Serial buffer fills when MediaPipe drops frames | Send TRACK packet only on valid detection; send PING at 5 Hz when no face | Serial buffer overflow when Pi processes slowly |
+| Arduino `Serial.print()` debug in PID loop | PID timing jitter, loop rate drops | All debug prints gated behind `#define DEBUG` compile flag; disable for production | Any `Serial.print()` in 100 Hz loop adds ~100µs overhead |
+| Picamera2 `main` stream at 1080p for vision | 200ms+ MediaPipe latency | Use 640x480 for vision; full resolution only if MJPEG stream to Flask is needed separately | >720p breaks real-time on RPi4 |
+| pyserial in Pi main loop (blocking) | Vision loop blocked waiting for serial | Serial receive in dedicated daemon thread; use `queue.Queue` to pass data to vision loop | Any blocking serial call in vision loop stalls face detection |
 
 ---
 
 ## "Looks Done But Isn't" Checklist
 
-- [ ] **Tilt hardware**: `smooth_move_to(0, 20)` then `(0, 0)` at startup — verify physical tilt moves before touching state machine code
-- [ ] **Tilt sign**: Face held above center during TRACKING — verify `tilt_angle` increases in HUD (servo follows up, not down)
-- [ ] **AWB fix**: Color neutral from frame 1 — not just after 2s warm-up delay
-- [ ] **AWB fallback value**: Startup log shows `(R=X.XX, B=X.XX)` with both values above 1.4, not `(1.00, 1.00)`
-- [ ] **AWB stability**: Color does not drift after 30 seconds of TRACKING across different scene areas
-- [ ] **PID entry behavior**: Log `blad_pan` at every TRACKING entry — if above 100 pixels, entry-time damping needed
-- [ ] **PID convergence**: TRACKING sustained 5+ seconds with face roughly centered — servo not continuously clamping
-- [ ] **Clamp frequency**: Clamp warnings appear only at physical boundaries, not on every tracking tick
-- [ ] **Scan symmetry**: Camera sweeps equal angle left and right of center — verify `set_angles(0, 0)` is true physical center
-- [ ] **Pulse width calibration**: `angle=0` command produces visually centered camera; `angle=45` produces approximately 45° physical movement
-- [ ] **Mock mode**: Startup log confirms `PIGPIO_AVAILABLE=True` and `mock_mode=False` before any hardware test
-- [ ] **pigpiod active**: `systemctl is-active pigpiod` returns `active` before running any test
+- [ ] **MediaPipe install**: `python3 -c "import mediapipe; print(mediapipe.__version__)"` succeeds — not just `pip install` completion
+- [ ] **Serial connection**: Pi opens port without Arduino resetting — verify by NOT seeing Arduino LCD reinitialize on Pi connect
+- [ ] **Serial timeout**: Disconnect USB while pi_brain.py runs — confirm process recovers gracefully (not hung)
+- [ ] **Serial frame sync**: Kill and restart pi_brain.py while Arduino is tracking — confirm no servo jump on reconnect
+- [ ] **PID anti-windup**: Hold face at frame edge for 5 seconds, then center — confirm no overshoot beyond center
+- [ ] **Arduino WDT safety**: Confirm `wdt_disable()` is the first line of `setup()` before `Serial.begin()`
+- [ ] **LCD non-blocking**: Measure Arduino loop time with `micros()` — confirm no 1500µs spikes from `lcd.clear()`
+- [ ] **Servo direction verification**: CAL_PAN_PLUS command moves pan servo right (facing camera) before PID enabled
+- [ ] **AWB carry-over**: `pi_brain.py` camera init includes warm-up + ColourGains lock from v1.9 fix
+- [ ] **MediaPipe RGB format**: `pi_brain.py` passes RGB array to FaceDetector — not BGR, not YUV
+- [ ] **USB latency**: `setserial /dev/ttyACM0 low_latency` applied — verify with latency measurement script
+- [ ] **Python version**: `python3 --version` on RPi shows 3.11.x or 3.12.x — not 3.13
 
 ---
 
@@ -343,14 +464,15 @@ Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary 
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| Tilt frozen — hardware path not called | LOW | Add `smooth_move_to(0, 20)` test in `inicjalizuj()`; if physical tilt moves, hardware OK — problem is state machine |
-| Tilt inverted — servo moves wrong direction | LOW | Change `korekta_tilt = -self.pid_tilt(blad_tilt)` to `korekta_tilt = self.pid_tilt(blad_tilt)` — one sign change |
-| AWB green tint from (1.0, 1.0) fallback | LOW | Read `capture_metadata()["ColourGains"]` after 5s auto warm-up; update `AWB_FALLBACK_GAINS` constant with result |
-| AWB gains not holding after lock | LOW | Add `"AwbEnable": False` to the post-warm-up `set_controls()` call; verify with re-read |
-| PID escape on TRACKING entry | MEDIUM | Add per-entry correction cap: `min(abs(korekta_pan), 3.0) * sign(korekta_pan)` for first 5 ticks; add dead zone ±10 pixels |
-| Servo jitter from software PWM | LOW | Verify `pigpiod` running with `PiGPIOFactory`; already in `hardware.py` — check startup log for successful pigpio init |
-| Non-linear/wrong-range servo motion | LOW | Add `min_pulse_width=0.0005, max_pulse_width=0.0024` to `AngularServo()` constructor in `hardware.py`; verify physical angle |
-| Scan not smooth from sinusoid | MEDIUM | Check loop FPS — if below 10 FPS, scan appears stepped; reduce DNN `skip_every` or optimize main loop timing |
+| MediaPipe won't install (Python 3.13) | MEDIUM | Create venv with `python3.11` explicitly; or stay on Bookworm (Python 3.11 default) |
+| Arduino bricked by WDT (bootloader loop) | HIGH | Physical reset button press during upload window; replace Caterina with Optiboot if bricked permanently |
+| Leonardo resets on Pi serial open | LOW | Add `dtr=False` to `serial.Serial()` constructor; add 2s post-open delay |
+| Serial blocking (readline hangs) | LOW | Add `timeout=1.0` to Serial constructor; redesign receive loop as non-blocking thread |
+| PID windup causing oscillation | MEDIUM | Switch to QuickPID with `iAwCondition`; reduce I gain by 3×; add output dead zone ±5° |
+| Servo direction inverted | LOW | Add sign inversion flag in Arduino firmware config constants; empirically verify and set |
+| LCD jitter in PID loop | LOW | Move all LCD calls to 5 Hz section gated by `millis()` timer |
+| AWB tint with MediaPipe RGB888 | LOW | Apply v1.9 warm-up + ColourGains lock in pi_brain.py camera init; verify with `capture_metadata()` |
+| Serial frame desync on reconnect | LOW | Add PING/OK handshake after port open; clear Arduino input buffer with flush |
 
 ---
 
@@ -358,33 +480,46 @@ Phase 3 (PID/tracking fix) — consider as a secondary investigation if primary 
 
 | Pitfall | Prevention Phase | Verification |
 |---------|------------------|--------------|
-| Tilt frozen — scan hardcodes 0.0 / state machine never reaches TRACKING | Phase 1: tilt fix | `smooth_move_to(0, 20)` test moves physically; TRACKING state sustained with non-zero tilt |
-| Tilt inverted — wrong sign for physical mount | Phase 1: tilt fix | Face above center → tilt HUD increases; face below center → tilt HUD decreases |
-| AWB green tint from (1.0, 1.0) fallback | Phase 2: AWB fix | Fallback value above 1.4 in both channels; neutral skin tone from frame 1 |
-| AWB gains drifting after lock | Phase 2: AWB fix | `ColourGains` re-read after 30s matches locked value within ±0.1 |
-| PID escape on large initial error | Phase 3: PID/tracking fix | Clamp warnings absent for first 5 ticks of TRACKING; TRACKING sustained 5+ seconds |
-| DNN stale bbox during rapid motion | Phase 3: PID/tracking fix | No 2 Hz oscillation during TRACKING; secondary investigation only |
-| smooth_move_to() blocking in loop | Phase 4: smooth scan fix | Never call smooth_move_to() in scan — scan uses sinusoidal set_angles() only |
-| MG90S pulse width miscalibration | Phase 4: smooth scan fix | Physical angle matches commanded angle at 0°, ±45°; scan appears symmetric |
+| MediaPipe Python 3.13 incompatibility | Phase 1: Environment Setup | `import mediapipe` succeeds on RPi before writing pi_brain.py |
+| Leonardo DTR reset on serial open | Phase 2: Serial Protocol | Pi connects without triggering Arduino reboot (LCD does not flash) |
+| USB serial 16ms latency | Phase 2: Serial Protocol | Latency measurement script shows <2ms inter-packet gap after low_latency set |
+| Serial readline blocking | Phase 2: Serial Protocol | Disconnect USB during run — pi_brain.py recovers within 2 seconds |
+| Serial frame desync on reconnect | Phase 2: Serial Protocol | Kill and restart Pi process 5 times — no servo jumps observed |
+| Arduino PID integral windup | Phase 3: Arduino Firmware | Face at edge 5s, returns to center — no overshoot beyond ±10° |
+| Arduino WDT bootloader lock | Phase 3: Arduino Firmware | Firmware uploaded successfully 5 times after WDT enabled in sketch |
+| LCD blocking PID loop | Phase 3: Arduino Firmware | Loop time measured with `micros()` — no spikes >500µs in 100 Hz operation |
+| Servo direction wrong on new mount | Phase 4: Integration Calibration | CAL_PAN_PLUS/MINUS commands match expected physical direction before PID enabled |
+| AWB tint recurs in pi_brain.py | Phase 1: Pi Brain camera init | Frame 1 shows neutral color; ColourGains lock verified with `capture_metadata()` |
+| MediaPipe false positives | Phase 1: Pi Brain vision logic | 0 false TRACK transitions in 2-minute test with no person in frame |
+| MediaPipe BGR/YUV format error | Phase 1: Pi Brain vision logic | `FaceDetector.detect()` returns correct bounding boxes; not empty |
 
 ---
 
 ## Sources
 
-### Primary (HIGH confidence — direct code analysis)
-- `src/modes/test_tracker.py` — `AWB_FALLBACK_GAINS = (1.0, 1.0)`, `_skanuj()` hardcoded tilt=0.0, `pid.output_limits = (-10.0, 10.0)`, `DNN_SKIP_EVERY = 5`, double negation in `_sledz()`
-- `src/hardware.py` — `AngularServo(min_angle=-90, max_angle=90)` with no pulse width calibration; `smooth_move_to()` blocking while-loop with `time.sleep(0.05)`, `set_angles()` software-state updates regardless of `_mock_mode`
-- `src/config.py` — `PID_PAN_P = 0.05`, `PAN_LIMIT_MIN = -60`, `TILT_LIMIT_MIN = -30`, `SERVO_STEP = 1.0`
-- `.planning/PROJECT.md` — v1.9 problem statement; v1.7 "tilt negation fix" history; v1.8 "ColourGains=(1.0,1.0) turned blue→green" history
+### PRIMARY (HIGH confidence — official documentation and issue trackers)
+- [MediaPipe Python 3.13 issue #6159](https://github.com/google-ai-edge/mediapipe/issues/6159) — confirmed no Python 3.13 wheels; Bazel/pybind11 ABI incompatibility
+- [MediaPipe + Picamera2 issue #755](https://github.com/raspberrypi/picamera2/issues/755) — `--system-site-packages` venv required; shebang conflicts with MediaPipe
+- [Arduino Leonardo WDT bootloader issue #6077](https://github.com/arduino/Arduino/issues/6077) — confirmed 32u4/Caterina WDT bootloader lock pattern
+- [pyserial DTR issue #124](https://github.com/pyserial/pyserial/issues/124) — DTR toggles on port open by default; set `dtr=False` before open
+- [Arduino USB serial logging freeze issue #5797](https://github.com/arduino/Arduino/issues/5797) — serial output buffer fills if host does not read; Leonardo-specific behavior
+- [QuickPID library](https://github.com/Dlloydev/QuickPID) — anti-windup `iAwCondition` mode; derivative-on-measurement; Arduino-optimized PID
+- [Brett Beauregard PID anti-windup](http://brettbeauregard.com/blog/2011/04/improving-the-beginners-pid-reset-windup/) — standard reference for Arduino PID anti-windup patterns
+- [pyserial low_latency PR #2102](https://github.com/serialport/node-serialport/pull/2102) — ASYNC_LOW_LATENCY flag; Linux USB CDC ACM 16ms default latency confirmed
 
-### Secondary (MEDIUM-HIGH confidence — official and community sources)
-- [Picamera2 issue #322](https://github.com/raspberrypi/picamera2/issues/322) — AWB disable preserves CCM at moment of disable; `ColourGains=(1.0, 1.0)` does not produce neutral white on IMX219
-- [Picamera2 issue #825](https://github.com/raspberrypi/picamera2/issues/825) — `AwbEnable: False` + `ColourGains` in same `set_controls()` call causes sequencing issues on some Bookworm versions
-- [Picamera2 issue #933](https://github.com/raspberrypi/picamera2/issues/933) — maintainer: controls in `create_video_configuration()` are guaranteed to apply at configure time; `set_controls()` after `start()` takes 2–3 frames
-- [gpiozero RPi Forums #331790](https://forums.raspberrypi.com/viewtopic.php?t=331790) — MG90S-class servos require 500–2500µs range; default 1000–2000µs gpiozero defaults produce limited motion
-- [gpiozero documentation 2.0.1](https://gpiozero.readthedocs.io/en/stable/api_output.html) — `AngularServo` `min_pulse_width` and `max_pulse_width` parameters; PiGPIOFactory for hardware PWM
-- [Anti-windup via output clamping — simple_pid](https://github.com/m-lundberg/simple-pid) — `output_limits` provides clamping; `reset()` clears integral; derivative-on-measurement available via constructor flag
+### SECONDARY (MEDIUM confidence — community forums and RPi project docs)
+- [Arduino Forum: Leonardo comport disappears](https://forum.arduino.cc/t/leonardo-comport-disappears/1031387) — USB re-enumeration on Leonardo; port transiently disappears after programming
+- [Arduino Forum: Slow RPi4 → Arduino Mega serial](https://forum.arduino.cc/t/very-slow-serial-communication-raspberry-pi-4-arduino-mega/680162) — 2-second delays at default settings; low_latency resolves
+- [Arduino Forum: servo jitter with I2C](https://forum.arduino.cc/t/servo-jittering-when-using-i2c/475789) — LiquidCrystal 4-bit mode blocking calls cause servo jitter
+- [RPi Forums: MediaPipe Bookworm only](https://forums.raspberrypi.com/viewtopic.php?t=384248) — Bookworm (Debian 12) required; Trixie not supported
+- [Picamera2 issue #825](https://github.com/raspberrypi/picamera2/issues/825) — `ColourGains` + `AwbEnable` sequencing; version-dependent behavior
+
+### PROJECT HISTORY (HIGH confidence — empirically validated in prior milestones)
+- v1.7 key decision: `tilt negation = -pid_tilt` confirmed empirically on physical mount — must re-verify on Arduino mount
+- v1.7 known issue: AWB blue tint from cold start; ColourGains lock after 2s warm-up resolves
+- v1.9 known issue: `ColourGains=(1.0,1.0)` produces green tint; fallback must use sensor-specific values
+- v1.8 PID gains: P=0.05, I=0.001, D=0.005 validated at ~30 Hz Python loop rate; I gain must be scaled for 100 Hz Arduino
 
 ---
-*Pitfalls research for: v1.9 Stabilizacja Ruchu i Obrazu — ARIES-LITE RPi4 pan-tilt face tracker*
-*Researched: 2026-03-29*
+*Pitfalls research for: v2.0 Architektura Rozproszona — RPi4 (MediaPipe) + Arduino Leonardo (PID+HMI) via USB Serial*
+*Researched: 2026-03-30*

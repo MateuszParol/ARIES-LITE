@@ -1,200 +1,221 @@
 # Project Research Summary
 
-**Project:** ARIES-LITE v1.9 — Stabilizacja Ruchu i Obrazu
-**Domain:** Embedded real-time vision + servo control (RPi4 / Picamera2 / pigpio / PID)
-**Researched:** 2026-03-29
-**Confidence:** HIGH
+**Project:** ARIES-LITE v2.0 — Architektura Rozproszona (RPi4 Mozg + Arduino Leonardo Uklad Wykonawczy)
+**Domain:** Distributed embedded face tracking — RPi4 (vision + serial TX) + Arduino Leonardo (PID + servo + HMI)
+**Researched:** 2026-03-30
+**Confidence:** HIGH (architecture and pitfalls from authoritative sources and project-specific empirical history)
 
 ## Executive Summary
 
-v1.9 is a focused bug-fix milestone targeting four confirmed behavioral defects in `run_test_tracker.py` / `src/modes/test_tracker.py`. All four bugs are narrow, isolated failures in an otherwise structurally sound system validated through v1.8. The existing architecture, PID gains, hardware abstraction, and DNN detection pipeline are all correct — the bugs are sequencing errors and single wrong constants, not design problems. No new libraries are required for any fix.
+ARIES-LITE v2.0 migrates from a Python monolith (single RPi4, gpiozero/pigpio servos, ~30 Hz PID) to a distributed two-node system: the RPi4 handles only vision (MediaPipe FaceDetector) and serial transmission, while an Arduino Leonardo runs dual-axis PID at 100+ Hz with MG-90S servos, LCD 1602 HMI, buzzer, and an abort button. The core motivation is deterministic real-time servo control: the Arduino loop achieves 10ms±1ms dT stability versus Python's 30ms with 10-30ms GIL/GC jitter. This is the same pattern used in industrial robotics (compute node + controller node) and validated by the SaraKIT MediaPipe/RPi reference implementation.
 
-The recommended approach is to apply all four fixes exclusively in `src/modes/test_tracker.py` (one file), in dependency order: AWB/color fix first (independent, zero-risk), then PID reset on TRACKING entry, then tilt sinusoidal scanning, then scan jitter verification. No architectural changes, no changes to `hardware.py`, `config.py`, or `run_test_tracker.py`. This approach minimizes regression risk against empirically validated hardware components.
+The recommended approach is a strict Brain-Muscle split: the RPi computes pixel error from MediaPipe bounding boxes and sends 8-byte binary frames (start byte + mode + int16 error_x + int16 error_y + uint8 face_size + XOR checksum) over USB Serial at 115200 baud. The Arduino receives frames via a non-blocking byte-state-machine parser, runs PID independently of the serial rate, and uses a millis()-based software watchdog (not hardware AVR WDT) to return to autonomous scan if the Pi goes silent. This architecture guarantees servo motion continues even when the Pi restarts or Python crashes.
 
-The primary risks are: (1) the AWB green tint having a dual cause — wrong YUV conversion flag (`COLOR_YUV420p2BGR` instead of `COLOR_YUV420p2RGB`) AND wrong `ColourGains` fallback value `(1.0, 1.0)` — both must be fixed; (2) the servo escape on TRACKING entry being caused by large initial P-term output in addition to missing `reset()`, requiring `PID_OUTPUT_LIMIT` to be reduced from 10.0 to 3.0; and (3) scan jitter requiring empirical verification on hardware before deciding whether a servo interpolation approach beyond `DNN_SKIP_EVERY` increase is needed.
+The primary risks are: MediaPipe installation failing on Python 3.13 (stay on Bookworm + Python 3.11), Arduino Leonardo DTR-reset disrupting the USB connection on every Python reconnect (open serial with dtr=False), Linux USB CDC 16ms latency batching that disrupts timing (setserial low_latency required), and Arduino PID integral windup at servo limits (use QuickPID with iAwCondition anti-windup, not the default br3ttb PID library). The serial protocol frame format must be locked before any other implementation begins — both sides depend on it and changing it mid-implementation forces simultaneous changes to two code bodies.
+
+---
 
 ## Key Findings
 
 ### Recommended Stack
 
-No new packages are required for any v1.9 fix. The existing stack — Picamera2, pigpio/gpiozero `PiGPIOFactory`, `simple-pid 2.0.x`, OpenCV DNN (res10 SSD) — is sufficient. All four fixes are logic and constant changes within one Python file.
+The v2.0 stack replaces the Python-side servo control (gpiozero + pigpio) entirely. On the RPi4, the new dependencies are `mediapipe` (BlazeFace FaceDetector via Tasks API) and `pyserial`. The `picamera2` backend is retained unchanged; the AWB lock sequence (start + 2s sleep + capture_metadata + set_controls) is validated and must be carried into `pi_brain.py` verbatim. On the Arduino, the firmware uses the standard `Servo` library on D9/D10, `LiquidCrystal` in 4-bit mode on D2-D5/D11/D12, and `QuickPID` (replaces br3ttb PID) for anti-windup support.
 
-**Core technologies (unchanged from v1.8):**
-- `Picamera2` + `libcamera`: YUV420 lores stream at 320x240 — fix requires `COLOR_YUV420p2RGB` (not `2BGR`) for correct R/B channel mapping from libcamera's YUV420
-- `pigpio` / `gpiozero PiGPIOFactory`: hardware PWM eliminates electrical jitter but cannot smooth software-commanded angle jumps — smoothing must be in Python code via EMA if needed
-- `simple-pid 2.0.x`: `output_limits` provides built-in anti-windup (clamps both output and integral accumulator); `reset()` clears integral and last_error — both mechanisms required for v1.9 PID fix
-- OpenCV DNN (res10 SSD): `DNN_SKIP_EVERY=5` creates inference stalls that interrupt `set_angles()` calls, causing scan lurches — increase to 10 as first smoothing intervention
+A critical installation constraint: MediaPipe wheels are not published for Linux aarch64 on PyPI as of March 2026, and v1.8 research documented this as a blocker. The resolution is to use piwheels or a confirmed community wheel targeting Python 3.11. The project must stay on RPi OS Bookworm (Python 3.11) and must NOT upgrade to Trixie (Python 3.13). Installation must be verified via `import mediapipe` before writing any vision code.
+
+**Core technologies:**
+- `mediapipe` (Tasks API, FaceDetector, BlazeFace): vision — estimated 15-25 FPS on RPi4, lighter than Face Mesh (~4-5 FPS)
+- `pyserial` 3.x: USB serial TX from Pi — fire-and-forget, no blocking ACK
+- `picamera2` (system apt package): camera backend — YUV420/NV12 capture, AWB lock; requires `--system-site-packages` venv
+- `QuickPID` (Arduino library): PID with iAwCondition anti-windup and derivative-on-measurement — replaces br3ttb PID_v1
+- `Servo` (Arduino built-in): MG-90S PWM control on D9 (pan) / D10 (tilt)
+- `LiquidCrystal` (Arduino built-in): LCD 1602 in 4-bit mode
+
+**What is removed from requirements.txt:** `gpiozero`, `pigpio`, `dlib`, `face_recognition`. The Flask web server and MJPEG stream move to `legacy/` for v2.0 (re-addable as a v2.1 milestone).
+
+---
 
 ### Expected Features
 
-**Must-fix for v1.9 to have operational value:**
-- Tilt sinusoidal in `_skanuj()` — scan covers vertical field of view (current: 1D horizontal sweep only, tilt hardcoded to 0.0)
-- AWB `cvtColor` flag correction (`COLOR_YUV420p2BGR` → `COLOR_YUV420p2RGB`) — root cause of green tint is R/B channel swap in YUV conversion, confirmed by Picamera2 official example and issue #848
-- `AWB_FALLBACK_GAINS` update from `(1.0, 1.0)` to `(2.2, 1.8)` — unity gains suppress R and B relative to sensor's native green bias; fallback only fires when AWB metadata unavailable but must be realistic
-- PID `reset()` on TRACKING entry + `PID_OUTPUT_LIMIT` reduced from 10.0 to 3.0 — reset removes carried integral; output limit prevents P-term alone from driving servo to limits on large initial errors
-- Scan jitter empirical verification — confirm smooth motion or increase `DNN_SKIP_EVERY` from 5 to 10
+The protocol spec is the absolute first deliverable — it blocks all other work on both sides. Every other feature depends on the agreed 8-byte frame layout.
 
-**Should-fix (same milestone, low cost):**
-- Tilt phase-offset continuity on SCANNING re-entry — extend existing `math.asin(clamp)` pattern to tilt axis to prevent jump discontinuity when resuming scan
-- Startup diagnostic: `smooth_move_to(0, 20)` then `(0, 0)` in `inicjalizuj()` — hardware isolation confirms tilt servo is functional before state machine analysis
-- Diagnostic logging: ColourGains values after AWB lock, tilt argument in `set_angles()` during scan, PID components on TRACKING entry first 5 ticks
-- Optional deadband: `TRACKING_DEADBAND_PX = 15` — suppress micro-corrections when face is approximately centered
+**Must have (table stakes — system non-functional without these):**
+- Framed binary serial protocol (0xAA start byte, mode byte, int16 error_x, int16 error_y, uint8 face_size, XOR checksum, fixed 8 bytes) — gate for all other work
+- MediaPipe FaceDetector + largest-face sticky selection + pixel error calculation (RPi)
+- AWB warm-up + lock (2s sleep + capture_metadata + set_controls) — carried from validated v1.9 code
+- Heartbeat TX from RPi at 200ms intervals when no face detected — keeps Arduino watchdog alive
+- Graceful Python shutdown: serial.close() in try/finally
+- Arduino non-blocking serial parser (byte-state-machine: WAIT_START → READ_PAYLOAD → VERIFY_XOR → DISPATCH)
+- Arduino dual-axis PID at 100 Hz via millis() timing, QuickPID with anti-windup
+- Arduino Servo on D9/D10, safe startup (smooth interpolation to center at 1 degree per 20ms in setup())
+- Servo angle clamp (pan ±60°, tilt ±30°) enforced in Arduino before servo.write()
+- Software watchdog (millis()-based, NOT AVR hardware WDT): return to SCAN if no valid frame for 2000ms
+- `#define PAN_DIR / TILT_DIR` empirical sign calibration constants
 
-**Defer to future milestones:**
-- `sample_time` dynamic calibration to actual loop FPS — only if `reset()` + tighter output limit is insufficient
-- CSRT tracker between DNN detections in test module — architectural change, not a bug fix
-- Lissajous frequency ratio empirical optimization — after tilt scan is confirmed working
-- MG90S pulse width calibration (`min_pulse_width=0.0005, max_pulse_width=0.0024`) in `hardware.py` — hardware.py change, separate from v1.9 bug scope
-- EMA servo smoothing (`update_servos()` with `SERVO_ALPHA=0.4`) — only if `DNN_SKIP_EVERY=10` is insufficient for scan jitter
+**Should have (differentiators — system functional but incomplete without):**
+- LCD 1602 showing current mode (SKANOWANIE / SLEDZENIE / BEZCZYNNOSC) — physical HMI proving state machine
+- Buzzer beep on TRACKING entry and TARGET_LOST transition — audio confirmation of state changes
+- Abort button D7 (INPUT_PULLUP, debounce 20ms) — physical safety override
+- Face size field in serial frame (uint8, enables LCD Row 1 diagnostic)
+- IIR low-pass filter on error input in Arduino — add only if PID oscillates from MediaPipe detection jitter
+
+**Defer (v2.1+):**
+- Flask web UI re-integration (adds CPU load competing with MediaPipe; put in legacy/ for v2.0)
+- Face identity database / target selection (requires dlib back on RPi; contradicts lean vision strategy)
+- systemd auto-start service (operational concern, after functional v2.0 validated)
+- Runtime PID tuning over serial (out of scope; reflash with updated #define constants instead)
+- Bidirectional serial with Arduino ACK (doubles protocol complexity for zero functional gain)
+
+---
 
 ### Architecture Approach
 
-All four fixes are contained in `src/modes/test_tracker.py`. The architecture invariants from v1.8 are preserved: `MaszynaStanow` does not import `DetekcjaTwarzy`, `smooth_move_to()` remains the only safe-start path, `_przejdz_do()` remains the only state transition method, and `set_angles()` in `PanTiltSystem` remains the only servo command path. AWB lock sequence stays in `Picamera2Stream.start()`.
+The system is organized as two independent execution contexts connected by a unidirectional serial link. The RPi4 runs a minimal 2-thread Python process: a daemon thread captures Picamera2 YUV420/NV12 frames, and the main thread runs MediaPipe detection, error calculation, and serial TX. The Arduino runs a single-threaded deterministic loop: parse serial (non-blocking), run PID tick at 100 Hz via millis() guard, update LCD at 5 Hz, handle button debounce. The serial link is fire-and-forget from the Pi side; Arduino holds last-known error values between frames and runs PID independently. If serial goes silent, the software watchdog transitions Arduino to autonomous SCAN after 2000ms.
 
-**Major components and their role in v1.9 fixes:**
+**Major components:**
+1. `Picamera2Stream` (RPi daemon thread) — YUV420/NV12 capture, AWB lock, shared frame buffer with threading.Lock
+2. `MediaPipe FaceDetector + ErrorCalculator` (RPi main thread) — BlazeFace detection, largest-face selection, pixel error to int16
+3. `SerialSender` (RPi main thread) — 8-byte binary frame encoding, XOR checksum, pyserial.write (non-blocking, <0.1ms per frame)
+4. `SerialParser` (Arduino) — byte state machine, XOR verify, updates shared volatile state (error_x, error_y, tryb)
+5. `PIDController` (Arduino, 100 Hz) — QuickPID dual-axis, iAwCondition anti-windup, dOnMeas derivative mode, millis() timing
+6. `ServoDriver` (Arduino) — Servo.write(angle+90) for pan D9 / tilt D10, angle clamp before write
+7. `WatchdogTimer` (Arduino) — millis()-based, NOT hardware AVR WDT (documented Leonardo/Caterina bootloader bug)
+8. `LCD1602 + BuzzerButton` (Arduino, throttled to 5 Hz) — LiquidCrystal update, tone() on state transitions, D7 abort
 
-1. `Picamera2Stream` (`test_tracker.py:55–170`) — color fix: change `cvtColor` constant on line 118; update `AWB_FALLBACK_GAINS` constant on line 38; optionally add `"AwbEnable": False` to post-warm-up `set_controls()` call for version robustness
-2. `MaszynaStanow` (`test_tracker.py:242–345`) — tilt scan: add tilt sinusoidal to `_skanuj()` with new module-level constants `SCAN_AMPLITUDE_TILT=15.0`, `SCAN_FREQUENCY_TILT=0.07`; PID fix: add `pid_pan.reset()` + `pid_tilt.reset()` in `_przejdz_do()` for `STATE_TRACKING` entry; reduce `PID_OUTPUT_LIMIT` from 10.0 to 3.0
-3. `DetekcjaTwarzy` (`test_tracker.py:173–239`) — scan jitter first pass: increase `DNN_SKIP_EVERY` from 5 to 10 to reduce inference stall frequency
-4. `PanTiltSystem` (`hardware.py`) — no changes required for core fixes; optional EMA `update_servos()` method as Phase 4 fallback if jitter persists
-5. `TestTracker` (`test_tracker.py:348–468`) — no changes required
+---
 
 ### Critical Pitfalls
 
-1. **AWB green tint has two independent causes, both must be fixed** — `COLOR_YUV420p2BGR` swaps R and B channels from libcamera's YUV420, making green dominant regardless of ColourGains values. AND `AWB_FALLBACK_GAINS=(1.0,1.0)` suppresses R and B relative to IMX219's green bias (expected gains are 1.6–2.5 for R and 1.4–2.0 for B). Fixing only one leaves visible tint. Fix the `cvtColor` flag first (one constant), then the fallback value.
+1. **MediaPipe not installable on Python 3.13** — Verify `python3 --version` on the RPi before writing any code. Must be 3.11 (Bookworm). Use `--system-site-packages` venv for picamera2 access. Fail fast in Phase 1 before any vision code is written.
 
-2. **PID escape is P-term magnitude, not only integral windup** — with `PID_OUTPUT_LIMIT=10.0` and `P=0.05`, a face at the frame edge produces `0.05 × 160 = 8.0°` per tick from P-term alone, reaching the ±60° servo limit in ~8 ticks (200ms at 30 FPS). Adding `reset()` on TRACKING entry is necessary but not sufficient. `PID_OUTPUT_LIMIT` must also be reduced to 3.0. Do not change PID gains — v1.8 values are empirically validated.
+2. **Arduino Leonardo DTR reset on serial.open()** — pyserial default behavior triggers bootloader reset on Leonardo via DTR toggle. Open with `ser.dtr = False` before `ser.open()` and add a 2s sleep before first TX. Add reconnection loop on SerialException in pi_brain.py. Address in Phase 2 protocol implementation, not as an afterthought.
 
-3. **Tilt hardware must be verified before state machine analysis** — during SCANNING, tilt reads `0.0` in HUD because `_skanuj()` hardcodes `set_angles(pan, 0.0)` (this is the bug, but the HUD reading is technically correct behavior). If TRACKING never triggers or is too brief, tilt appears frozen even with a hardware-functional servo. Always confirm with `smooth_move_to(0, 20)` direct call before diagnosing state machine paths.
+3. **Linux USB CDC 16ms latency timer** — Default kernel USB polling batches serial data in 16ms windows. At 100 Hz PID (10ms cycle), Pi packets arrive in bursts, potentially causing spurious watchdog fires. Run `setserial /dev/ttyACM0 low_latency` at startup. Document as a required step. Measure latency early in Phase 2.
 
-4. **`AwbEnable: False` sequencing is Picamera2 version-dependent** — setting `ColourGains` alone implicitly disables AWB on most versions (issue #592) but not all (issue #825 reports version-dependent failures). Add explicit `"AwbEnable": False` in the post-warm-up `set_controls()` call but NOT in configure-time controls (would prevent AWB from converging during warm-up). Verify color stability over 30 seconds after lock.
+4. **Arduino PID integral windup at servo limits** — The default br3ttb PID library does not prevent integral accumulation past output limits. Use QuickPID with `iAwCondition` and `dOnMeas`. Also reduce I gain 3x from v1.8 values (Python 30 Hz → Arduino 100 Hz = 3x stronger integral action for the same Ki starting value of 0.001 → use 0.0003). Address in Phase 3 firmware design, not during gain tuning.
 
-5. **`smooth_move_to()` is blocking and must never be called in the main tracking loop** — it is a while-loop with `time.sleep(0.05)` per step; moving 45° takes 2.25 seconds and freezes camera capture for that duration. Proposing it as the fix for scan jitter would break the entire pipeline. Scan smoothness must come from the sinusoidal formula plus optional EMA in `update_servos()`.
+5. **AVR hardware WDT locks Leonardo bootloader** — `wdt_enable()` on Leonardo creates an infinite reset loop that prevents USB reprogramming (documented 32u4/Caterina bug). Use millis()-based software watchdog exclusively. Never call `wdt_enable()` in v2.0 firmware.
+
+6. **Serial frame sync loss on Pi reconnect** — Arduino serial buffer may contain partial frame tail from a prior session. The 0xAA start byte allows parser re-sync: discard bytes until 0xAA, then read exactly 7 more bytes and verify XOR. Test by unplugging and re-plugging USB during operation in Phase 2.
+
+7. **Servo direction undefined on new Arduino mount** — v1.7 empirical sign convention (TILT_DIR = -1) was validated for gpiozero/pigpio hardware path, not Arduino Servo library. Run a direction calibration routine as the first integration test in Phase 4, before enabling closed-loop PID.
+
+8. **LCD blocking at PID rate** — LiquidCrystal `lcd.clear()` takes ~1500µs. Calling it in the 10ms PID loop consumes 15% of the PID budget and causes servo update jitter. Update LCD at maximum 5 Hz with millis() guard; never call `lcd.clear()` in the high-rate path. Address in Phase 5 HMI code.
+
+---
 
 ## Implications for Roadmap
 
-Based on research, the recommended phase structure is 4 sequential phases confined to one file, ordered by independence and hardware verification dependency.
+Based on the dependency graph from FEATURES.md and the build order from ARCHITECTURE.md, a 6-phase structure is recommended. The serial protocol is a hard gate for all other work. Arduino firmware phases are ordered to allow hardware testing at each stage without requiring the full Pi vision stack.
 
-### Phase 1: AWB / Color Fix (BUG-3)
+### Phase 1: Environment + Protocol Specification
+**Rationale:** Two hard prerequisites before any code can be written: MediaPipe must be confirmed installable on the target RPi, and the 8-byte frame format must be fully specified and locked. Every other component on both sides depends on the agreed frame layout.
+**Delivers:** Verified MediaPipe import on RPi4, documented binary protocol spec (byte layout, field widths, XOR formula), project structure (`src/arduino/aries_controller/`, `src/vision/pi_brain.py`, `legacy/`)
+**Addresses:** Foundation for all table-stakes features; framed protocol is their shared prerequisite
+**Avoids:** Pitfall 1 (MediaPipe Python 3.13 — fail fast here), Pitfall 6 (frame sync loss — spec locked before implementation)
+**Research flag:** Standard patterns. Protocol design is covered by Eli Bendersky framing article and ARCHITECTURE.md Pattern 3.
 
-**Rationale:** Independent of all other fixes. Minimum of two one-line changes: `cvtColor` constant and `AWB_FALLBACK_GAINS` value. Zero regression risk. Fixing color first provides a correct visual output for all subsequent hardware verification steps — if colors are systematically wrong, servo behavior and detection quality are harder to judge.
+### Phase 2: Serial Link — Pi Sender + Arduino Parser (Echo Test)
+**Rationale:** Implement both ends of the serial link independently of vision and PID. Test with hardcoded values from the Pi and an Arduino Serial Monitor echo. Isolates the serial layer and validates DTR handling and latency before either vision or servo hardware is involved.
+**Delivers:** `SerialSender` in pi_brain.py (dtr=False open, 2s delay, reconnection loop, low_latency mode), non-blocking byte state machine parser in aries_controller.ino, echo test confirming frame round-trip
+**Uses:** pyserial, Arduino Serial, XOR checksum
+**Avoids:** Pitfall 2 (DTR reset), Pitfall 3 (16ms USB latency), Pitfall 6 (frame sync re-sync on reconnect)
+**Research flag:** Standard patterns. No additional research needed.
 
-**Delivers:** Neutral camera colors from first frame; no green tint; AWB warm-up lock producing meaningful ColourGains values (R>1.4, B>1.4).
+### Phase 3: Arduino Firmware — Safe Startup + PID + Servo
+**Rationale:** With a working serial parser, inject hardcoded error values from the Pi and validate Arduino PID against live servos. Isolates the firmware layer from MediaPipe. Anti-windup configuration is a firmware architecture decision that must be made here, not during gain tuning.
+**Delivers:** QuickPID dual-axis with iAwCondition + dOnMeas, millis()-throttled PID loop at 100 Hz, safe startup (smooth interpolation to center in setup()), servo angle clamp, millis()-based software watchdog (NOT AVR WDT), `#define PAN_DIR / TILT_DIR` with calibration routine
+**Implements:** PIDController + ServoDriver + WatchdogTimer components
+**Avoids:** Pitfall 4 (integral windup — architecture decision here), Pitfall 5 (AVR WDT bootloader lock), Pitfall 7 (servo direction — calibration routine before any PID test)
+**Research flag:** Standard patterns. QuickPID is well-documented. Safe startup pattern validated in v1.7.
 
-**Addresses:** Fix 3 from FEATURES.md (camera neutral colors, P1); AWB fallback gains update (P2).
+### Phase 4: RPi Vision — MediaPipe + Error Calculation + Serial TX
+**Rationale:** With the Arduino firmware accepting and acting on serial frames, implement the RPi vision pipeline and connect end-to-end. First integration test: run direction calibration before enabling closed-loop PID.
+**Delivers:** `pi_brain.py` with Picamera2Stream, MediaPipe FaceDetector Tasks API (VIDEO mode), largest-face sticky selection, AWB lock sequence (start + 2s sleep + capture_metadata + set_controls), int16 error calculation, heartbeat TX at 200ms, graceful SIGINT shutdown
+**Avoids:** Pitfall 1 (MediaPipe install — verified in Phase 1), Pitfall 7 (direction — calibration before closed-loop PID)
+**Research flag:** MEDIUM confidence on MediaPipe FPS. 15-25 FPS is an estimate from face_landmarker benchmarks. Measure empirically at the start of this phase. If FPS < 10, reduce resolution to 240x180.
 
-**Avoids:** Pitfall 3 (AWB green from fallback `(1.0,1.0)`), Pitfall 4 (AWB relock drifting after warm-up), ARCHITECTURE Anti-Pattern 1 (trying to fix YUV color error via AWB gains tuning).
+### Phase 5: Arduino HMI — LCD + Buzzer + Button
+**Rationale:** After end-to-end tracking is validated, add the HMI layer. These are independent of PID correctness and should not be in the critical path for functional validation.
+**Delivers:** LCD 1602 showing SKANOWANIE/SLEDZENIE/BEZCZYNNOSC (Row 0), diagnostic data (Row 1), buzzer tone() on state transitions, D7 abort button with 20ms debounce
+**Implements:** LCD1602 + BuzzerButton component
+**Avoids:** Pitfall 8 (LCD blocking PID loop — millis() guard at 200ms, no lcd.clear() in high-rate path)
+**Research flag:** Standard patterns. LiquidCrystal library well-documented.
 
-**Changes in `test_tracker.py`:**
-- Line 118: `COLOR_YUV420p2BGR` → `COLOR_YUV420p2RGB`
-- Line 38: `AWB_FALLBACK_GAINS = (1.0, 1.0)` → `(2.2, 1.8)`
-- Optional: `"AwbEnable": False` in post-warm-up `set_controls()` call
+### Phase 6: Watchdog Validation + Stability Testing
+**Rationale:** Final phase validates the hardware safety net and system stability under fault conditions. Tests include: Pi crash → Arduino autonomously scans after 2000ms → Pi restarts → tracking resumes.
+**Delivers:** Confirmed watchdog behavior on deliberate Pi shutdown, latency measurements confirming serial timing, empirical PID gain re-tuning if needed (starting from v1.8 values with I reduced 3x for 100 Hz rate: Ki=0.0003), optional IIR error low-pass if detection jitter causes oscillation
+**Avoids:** All pitfalls — this phase stress-tests the mitigations installed in Phases 2-4
+**Research flag:** No additional research needed. Tests are empirical.
 
-### Phase 2: PID Reset on TRACKING Entry + Output Limit (BUG-4)
-
-**Rationale:** Independent of tilt scan. Fixing PID escape before tilt scan allows Phase 3 to confirm tilt servo hardware responds during TRACKING before adding tilt to scanning — separating the concerns cleanly.
-
-**Delivers:** TRACKING state enters without immediate servo runaway; face acquisition converges within 1–3 seconds; no continuous clamp warnings at TRACKING entry.
-
-**Addresses:** Fix 4 from FEATURES.md (PID-controlled tracking without escape, P1).
-
-**Avoids:** Pitfall 5 (PID output accumulates unbounded on large initial error), ARCHITECTURE Anti-Pattern 2 (reset only on SCANNING entry, not TRACKING entry).
-
-**Changes in `test_tracker.py`:**
-- `_przejdz_do()`: add `pid_pan.reset()` and `pid_tilt.reset()` on `STATE_TRACKING` entry (2 lines)
-- `PID_OUTPUT_LIMIT` constant: 10.0 → 3.0
-- Optional: add `TRACKING_DEADBAND_PX = 15` and deadband guard in `_sledz()`
-
-### Phase 3: Tilt Sinusoidal Scan (BUG-1)
-
-**Rationale:** Depends on Phase 2 confirmation that tilt servo hardware is functional (TRACKING must be reachable and tilt must respond in `_sledz()` before adding tilt to `_skanuj()`). Extends scan from 1D to Lissajous 2D pattern covering the full vertical field.
-
-**Delivers:** Both axes scan during SCANNING state; `SCAN_FREQUENCY_TILT=0.07 Hz` (slower than `SCAN_FREQUENCY=0.1 Hz` pan) produces aperiodic Lissajous coverage; phase-offset continuity prevents servo jump on SCANNING re-entry for tilt axis.
-
-**Addresses:** Fix 1 from FEATURES.md (dual-axis sinusoidal scanning, P1); tilt phase-offset continuity (P1 — same change).
-
-**Avoids:** Pitfall 1 (tilt masked by hardcoded 0.0 in scan), ARCHITECTURE Anti-Pattern 3 (1D scan only).
-
-**Changes in `test_tracker.py`:**
-- Add module-level constants: `SCAN_AMPLITUDE_TILT = 15.0`, `SCAN_FREQUENCY_TILT = 0.07`
-- `_skanuj()`: compute `tilt = SCAN_AMPLITUDE_TILT * math.sin(2.0 * math.pi * SCAN_FREQUENCY_TILT * t)` and pass to `set_angles(pan, tilt)` (1 line change + 1 new expression)
-- `_przejdz_do()` SCANNING branch: extend phase-offset logic to tilt axis
-
-### Phase 4: Scan Jitter Verification and Smoothing (BUG-2)
-
-**Rationale:** Depends on Phase 3 (jitter evaluation with both axes active). DNN inference blocking the main loop at `DNN_SKIP_EVERY=5` creates irregular `set_angles()` timing. Whether the resulting jitter is visible on hardware determines which fix path to take — this cannot be determined without a hardware run.
-
-**Delivers:** Smooth continuous scan motion without visible lurching. Decision point: `DNN_SKIP_EVERY=10` is the minimal-risk first pass; if jitter persists, implement EMA servo smoothing via `update_servos()` with `SERVO_ALPHA=0.4`.
-
-**Addresses:** Fix 2 from FEATURES.md (smooth servo interpolation, P2).
-
-**Avoids:** Pitfall 6 (`smooth_move_to()` blocking — confirmed it must not be used here), Pitfall 7 (MG90S pulse width defaults — noted as future debt, not v1.9 scope).
-
-**Changes (minimal path):**
-- `test_tracker.py`: `DNN_SKIP_EVERY` 5 → 10
-
-**Changes (if minimal insufficient):**
-- `hardware.py`: add `_pan_target`, `_tilt_target` fields and `update_servos()` EMA method (`SERVO_ALPHA=0.4`)
-- `test_tracker.py`: call `self.hardware.update_servos()` once per tick in `TestTracker.uruchom()` after `self.maszyna.tick(...)`
+---
 
 ### Phase Ordering Rationale
 
-- **Color first:** Correct visual output is prerequisite for all hardware verification. Cannot reliably judge servo behavior or detection quality with systematic channel swap and wrong white balance.
-- **PID before tilt scan:** Confirms tilt servo hardware via TRACKING state before adding tilt to scanning. Prevents diagnosing tilt scan as broken when the actual cause is PID escape preventing sustained TRACKING.
-- **Tilt scan before jitter fix:** Per-tick angle deltas change when tilt is added to scanning; jitter evaluation must run against the final scan formula.
-- **Empirical jitter verification last:** The correct fix for jitter cannot be determined without running code on RPi4. Having a two-path plan (DNN_SKIP_EVERY vs. EMA) removes uncertainty from planning.
-- **Each phase independently verifiable:** Matches the project's GSD empirical methodology — commit and verify per phase before proceeding.
+- Protocol spec before any code: the 8-byte frame layout is shared state between two code bodies. Defining it first prevents the most expensive rework scenario (mid-implementation protocol change requiring simultaneous edits to pi_brain.py and aries_controller.ino).
+- Serial link tested in isolation (Phase 2) before adding vision complexity (Phase 4) or servo hardware complexity (Phase 3): single-variable failure modes during debugging.
+- PID firmware (Phase 3) before Pi vision (Phase 4): lets Phase 3 use hardcoded test values, keeping servo hardware debugging independent of MediaPipe FPS variability.
+- HMI (Phase 5) after tracking validated (Phase 4): LCD and buzzer add no functional capability to the tracking system and should not be in the critical path.
+- Watchdog testing last (Phase 6): requires the full system to be functional before fault conditions can be injected meaningfully.
 
 ### Research Flags
 
-Phases with well-documented patterns (skip `/gsd:research-phase`):
-- **Phase 1 (AWB/color):** Root cause confirmed with official Picamera2 examples and issue tracker. Two one-constant changes fully specified.
-- **Phase 2 (PID reset + output limit):** `simple-pid` `reset()` and `output_limits` behavior source-verified. Implementation is 3 lines plus one constant change.
-- **Phase 3 (tilt sinusoidal):** Lissajous scan pattern is standard control theory. Two new constants plus one expression in `_skanuj()`.
+Phases needing deeper research or empirical measurement during planning/execution:
+- **Phase 4 (MediaPipe FPS):** 15-25 FPS is an estimate. Measure at the start of Phase 4. Decision point: if FPS < 10, reduce resolution to 240x180 or investigate hardware acceleration.
+- **Phase 1 (MediaPipe install):** Confirm piwheels provides a compatible aarch64 wheel for Python 3.11 on the actual RPi OS version before any Phase 2+ work proceeds.
 
-Phases requiring empirical hardware decision during execution:
-- **Phase 4 (scan jitter):** Whether `DNN_SKIP_EVERY=10` is sufficient cannot be determined without a hardware run. Both fix paths are fully specified — decision is made on-device, not in planning.
+Phases with standard patterns (skip additional research):
+- **Phase 1 (Protocol Spec):** Binary framing with start byte + XOR checksum is canonical. Covered by ARCHITECTURE.md Pattern 3.
+- **Phase 2 (Serial Link):** dtr=False and low_latency are documented, tested patterns. ASCII protocol and blocking ACK explicitly ruled out.
+- **Phase 3 (Arduino Firmware):** QuickPID documentation is comprehensive. millis()-based watchdog pattern is from Memfault best practices. Smooth startup validated from v1.7.
+- **Phase 5 (HMI):** LiquidCrystal 4-bit mode and tone() are standard Arduino patterns.
+
+---
 
 ## Confidence Assessment
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | HIGH | No new libraries needed. All fix mechanisms source-verified: Picamera2 official example (yuv_to_rgb.py), GitHub issues #848/#592/#322/#825, simple-pid source code, gpiozero docs. |
-| Features | HIGH | All four bugs confirmed by direct code audit of `src/modes/test_tracker.py` with exact line references. Fix specifications include before/after code. Feature boundaries (fix vs. defer) clearly established. |
-| Architecture | HIGH | All changes isolated to one file confirmed by tracing call paths. Component responsibility matrix complete with risk level per fix. Architecture invariants explicitly identified and preserved. |
-| Pitfalls | HIGH (code-derived) / MEDIUM (ISP pipeline internals) | Pitfalls 1–2 (tilt hardware, tilt sign) derived from code and empirical history. Pitfalls 3–4 (AWB ISP pipeline) rely on community-confirmed Picamera2 issues with multiple corroborating sources. Pitfall 7 (MG90S pulse calibration) based on forum reports — medium confidence until hardware-verified. |
+| Stack | MEDIUM-HIGH | Python side (pyserial, picamera2, AWB sequence) is HIGH — official docs and empirically validated in v1.7/v1.9. MediaPipe FPS estimate is MEDIUM — interpolated from face_landmarker benchmarks, requires empirical confirmation. QuickPID is HIGH — well-documented. |
+| Features | HIGH | Feature set derived directly from PROJECT.md architectural decisions (locked) and validated against reference implementations (SaraKIT, PyImageSearch). Dependency graph is internally consistent. |
+| Architecture | HIGH | Brain-Muscle split pattern validated by industrial robotics (ROS), SaraKIT reference, and theoretical analysis of Python GIL jitter vs. Arduino determinism. Frame format is a design decision — implementation will validate it. |
+| Pitfalls | HIGH (serial/Arduino) / MEDIUM (MediaPipe) | Arduino Leonardo DTR reset, AVR WDT bootloader lock, and Linux USB 16ms latency are documented in official issues and forums with specific reproduction steps. MediaPipe aarch64 install status is MEDIUM — wheel availability changes between releases. |
 
-**Overall confidence:** HIGH
+**Overall confidence:** HIGH for architecture decisions. MEDIUM for MediaPipe FPS and install path — requires early empirical validation.
 
 ### Gaps to Address
 
-- **`AwbEnable: False` interaction:** Whether to include alongside `ColourGains` in post-warm-up `set_controls()` is Picamera2 version-dependent. Recommendation: include it, then verify color stability over 30 seconds. If issues arise on the specific libcamera version installed, remove it and rely on implicit AWB disable.
-- **`PID_OUTPUT_LIMIT` 3.0 vs. 5.0 exact value:** Requires empirical validation on hardware. Start with 3.0; if tracking is too sluggish for normal head movement speed, increase to 5.0. This cannot be resolved without a running test on RPi4.
-- **EMA `SERVO_ALPHA=0.4` tuning (Phase 4 fallback path only):** Recommended starting value is based on standard robotics practice for ~10 FPS loops. Actual optimal value depends on measured loop FPS and physical servo response characteristics. Adjust empirically if the EMA path is activated.
-- **Tilt phase offset value at SCANNING re-entry:** The `math.asin(clamp)` technique for tilt requires `hardware.tilt_angle` at the moment of TRACKING→SCANNING transition. Verify this value is meaningful (not a stale clamped escape value) before trusting it as the phase-offset source. If tilt was clamped to a limit during TRACKING, the offset will start from that limit rather than from a centered position.
+- **MediaPipe aarch64 wheel status:** Confirm pip install succeeds on the actual RPi4 as the first action in Phase 1. STACK.md v1.8 section documents this as blocked on Python 3.13; the v2.0 research section references confirmed 10-15 FPS. Depends on OS version. Fail fast rather than assuming.
+- **MediaPipe FPS at 320x240:** If measured FPS is below 10, the Pi TX rate drops below 10 Hz. The 200ms heartbeat provides a safety buffer for the 2000ms watchdog, but slower vision means fewer tracking frames. Measure in Phase 4 before committing to watchdog timing values.
+- **Servo direction on new Arduino mount:** `TILT_DIR = -1` was validated for gpiozero/pigpio. Direction sign through Arduino Servo library may differ. Treat as empirically undefined until Phase 3 calibration routine runs.
+- **Serial low_latency persistence:** `setserial low_latency` does not persist across USB reconnects. Decide whether to add it to a startup script, udev rule, or pi_brain.py init code during Phase 2 implementation.
+
+---
 
 ## Sources
 
-### Primary (HIGH confidence — direct code analysis)
-- `src/modes/test_tracker.py` — `AWB_FALLBACK_GAINS = (1.0, 1.0)`, `_skanuj()` hardcoded `tilt=0.0` on line 302, `cvtColor(YUV420p2BGR)` wrong flag on line 118, `pid.reset()` absent on TRACKING entry in `_przejdz_do()`, `DNN_SKIP_EVERY = 5`, `PID_OUTPUT_LIMIT = 10.0`
-- `src/hardware.py` — `AngularServo` default pulse widths; `smooth_move_to()` blocking while-loop with `time.sleep(0.05)` per step; `set_angles()` software-state tracking
-- `src/config.py` — PID gains (`P=0.05, I=0.001, D=0.005`), servo limits (`PAN=±60°, TILT=±30°`), `SERVO_STEP=1.0`
-- `.planning/PROJECT.md` — v1.9 problem statement; v1.7 tilt negation fix history; v1.8 ColourGains `(1.0,1.0)` history
+### Primary (HIGH confidence)
+- `PROJECT.md` — v2.0 architecture decisions (distributed RPi4 + Arduino Leonardo, protocol, components) — project source of truth
+- `CLAUDE.md` — v1.x validated decisions (smooth_move_to, AWB lock sequence, servo limits, PID gains P=0.05 I=0.001 D=0.005)
+- [MediaPipe Face Detector Python API — Google AI Edge](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector/python) — Tasks API, bounding box format
+- [Framing in Serial Communications — Eli Bendersky](https://eli.thegreenplace.net/2009/08/12/framing-in-serial-communications/) — start byte + checksum framing pattern
+- [Firmware Watchdog Best Practices — Interrupt/Memfault](https://interrupt.memfault.com/blog/firmware-watchdog-best-practices) — software watchdog vs. hardware WDT
+- [PySerial API docs](https://pyserial.readthedocs.io/en/latest/pyserial_api.html) — dtr=False, non-blocking read
 
-### Secondary (HIGH confidence — official sources)
-- [Picamera2 yuv_to_rgb.py official example](https://github.com/raspberrypi/picamera2/blob/main/examples/yuv_to_rgb.py) — confirms `COLOR_YUV420p2RGB` for correct BGR output from YUV420 lores stream; `COLOR_YUV420p2BGR` produces R/B channel swap
-- [Picamera2 issue #848](https://github.com/raspberrypi/picamera2/issues/848) — maintainer documents R/B swap from `COLOR_YUV420p2BGR` on libcamera YUV420; added warning to documentation
-- [Picamera2 issue #592](https://github.com/raspberrypi/picamera2/issues/592) — setting `ColourGains` disables AWB; `(1.0,1.0)` suppresses R and B, not neutral; green channel is always reference at 1.0
-- [simple-pid source code](https://github.com/m-lundberg/simple-pid) — `output_limits` clamps output AND integral accumulator (anti-windup); `reset()` clears integral and last_error
-- [Lissajous scan pattern](https://en.wikipedia.org/wiki/Lissajous_curve) — frequency ratio 1:2 produces figure-8 coverage of full vertical field per pan cycle
+### Secondary (MEDIUM confidence)
+- [MediaPipe for Raspberry Pi — CNX Software (2023)](https://www.cnx-software.com/2023/08/21/mediapipe-for-raspberry-pi-released-no-code-low-code-on-device-machine-learning-solutions/) — RPi4 FaceDetector FPS context
+- [SaraKIT Face Tracking MediaPipe RPi — GitHub](https://github.com/SaraEye/SaraKIT-Face-Tracking-MediaPipe-Raspberry-Pi-64bit) — reference implementation (different HW, validates approach)
+- [Arduino Forum: Serial Port WatchDog](https://forum.arduino.cc/t/creating-a-serial-port-watchdog-with-arduino/468929) — millis()-based watchdog pattern
+- [Arduino Forum: Pan-tilt PID servo control](https://forum.arduino.cc/t/pan-tilt-servo-control-using-pid-for-face-tracking-webcam/1131405) — integration patterns
+- [Simple and Robust Arduino Serial Communication — Medium/@araffin](https://medium.com/@araffin/simple-and-robust-computer-arduino-serial-communication-f91b95596788) — fire-and-forget protocol design
+- [Raspberry Pi Arduino Serial Communication — The Robotics Back-End](https://roboticsbackend.com/raspberry-pi-arduino-serial-communication/) — baud rate, buffer, ACK patterns
+- raspberrypi/picamera2 GitHub issues #312, #592, #825 — ColourGains behavior, AWB lock sequence validation
 
-### Secondary (MEDIUM confidence — community sources)
-- [Picamera2 issue #322](https://github.com/raspberrypi/picamera2/issues/322) — `ColourGains` AWB disable and CCM behavior; green channel always 1.0 in libcamera ColourGains (R/B are the only gain parameters)
-- [Picamera2 issue #825](https://github.com/raspberrypi/picamera2/issues/825) — `AwbEnable: False` + `ColourGains` in same `set_controls()` causes sequencing issues on some Bookworm versions
-- [Picamera2 issue #897](https://github.com/raspberrypi/picamera2/issues/897) — green tint root cause via lens shading mismatch; consistent finding with YUV channel swap
-- [gpiozero RPi Forums thread](https://forums.raspberrypi.com/viewtopic.php?t=331790) — MG90S requires 500–2500µs range; default 1000–2000µs gpiozero defaults limit physical range and produce non-linear motion
-- [sinusoidal scan jitter on RPi4](https://forums.raspberrypi.com/viewtopic.php?t=274329) — pigpio DMA resolves electrical jitter; software-side jitter from irregular call timing requires wall-clock sinusoidal formula (already implemented)
+### Tertiary (LOW confidence / needs validation)
+- MediaPipe FPS estimate (15-25 FPS for FaceDetector on RPi4) — interpolated from face_landmarker measurements; requires empirical verification in Phase 4
+- piwheels MediaPipe aarch64 availability — wheel availability changes between releases; must be verified at project start
 
 ---
-*Research completed: 2026-03-29*
+
+*Research completed: 2026-03-30*
 *Ready for roadmap: yes*

@@ -940,3 +940,254 @@ wget -O models/res10_300x300_ssd_iter_140000.caffemodel \
 ---
 *Stack research for: Picamera2 test tracker on RPi4 Bookworm*
 *Base: 2026-03-26 | v1.7 supplement: 2026-03-27 | v1.8 supplement: 2026-03-29 | v1.9 supplement: 2026-03-29*
+
+
+---
+
+## v2.0 Supplement: Distributed Architecture — RPi4 + Arduino Leonardo
+
+**Milestone:** v2.0 Architektura Rozproszona
+**Researched:** 2026-03-30
+**Confidence:** MEDIUM (MediaPipe aarch64 install path requires empirical verification on target hardware)
+
+This section covers only the NEW components introduced in v2.0. Previously validated v1.x
+stack (Picamera2, OpenCV, simple-pid, gpiozero/pigpio) remains in `legacy/` as reference.
+
+---
+
+### New Python Dependencies (RPi4 Brain — pi_brain.py)
+
+| Package | Version | Purpose | Why Recommended |
+|---------|---------|---------|-----------------|
+| mediapipe | 0.10.x (latest) | Face detection replacing HAAR/DNN | Google BlazeFace achieves 12–30 FPS on RPi4 CPU — faster and more accurate than res10_300x300 Caffe SSD which needed every-5th-frame skipping. RPi4 is now freed from servo PID (offloaded to Arduino), making the heavier model viable. Normalized bbox output simplifies error calculation without pixel-to-degree conversion. |
+| pyserial | 3.5 | USB Serial to Arduino (/dev/ttyACM0, 115200 baud) | Industry-standard, complete API, no dependencies. Universal wheel works on all Python versions including 3.13. Has not needed updates since 2020 because the serial port API is stable. |
+| numpy | >=1.24,<2.0 (pinned) | Array ops for frame processing | Already installed. CRITICAL pin: mediapipe 0.10.x declares a hard numpy <2.0 runtime requirement. If pip upgrades numpy to 2.x (which OpenCV 4.11+ would prefer), mediapipe fails at import. Keep pinned at 1.x. |
+
+### New Arduino Libraries (Leonardo Firmware — aries_controller.ino)
+
+| Library | Version | Source | Purpose | Why Recommended |
+|---------|---------|--------|---------|-----------------|
+| Servo.h | Built-in (Arduino IDE) | Arduino standard library | PAN (D9) and TILT (D10) servo PWM output | Ships with Arduino IDE, no install needed. Uses Timer1 on Leonardo. D9=TIMER1A, D10=TIMER1B. No timer conflict arises here because we are not using analogWrite() on D9/D10 simultaneously with servos — the whole point of those pins is servo control. |
+| LiquidCrystal.h | Built-in (Arduino IDE) | Arduino standard library | LCD 1602 status display in 4-bit mode | Ships with Arduino IDE. Supports 4-bit parallel mode matching the hardware wiring: RS=12, E=11, D4=5, D5=4, D6=3, D7=2. Standard Hitachi HD44780 chipset driver. No I2C backpack present in hardware spec. |
+| QuickPID | 3.1.9 | Arduino Library Manager | Dual-axis PID at 100+ Hz | Faster compute cycle (51 µs) vs legacy PID_v1 (128 µs). TIMER mode enables ISR-driven deterministic 100 Hz updates via SetSampleTimeUs(10000). Anti-windup via clamping. Active maintenance — PID_v1 is unmaintained since 2017. |
+| avr/wdt.h | AVR-libc built-in | avr-libc (no install) | Hardware watchdog timer | Built into avr-libc, available on all AVR boards. wdt_enable(WDTO_2S) resets MCU if wdt_reset() not called within 2s. Enables autonomous SCAN fallback if RPi4 stops transmitting. No library install required. |
+
+---
+
+### Installation
+
+#### RPi4 — Python venv additions
+
+```bash
+# Activate existing venv (must keep --system-site-packages for picamera2)
+source venv/bin/activate
+
+# v2.0 additions
+pip install mediapipe        # 0.10.x
+pip install pyserial         # 3.5
+
+# Verify numpy is still <2.0 (mediapipe hard dependency)
+python -c "import numpy; print(numpy.__version__)"
+# If >=2.0, pin back:
+pip install "numpy<2.0"
+
+# Verify mediapipe works on this aarch64 platform
+python -c "import mediapipe as mp; print('mediapipe', mp.__version__)"
+```
+
+#### Arduino Leonardo — libraries
+
+```
+# In Arduino IDE: Sketch > Include Library > Manage Libraries
+Search: "QuickPID" by Dlloydev — Install version 3.1.9 or later
+
+# Built-ins (already present, no action needed):
+# Servo.h, LiquidCrystal.h, avr/wdt.h
+```
+
+---
+
+### CRITICAL: MediaPipe aarch64 Installation Warning
+
+**The problem:** mediapipe PyPI (as of 0.10.33, released March 2026) does NOT publish a
+generic `linux_aarch64` manylinux wheel. Available PyPI wheels are: Windows x86-64,
+Linux x86-64, macOS ARM64. Linux ARM64 (RPi4 Bookworm 64-bit) is absent.
+
+**However:** Community reports from 2024–2025 confirm that `pip install mediapipe` succeeds
+on Raspberry Pi OS Bookworm (Debian 12, 64-bit) with Python 3.11. The pip installer may
+pull a compatible wheel via a platform tag negotiation path not visible on the PyPI releases
+page.
+
+**Resolution path (in order):**
+
+1. **Try standard pip on Python 3.11 first.** Bookworm ships Python 3.11 alongside 3.13.
+   The current venv uses Python 3.13 which is NOT supported by mediapipe 0.10.x.
+   Create a parallel venv: `python3.11 -m venv venv_v2 --system-site-packages`
+
+2. **If pip fails on 3.11:** Use PINTO0309/mediapipe-bin community wheels for aarch64.
+   These track slightly behind official releases. Acceptable for this project.
+   URL: https://github.com/PINTO0309/mediapipe-bin
+
+3. **If neither works:** MediaPipe Tasks API (mp.tasks.vision.FaceDetector) requires a
+   .task model file, not the legacy mp.solutions.* API. Confirm model file path is set.
+
+**This is the #1 risk item for v2.0 Phase 1. Verify before implementing pi_brain.py.**
+
+---
+
+### MediaPipe API Note — Use Tasks API, Not Legacy Solutions
+
+mediapipe 0.10.x deprecated the `mp.solutions.face_detection` API in favor of
+`mp.tasks.vision.FaceDetector`. The legacy API still works but will be removed.
+
+```python
+# CORRECT — Tasks API (mp 0.10.x)
+import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
+
+options = mp_vision.FaceDetectorOptions(
+    base_options=mp_python.BaseOptions(model_asset_path='face_detection_short_range.tflite'),
+    min_detection_confidence=0.5
+)
+detector = mp_vision.FaceDetector.create_from_options(options)
+mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=bgr_frame)
+result = detector.detect(mp_image)
+# result.detections[i].bounding_box — normalized coordinates (origin_x, origin_y, width, height)
+
+# DEPRECATED — Legacy API (avoid in new code)
+# mp.solutions.face_detection.FaceDetection(...)
+```
+
+The bounding box is in normalized [0.0, 1.0] coordinates. Convert to pixels by
+multiplying by frame width/height. This simplifies error calculation vs. Caffe DNN
+(which returns absolute pixel coordinates after blob rescaling).
+
+---
+
+### Serial Protocol Design
+
+USB Serial link: /dev/ttyACM0, 115200 baud, newline-terminated ASCII frames.
+
+**RPi4 → Arduino (command frames):**
+
+| Frame | Meaning | Fields |
+|-------|---------|--------|
+| `T,err_x,err_y,size\n` | TRACK — face detected | err_x/err_y: normalized [-1.0, 1.0], size: normalized [0.0, 1.0] |
+| `S\n` | SCAN — no face or lost | (none) |
+| `I\n` | IDLE — system stopped | (none) |
+| `H\n` | HEARTBEAT — keep watchdog alive | (none, sent when state unchanged) |
+
+**Arduino → RPi4 (status frames):**
+
+| Frame | Meaning |
+|-------|---------|
+| `OK,pan,tilt,state\n` | ACK with current angles and state |
+| `ERR,code\n` | Parse error or invalid command |
+
+**Why ASCII newline-framing:**
+- pyserial `readline()` on RPi blocks until `\n` — simplest reliable receive pattern
+- Arduino `Serial.readStringUntil('\n')` is built-in — no custom parser needed
+- Human-readable for debugging with minicom/screen during development
+
+**Watchdog timing:**
+At 100 Hz normal operation, Arduino receives a frame every 10 ms — watchdog (WDTO_2S)
+is pet every 10 ms, well within the 2s window. If RPi4 crashes or Python hangs, Arduino
+gets no frames for 2s and autonomously returns to SCAN mode.
+
+**pyserial usage pattern for pi_brain.py:**
+
+```python
+import serial
+ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1.0)
+time.sleep(2.0)  # Wait for Arduino reset after USB connect (Leonardo reboots on connect)
+
+# Send command
+ser.write(b'T,0.12,-0.08,0.35\n')
+
+# Read status (non-blocking check)
+if ser.in_waiting:
+    line = ser.readline().decode('ascii', errors='ignore').strip()
+```
+
+The 2-second sleep after opening serial is REQUIRED for Arduino Leonardo: the Leonardo
+resets when the serial port is opened (DTR signal). Without the sleep, the first write
+arrives before the firmware has initialized.
+
+---
+
+### QuickPID Configuration for 100 Hz Dual-Axis Servo Control
+
+```cpp
+#include <QuickPID.h>
+
+float pan_input, pan_output, pan_setpoint = 0;
+float tilt_input, tilt_output, tilt_setpoint = 0;
+
+QuickPID pidPan(&pan_input, &pan_output, &pan_setpoint,
+                Kp, Ki, Kd, QuickPID::Action::direct);
+QuickPID pidTilt(&tilt_input, &tilt_output, &tilt_setpoint,
+                 Kp, Ki, Kd, QuickPID::Action::direct);
+
+void setup() {
+    pidPan.SetSampleTimeUs(10000);   // 100 Hz = 10,000 µs
+    pidTilt.SetSampleTimeUs(10000);
+    pidPan.SetOutputLimits(-OUTPUT_LIMIT, OUTPUT_LIMIT);
+    pidTilt.SetOutputLimits(-OUTPUT_LIMIT, OUTPUT_LIMIT);
+    pidPan.SetMode(QuickPID::Control::automatic);
+    pidTilt.SetMode(QuickPID::Control::automatic);
+}
+
+void loop() {
+    wdt_reset();  // Pet the watchdog every loop iteration
+    pidPan.Compute();
+    pidTilt.Compute();
+    // Apply output to servo angles
+}
+```
+
+---
+
+### What NOT to Use in v2.0
+
+| Avoid | Why | Use Instead |
+|-------|-----|-------------|
+| mp.solutions.face_detection (legacy API) | Deprecated in mediapipe 0.10.x, will be removed | mp.tasks.vision.FaceDetector with .tflite model file |
+| numpy >= 2.0 | mediapipe 0.10.x hard dependency on numpy <2.0 — import fails | Pin numpy to >=1.24,<2.0 in requirements.txt |
+| PID_v1 Arduino library | Unmaintained since 2017, slower compute (128 µs), no TIMER mode | QuickPID 3.1.9 |
+| LiquidCrystal_I2C | Hardware wiring is 4-bit parallel (RS/E/D4-D7), no I2C backpack PCF8574 present | LiquidCrystal.h built-in |
+| ServoTimer4 | Only needed when analogWrite() on D9/D10 must coexist with Servo.h. v2.0 uses D9/D10 exclusively for servos — no conflict exists | Servo.h built-in |
+| gpiozero + pigpio in main path | Arduino Leonardo owns all servo PWM in v2.0. Keeping pigpiod on RPi4 wastes resources and adds daemon dependency for removed functionality | Remove from v2.0 main path; retain in legacy/ only |
+| Python 3.13 venv for mediapipe | mediapipe 0.10.x supports Python 3.9–3.12 only. Python 3.13 is NOT supported | Python 3.11 venv (available on Bookworm via python3.11) |
+
+---
+
+### Version Compatibility (v2.0)
+
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| mediapipe 0.10.x | Python 3.9–3.12 only | Python 3.13 (default on this RPi) NOT supported. Use python3.11 venv. |
+| mediapipe 0.10.x | numpy >=1.24,<2.0 | Hard dependency — do not allow numpy 2.x upgrade |
+| mediapipe 0.10.x | OpenCV 4.8.x–4.11.x | Can coexist with opencv-python-headless in same venv |
+| pyserial 3.5 | Python 2.7, 3.x (all) | Universal wheel, no compatibility issues |
+| QuickPID 3.1.9 | Arduino IDE 1.8+ / 2.x | Standard library manager install |
+| Servo.h (built-in) | Arduino Leonardo (ATmega32U4) | D9=TIMER1A, D10=TIMER1B; Servo.h uses Timer1 — direct match |
+| avr/wdt.h | ATmega32U4 (Leonardo) | Add 3s delay before wdt_enable() to allow bootloader to accept uploads |
+
+---
+
+### Sources (v2.0 supplement)
+
+- PyPI mediapipe 0.10.33 page (March 2026) — Python 3.9–3.12, no linux_aarch64 wheel confirmed
+- [RandomNerdTutorials: Install MediaPipe on Raspberry Pi](https://randomnerdtutorials.com/install-mediapipe-raspberry-pi/) — pip install works on Bookworm 64-bit (MEDIUM confidence, 2024)
+- [Google AI Edge: Face Detection Python](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector/python) — Tasks API, normalized bbox format (HIGH confidence)
+- [Google AI Edge: FaceDetector API reference](https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/FaceDetector) — FaceDetectorOptions, create_from_options (HIGH confidence)
+- [QuickPID GitHub (Dlloydev)](https://github.com/Dlloydev/QuickPID) — v3.1.9, SetSampleTimeUs, 51 µs compute vs PID_v1 128 µs (HIGH confidence)
+- [Arduino Forum: Servo on D9/D10 Leonardo](https://forum.arduino.cc/t/using-servo-on-or-not-on-d9-d10/1294540) — Timer1 mapping on Leonardo confirmed (HIGH confidence)
+- [avr-libc wdt.h reference](https://www.nongnu.org/avr-libc/user-manual/group__avr__watchdog.html) — WDTO_2S, 2s timeout, Leonardo bootloader 3s delay requirement (HIGH confidence)
+- [PyPI pyserial 3.5](https://pypi.org/project/pyserial/) — stable, universal wheel since 2020 (HIGH confidence)
+- [PINTO0309/mediapipe-bin](https://github.com/PINTO0309/mediapipe-bin) — fallback aarch64 community wheels (MEDIUM confidence, last resort)
+- Raspberry Pi Forums: mediapipe on Bookworm — Python 3.11 constraint documented (MEDIUM confidence)
+
+---
+*v2.0 supplement added: 2026-03-30*
