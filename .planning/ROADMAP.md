@@ -91,7 +91,7 @@ Plans:
   1. Po wejsciu w TRACKING serwa nie docieraja do limitow katowych w ciagu pierwszych 2 sekund
   2. Twarz zostaje wycentrowana w obu osiach w ciagu 1-3 sekund od wejscia w TRACKING — widoczna konwergencja PID
   3. Brak ciaglych ostrzezen CLAMP w logach terminala po wejsciu w TRACKING
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 15-01: pid_pan.reset() + pid_tilt.reset() na wejscie TRACKING + PID_OUTPUT_LIMIT 10.0 → 3.0
@@ -104,7 +104,7 @@ Plans:
   1. Wartosc Tilt na HUD zmienia sie podczas stanu SCANNING — serwo tilt fizycznie oscyluje
   2. Sciezka skanowania tworzy wzorzec Lissajous — kamera pokrywa pole widzenia w obu osiach
   3. Powrot do stanu SCANNING po TARGET_LOST nie powoduje skoku serwa tilt — plynna kontynuacja z aktualnej pozycji
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 16-01: SCAN_AMPLITUDE_TILT=15.0 + SCAN_FREQUENCY_TILT=0.07 w _skanuj() + phase-offset dla tilt
@@ -116,7 +116,7 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. Skanowanie wizualnie wyglada na plynne — brak wyraznych szarpan widocznych golym okiem
   2. Petla sterowania wykonuje wywolania set_angles() w regularnych odstepach — FPS nie spada ponizej 10 podczas skanowania
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
 - [ ] 17-01: DNN_SKIP_EVERY 5 → 10 + empiryczna weryfikacja plynnosci na RPi4 (opcjonalnie EMA jesli niewystarczajace)
@@ -145,7 +145,7 @@ Plans:
   2. RPi otwiera port /dev/ttyACM0 z dtr=False i low_latency — Arduino nie resetuje sie przy polaczeniu
   3. Heartbeat RPi (co 200ms) jest widoczny w parserze Arduino — log lub LED potwierdzajacy zywotnosc polaczenia
   4. Odlaczenie USB podczas dzialania i ponowne podlaczenie — parser Arduino resyncuje sie poprawnie na znaczniku 0xAA
-**Plans**: TBD
+**Plans**: 2 plans
 
 ### Phase 20: Firmware Arduino PID + Servo
 **Goal**: Arduino steruje serwami w sposob deterministyczny — PID 100 Hz, bezpieczny startup, autonomiczny skan sinusoidalny, watchdog millis() zwraca do SCAN po utracie komunikacji
@@ -157,7 +157,7 @@ Plans:
   3. Przy braku ramek przez >500ms Arduino przechodzi autonomicznie do trybu SCAN — serwa zaczynaja skan sinusoidalny bez interwencji RPi
   4. Zmiana PAN_INVERT / TILT_INVERT w #define odwraca kierunek serwa — kalibracja empiryczna mozliwa bez przepisywania kodu
   5. Maszyna stanow przechodzi IDLE → SCAN → TRACK w odpowiedzi na ramki z RPi
-**Plans**: TBD
+**Plans**: 2 plans
 
 ### Phase 21: Wizja RPi MediaPipe
 **Goal**: RPi4 wykrywa twarze przez MediaPipe, oblicza blad X/Y i wysyla ramki do Arduino w sposob ciagly — kamera sledzi twarz bez Flaska
@@ -169,7 +169,7 @@ Plans:
   3. Obraz Picamera2 nie ma niebieskiej/zielonej poswiaty — AWB lock (start + 2s sleep + capture_metadata) dziala poprawnie
   4. pi_brain.py zamyka sie czysto na Ctrl+C — serial.close() i camera.stop() wywolane bez wyjatkow
   5. Heartbeat TX co 200ms nawet gdy brak detekcji twarzy — Arduino watchdog nie odpala sie przy wykrytej twarzy poza kadrem
-**Plans**: TBD
+**Plans**: 2 plans
 **UI hint**: yes
 
 ### Phase 22: HMI LCD + Buzzer + Przycisk
@@ -181,7 +181,7 @@ Plans:
   2. Buzzer emituje krotki ton przy przejsciu do trybu SLEDZENIE — slyszalne z odleglosci 1m
   3. Wcisniecie przycisku D7 podczas SLEDZENIE przywraca tryb SKANOWANIE — reakcja w ciagu 50ms (debounce 20ms)
   4. LCD bootscreen z nazwa systemu widoczny przez pierwsze 2 sekundy po wlaczeniu Arduino
-**Plans**: TBD
+**Plans**: 2 plans
 
 ### Phase 23: Integracja + Kalibracja
 **Goal**: System dziala end-to-end jako rozproszony tracker — twarz na RPi powoduje ruch serw przez Arduino PID, kierunki poprawne, kod modularny
@@ -193,7 +193,7 @@ Plans:
   3. Os tilt dziala poprawnie w obu trybach: tilt oscyluje podczas SCAN, tilt sledzi twarz podczas TRACK
   4. Kod podzielony na klasy VisionManager, SerialInterface, ServoPID — kazda klasa w oddzielnym pliku bez cyklicznych importow
   5. Wszystkie komentarze, nazwy zmiennych i komunikaty w kodzie sa w jezyku polskim
-**Plans**: TBD
+**Plans**: 2 plans
 
 ## Progress
 
