@@ -8,6 +8,11 @@
 .gsd/STATE.md
 .gsd/TODO.md
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
 # OS generated
 Thumbs.db
 .DS_Store
