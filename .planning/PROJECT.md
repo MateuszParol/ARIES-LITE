@@ -1,26 +1,23 @@
 # PROJECT.md — ARIES-LITE
 
 > **Full Name**: Autonomous Real-time Intelligent Eye System — Lightweight Edition
-> **Status**: Active (v1.8 in progress)
-> **Current Version**: v1.8.0-dev
-> **Target Platform**: Raspberry Pi 4 Model B
+> **Status**: Active (v2.0 in progress)
+> **Current Version**: v2.0.0-dev
+> **Target Platform**: Raspberry Pi 4 Model B + Arduino Leonardo
 
 ## Vision
 
-An autonomous real-time face tracking system that combines IoT hardware (pan/tilt servos), hybrid computer vision (HAAR + dlib), and PID control theory to keep a target person centered in frame — controlled entirely via a mobile-first web interface over WiFi.
+An autonomous real-time face tracking system built on a distributed architecture: Raspberry Pi 4 ("Mózg") handles computer vision (MediaPipe Face Detection) and high-level logic, while Arduino Leonardo ("Układ Wykonawczy") runs PID control at 100+ Hz for ultra-smooth servo motion, manages LCD/buzzer HMI, and provides hardware watchdog safety.
 
 ## Problem Statement
 
-Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR cascade) or frame rate (full dlib on every frame at 2-3 FPS). ARIES-LITE solves this with a hybrid approach: fast HAAR detection for 30fps responsiveness, CSRT tracker for smooth PID input, and async dlib verification for identity confirmation — all orchestrated through a 4-thread architecture.
+Running both vision and PID control on a single RPi4 limits servo update rate to ~30 Hz (Python loop) and makes the system fragile (single point of failure). By offloading PID + servo control to Arduino Leonardo via USB Serial, the RPi4 is freed to run heavier vision models (MediaPipe instead of HAAR/DNN) while Arduino delivers hardware-rate PID updates. The distributed architecture also adds physical HMI (LCD, buzzer, action button) and autonomous safety (watchdog returns to SCAN if Pi stops communicating).
 
 ## Current State
 
-**v1.8** complete — all 13 phases delivered.
-- Phase 13 (dnn-detector) complete: OpenCV DNN res10_300x300 zastepuje HAAR, detekcja pod katem >30°, FPS >= 10 na RPi4 z skip_every=5, interfejs wykryj() zachowany
-- Phase 12 (pid-validation) complete: --debug flag w run_test_tracker.py, empiryczna walidacja PID na RPi4 — oba kontrolery obliczaja poprawne korekty, brak runaway, konwergencja potwierdzona
-- Phase 11 (awb-fix) complete: AWB configure-time lock (1.0, 1.0) w create_video_configuration(), fallback guard na None/(0.0, 0.0), explicit float() cast — neutralne kolory od pierwszej klatki, potwierdzone na RPi4
-- Phase 10 (detection-fix) complete: HAAR_MIN_SIZE=(40,40), HAAR_MIN_NEIGHBORS=4 — detekcja dziala 40-100cm, pod katem ±30°, empirycznie potwierdzone na RPi4
-- Phase 09 (diagnostics) complete: mock mode [MOCK] HUD indicator, PID component per-tick logging, AWB ColourGains re-read verification after set_controls
+**v1.8** complete — all 13 phases delivered (DNN detector, PID validation, AWB fix, detection fix, diagnostics).
+
+**v1.9** partially started — AWB/Color Fix phase 14 in progress (continuous AWB approach).
 
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
 - Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
@@ -49,21 +46,26 @@ Traditional face tracking on Raspberry Pi either sacrifices accuracy (pure HAAR 
 
 </details>
 
-## Current Milestone: v1.9 Stabilizacja Ruchu i Obrazu
+## Current Milestone: v2.0 Architektura Rozproszona
 
-**Goal:** System skanuje plynnie w obu osiach, kamera oddaje prawidlowe kolory, a tracking nie powoduje ucieczki serw.
+**Goal:** Calkowita przebudowa systemu na architekture rozproszona — Mozg (RPi4) + Uklad Wykonawczy (Arduino Leonardo) polaczone przez USB Serial.
 
-**Target fixes:**
-- Tilt nie reaguje w zadnym trybie (SCANNING ani TRACKING) — naprawic sciezke kodu tilt
-- Skanowanie szarpie/klatkuje — wprowadzic plynne poruszanie serw
-- Zielona poswiata od startu (G stale, niezalezne od sceny) — naprawic AWB/ColourGains
-- Serwa uciekaja natychmiast po wejsciu w TRACKING — naprawic PID/logike sterowania
+**Target features:**
+- Firmware Arduino (`src/arduino/aries_controller.ino`): Serial parser, PID dual-axis (100+ Hz), LCD 1602 status, buzzer feedback, safe startup, watchdog (powrot do SCAN gdy Pi milczy)
+- Brain script Pi (`src/vision/pi_brain.py`): MediaPipe Face Detection, sticky tracking (najwieksza twarz), AWB fix dla IMX219, obliczanie bledu + wysylanie do Arduino
+- Protokol szeregowy: Pelna ramka — tryb (SCAN/TRACK/IDLE), blad X/Y, rozmiar twarzy, heartbeat
+- Przycisk akcji (D7): "Abort Track" — przywraca tryb SCAN gdy kamera sledzi niepozadany cel
+- Orientacja serw: Konfigurowalny kierunek (empiryczna kalibracja na hardware)
+
+**Hardware:**
+- Arduino Leonardo: LCD 1602 (RS=12,E=11,D4=5,D5=4,D6=3,D7=2), Serwa MG-90S (PAN=D9,TILT=D10), Buzzer=D8, Przycisk=D7 (INPUT_PULLUP), zasilanie serw z zewnetrznego 6V
+- RPi4B: Kamera RPi v2 (IMX219), polaczenie USB Serial (/dev/ttyACM0, 115200 baud)
 
 **Kontekst:**
-- Wszystkie problemy dotycza test trackera (run_test_tracker.py / src/modes/test_tracker.py)
-- Servo tilt fizycznie sprawne (stawia opor przy recznym ruchu)
-- Poprzedni fix AWB (ColourGains=1.0,1.0) zamienil blue tint na green tint
-- Kanal G staly — nie zmienia sie wraz z poruszaniem kamery
+- Stary monolit zachowany w `legacy/` jako referencja
+- PID przeniesiony na Arduino dla plynnosci 100+ Hz
+- MediaPipe zamiast DNN — RPi odciazone przez Arduino, stac na ciezszy model wizji
+- Orientacja serw wymaga empirycznej weryfikacji na nowym montazu
 
 ## What Could Come Next
 
@@ -77,11 +79,13 @@ Potential areas for future milestones:
 ## Technical Decisions (Locked)
 
 These architectural choices are validated and should not change:
-- Python 3 + Flask (not FastAPI) — lighter for RPi4
-- pigpio H-PWM via gpiozero (not RPi.GPIO) — smoother servo control
-- Hybrid HAAR+dlib (not pure deep learning) — FPS vs accuracy tradeoff
-- PID control (not Kalman filter) — simpler tuning for servo hardware
-- Single-page vanilla HTML/CSS/JS — no build toolchain needed
+- Distributed architecture: RPi4 (vision) + Arduino Leonardo (PID + HMI)
+- USB Serial communication at 115200 baud (/dev/ttyACM0)
+- MediaPipe Face Detection on RPi4 (replaces HAAR/DNN)
+- PID control on Arduino (100+ Hz hardware-rate updates)
+- Arduino Servo library for MG-90S (PAN=D9, TILT=D10)
+- LCD 1602 4-bit mode for status display
+- Watchdog na Arduino — autonomiczny powrot do SCAN przy utracie komunikacji
 - Polish-language comments and UI text
 
 ## Key Decisions
