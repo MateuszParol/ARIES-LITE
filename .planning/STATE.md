@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: verifying
-stopped_at: Checkpoint Task 3 — 18-02 awaiting user verification of mediapipe + arduino-cli
-last_updated: "2026-03-30T19:00:34.084Z"
+stopped_at: Completed 18-02-PLAN.md — Phase 18 srodowisko-protokol-migracja DONE
+last_updated: "2026-03-30T19:06:50.292Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 10
@@ -54,6 +54,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 18-srodowisko-protokol-migracja]: Stary monolit w legacy/ via git mv — historia plikow zachowana przez git log --follow
 - [Phase 18]: Servo i LiquidCrystal wymagaly osobnej instalacji przez arduino-cli lib install — nie sa builtin w arduino:avr 1.8.7
 - [Phase 18]: picamera2 nie importuje sie w Python 3.12 venv — rozwiazanie odlozone do Phase 21
+- [Phase Phase 18]: Servo i LiquidCrystal wymagaly arduino-cli lib install — nie sa builtin w arduino:avr 1.8.7
+- [Phase Phase 18]: picamera2 nie importuje sie w Python 3.12 venv — rozwiazanie odlozone do Phase 21 (systemowy pakiet cp313 niekompatybilny z cp312 venv)
 
 ### Blockers/Concerns
 
@@ -67,6 +69,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-30T19:00:34.052Z
-Stopped at: Checkpoint Task 3 — 18-02 awaiting user verification of mediapipe + arduino-cli
+Last session: 2026-03-30T19:06:50.248Z
+Stopped at: Completed 18-02-PLAN.md — Phase 18 srodowisko-protokol-migracja DONE
 Resume file: None

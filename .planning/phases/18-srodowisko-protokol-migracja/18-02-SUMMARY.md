@@ -69,7 +69,7 @@ completed: 2026-03-30
 - **Duration:** ~35 min (kompilacja Pythona ~20 min + reszta ~15 min)
 - **Started:** 2026-03-30
 - **Completed:** 2026-03-30
-- **Tasks:** 2 z 2 autonomicznych (Task 3 checkpoint — oczekuje weryfikacji uzytkownika)
+- **Tasks:** 3 z 3 (2 autonomicznych + 1 checkpoint:human-verify — uzytkownik zatwierdził)
 - **Files modified:** 1
 
 ## Accomplishments
@@ -87,7 +87,7 @@ Kazdy task zacommitowany atomowo:
 1. **Task 1: Instalacja Python 3.12 przez pyenv + venv z mediapipe** - `48729ad` (feat)
 2. **Task 2: Instalacja arduino-cli + weryfikacja kompilacji szkieletu** - `13fbd94` (feat, empty commit — narzedzie systemowe)
 
-Task 3 jest checkpointem — oczekuje na weryfikacje uzytkownika.
+3. **Task 3: Weryfikacja srodowiska deweloperskiego (checkpoint)** - `bcc2cd1` (docs — checkpoint commit) — USER APPROVED
 
 ## Files Created/Modified
 
@@ -122,10 +122,12 @@ Task 3 jest checkpointem — oczekuje na weryfikacje uzytkownika.
 
 ## User Setup Required
 
-Task 3 jest checkpointem weryfikacyjnym. Uzytkownik powinien potwierdzic:
-1. `source venv/bin/activate && python3 --version` zwraca Python 3.12.x
-2. `python3 -c "import mediapipe; print(mediapipe.__version__)"` zwraca 0.10.18
-3. `arduino-cli compile --fqbn arduino:avr:leonardo src/arduino/aries_controller/aries_controller.ino` konczy sie sukcesem
+Task 3 byl checkpointem weryfikacyjnym — ZATWIERDZONY przez uzytkownika.
+
+Uzytkownik potwierdzil:
+1. Python 3.12.10 via pyenv — `import mediapipe` OK, mediapipe 0.10.18, FaceDetector (Tasks API) dziala
+2. arduino-cli v1.4.1 — QuickPID 3.1.9, Servo 1.3.0, LiquidCrystal 1.0.7 zainstalowane, szkielet kompiluje sie (4006B, 13%)
+3. Znany problem: picamera2 nie importuje sie w Python 3.12 venv (systemowy pakiet jest cp313) — zaakceptowany jako odlozony do Phase 21
 
 ## Next Phase Readiness
 
