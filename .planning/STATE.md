@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: planning
-stopped_at: Phase 18 context gathered
-last_updated: "2026-03-30T17:49:02.356Z"
-last_activity: 2026-03-30 — Roadmap v2.0 utworzony, 31 wymagan zmapowanych do 6 faz
+status: executing
+stopped_at: Completed 18-01-PLAN.md — Protocol spec, legacy migration, Arduino skeleton
+last_updated: "2026-03-30T18:22:07.347Z"
+last_activity: 2026-03-30
 progress:
   total_phases: 10
-  completed_phases: 0
-  total_plans: 1
-  completed_plans: 0
+  completed_phases: 8
+  total_plans: 11
+  completed_plans: 9
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial
-**Current focus:** Phase 18 — Srodowisko + Protokol + Migracja
+**Current focus:** Phase 18 — srodowisko-protokol-migracja
 
 ## Current Position
 
-Phase: 18 of 23 (Srodowisko + Protokol + Migracja)
-Plan: — (nie zaplanowane)
-Status: Ready to plan
-Last activity: 2026-03-30 — Roadmap v2.0 utworzony, 31 wymagan zmapowanych do 6 faz
+Phase: 18 (srodowisko-protokol-migracja) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-30
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -50,6 +50,8 @@ Progress: [░░░░░░░░░░] 0%
 - [v2.0]: Architektura rozproszona — RPi4 + Arduino Leonardo via USB Serial 115200
 - [v2.0]: QuickPID zamiast br3ttb PID — iAwCondition anti-windup, dOnMeas derivative mode
 - [v2.0]: NIE uzywac AVR hardware WDT — millis() watchdog zamiast wdt_enable() (Caterina bootloader bug)
+- [Phase 18-srodowisko-protokol-migracja]: Protokol binarny 8B zamkniety: 0xAA + mode(uint8) + error_x/y(int16 LE) + face_size(uint8) + XOR checksum(1-6 bez start)
+- [Phase 18-srodowisko-protokol-migracja]: Stary monolit w legacy/ via git mv — historia plikow zachowana przez git log --follow
 
 ### Blockers/Concerns
 
@@ -63,6 +65,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-30T17:49:02.254Z
-Stopped at: Phase 18 context gathered
-Resume file: .planning/phases/18-srodowisko-protokol-migracja/18-CONTEXT.md
+Last session: 2026-03-30T18:22:07.253Z
+Stopped at: Completed 18-01-PLAN.md — Protocol spec, legacy migration, Arduino skeleton
+Resume file: None

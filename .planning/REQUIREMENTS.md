@@ -14,7 +14,7 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 ### Serial Protocol (SER)
 
-- [ ] **SER-01**: Specyfikacja ramki binarnej (8 bajtow: start marker 0xAA + tryb + blad X/Y + rozmiar twarzy + checksum XOR)
+- [x] **SER-01**: Specyfikacja ramki binarnej (8 bajtow: start marker 0xAA + tryb + blad X/Y + rozmiar twarzy + checksum XOR)
 - [ ] **SER-02**: Arduino parser state-machine (non-blocking, WAIT_START → READ_PAYLOAD → VERIFY_CHECKSUM → DISPATCH)
 - [ ] **SER-03**: RPi nadajnik pyserial z dtr=False, timeout, low_latency na /dev/ttyACM0 @ 115200 baud
 - [ ] **SER-04**: Heartbeat TX z RPi co 200ms — Arduino rozpoznaje utrate komunikacji
@@ -48,8 +48,8 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 ### Migracja (MIG)
 
-- [ ] **MIG-01**: Stary kod monolitu przeniesiony do katalogu legacy/ jako referencja
-- [ ] **MIG-02**: Nowa struktura katalogow: src/arduino/ (firmware), src/vision/ (pi brain)
+- [x] **MIG-01**: Stary kod monolitu przeniesiony do katalogu legacy/ jako referencja
+- [x] **MIG-02**: Nowa struktura katalogow: src/arduino/ (firmware), src/vision/ (pi brain)
 
 ### Integracja (INT)
 
@@ -98,9 +98,9 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 |-------------|-------|--------|
 | ENV-01 | Phase 18 | Pending |
 | ENV-02 | Phase 18 | Pending |
-| SER-01 | Phase 18 | Pending |
-| MIG-01 | Phase 18 | Pending |
-| MIG-02 | Phase 18 | Pending |
+| SER-01 | Phase 18 | Complete |
+| MIG-01 | Phase 18 | Complete |
+| MIG-02 | Phase 18 | Complete |
 | SER-02 | Phase 19 | Pending |
 | SER-03 | Phase 19 | Pending |
 | SER-04 | Phase 19 | Pending |

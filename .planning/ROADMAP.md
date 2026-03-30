@@ -133,7 +133,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 18-01-PLAN.md — Specyfikacja protokolu binarnego + migracja monolitu do legacy/ + nowa struktura src/
+- [x] 18-01-PLAN.md — Specyfikacja protokolu binarnego + migracja monolitu do legacy/ + nowa struktura src/
 - [ ] 18-02-PLAN.md — Python 3.12 venv z MediaPipe + arduino-cli z weryfikacja kompilacji
 
 ### Phase 19: Serial Link + Echo Test
@@ -216,7 +216,7 @@ Plans:
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
-| 18. Srodowisko + Protokol + Migracja | v2.0 | 0/2 | Not started | - |
+| 18. Srodowisko + Protokol + Migracja | v2.0 | 1/2 | In Progress|  |
 | 19. Serial Link + Echo Test | v2.0 | 0/? | Not started | - |
 | 20. Firmware Arduino PID + Servo | v2.0 | 0/? | Not started | - |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
