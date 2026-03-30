@@ -7,6 +7,7 @@
 - ✅ **v1.7 Debugging & Optimization** — Phases 6-8 (shipped 2026-03-29)
 - ✅ **v1.8 Critical Hardware Fix** — Phases 9-13 (shipped 2026-03-29)
 - 🚧 **v1.9 Stabilizacja Ruchu i Obrazu** — Phases 14-17 (in progress)
+- 📋 **v2.0 Architektura Rozproszona** — Phases 18-23 (planned)
 
 ## Phases
 
@@ -55,6 +56,17 @@
 - [ ] **Phase 15: PID Tracking Fix** - Reset PID przy wejsciu w TRACKING + redukcja output limit
 - [ ] **Phase 16: Tilt Scan Fix** - Sinusoida tilt w _skanuj() — Lissajous 2D z phase-offset continuity
 - [ ] **Phase 17: Scan Smoothness** - DNN_SKIP_EVERY wzrost + opcjonalne EMA wygladzanie serw
+
+### 📋 v2.0 Architektura Rozproszona (Planned)
+
+**Milestone Goal:** Calkowita przebudowa na architekture rozproszona — RPi4 (MediaPipe wizja + serial TX) + Arduino Leonardo (PID 100 Hz + HMI) polaczone USB Serial 115200 baud.
+
+- [ ] **Phase 18: Srodowisko + Protokol + Migracja** - MediaPipe zweryfikowany na RPi4, binarny protokol 8-bajtowy specyfikacja zamknieta, stary kod w legacy/
+- [ ] **Phase 19: Serial Link + Echo Test** - SerialSender (RPi) + parser state-machine (Arduino) + end-to-end echo test
+- [ ] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny
+- [ ] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown
+- [ ] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track
+- [ ] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie
 
 ## Phase Details
 
@@ -109,6 +121,76 @@ Plans:
 Plans:
 - [ ] 17-01: DNN_SKIP_EVERY 5 → 10 + empiryczna weryfikacja plynnosci na RPi4 (opcjonalnie EMA jesli niewystarczajace)
 
+### Phase 18: Srodowisko + Protokol + Migracja
+**Goal**: Srodowisko deweloperskie gotowe na obu wezlach, protokol binarny w pelni zspecyfikowany i zablokowany, stary monolit przeniesiony do legacy/
+**Depends on**: Phase 17 (v1.9 shipped)
+**Requirements**: ENV-01, ENV-02, SER-01, MIG-01, MIG-02
+**Success Criteria** (what must be TRUE):
+  1. `import mediapipe` dziala na RPi4 bez bledow — potwierdzony Python 3.11 + Bookworm
+  2. Arduino IDE / arduino-cli kompiluje szkielet firmware z QuickPID, Servo, LiquidCrystal bez bledow
+  3. Plik specyfikacji protokolu opisuje wszystkie 8 bajtow ramki (start 0xAA, tryb, int16 error_x, int16 error_y, uint8 face_size, XOR checksum) — zamkniety przed jakimkolwiek kodem
+  4. Katalogi src/arduino/ i src/vision/ istnieja w repo; stary kod dziala w legacy/ bez regresji
+**Plans**: TBD
+
+### Phase 19: Serial Link + Echo Test
+**Goal**: Warstwa szeregowa dziala end-to-end — RPi wysyla poprawne ramki binarne, Arduino parsuje je bez bledow i potwierdza odczyt przez Serial Monitor
+**Depends on**: Phase 18
+**Requirements**: SER-02, SER-03, SER-04, SER-05
+**Success Criteria** (what must be TRUE):
+  1. Arduino Serial Monitor pokazuje poprawnie zdekodowane pola ramki dla kazdej ramki wyslanej przez RPi (tryb, error_x, error_y, face_size, checksum OK)
+  2. RPi otwiera port /dev/ttyACM0 z dtr=False i low_latency — Arduino nie resetuje sie przy polaczeniu
+  3. Heartbeat RPi (co 200ms) jest widoczny w parserze Arduino — log lub LED potwierdzajacy zywotnosc polaczenia
+  4. Odlaczenie USB podczas dzialania i ponowne podlaczenie — parser Arduino resyncuje sie poprawnie na znaczniku 0xAA
+**Plans**: TBD
+
+### Phase 20: Firmware Arduino PID + Servo
+**Goal**: Arduino steruje serwami w sposob deterministyczny — PID 100 Hz, bezpieczny startup, autonomiczny skan sinusoidalny, watchdog millis() zwraca do SCAN po utracie komunikacji
+**Depends on**: Phase 19
+**Requirements**: ARD-01, ARD-02, ARD-03, ARD-04, ARD-05, ARD-06
+**Success Criteria** (what must be TRUE):
+  1. Serwa plynnie docieraja do pozycji 90/90 przy starcie — brak skoku pradu na zasilaniu 6V
+  2. Petla PID wykonuje sie co 10ms (±1ms) — mierzalne przez znaczniki Serial lub oscyloskop
+  3. Przy braku ramek przez >500ms Arduino przechodzi autonomicznie do trybu SCAN — serwa zaczynaja skan sinusoidalny bez interwencji RPi
+  4. Zmiana PAN_INVERT / TILT_INVERT w #define odwraca kierunek serwa — kalibracja empiryczna mozliwa bez przepisywania kodu
+  5. Maszyna stanow przechodzi IDLE → SCAN → TRACK w odpowiedzi na ramki z RPi
+**Plans**: TBD
+
+### Phase 21: Wizja RPi MediaPipe
+**Goal**: RPi4 wykrywa twarze przez MediaPipe, oblicza blad X/Y i wysyla ramki do Arduino w sposob ciagly — kamera sledzi twarz bez Flaska
+**Depends on**: Phase 20
+**Requirements**: VIS-01, VIS-02, VIS-03, VIS-04, VIS-05, VIS-06, VIS-07
+**Success Criteria** (what must be TRUE):
+  1. MediaPipe FaceDetector wykrywa twarz w kadrze Picamera2 320x240 — bbox widoczny w podglad/logu przy FPS >= 10
+  2. Przy kilku twarzach w kadrze system sledzi konsekwentnie najwieksza (sticky selection) — brak migotania miedzy celami
+  3. Obraz Picamera2 nie ma niebieskiej/zielonej poswiaty — AWB lock (start + 2s sleep + capture_metadata) dziala poprawnie
+  4. pi_brain.py zamyka sie czysto na Ctrl+C — serial.close() i camera.stop() wywolane bez wyjatkow
+  5. Heartbeat TX co 200ms nawet gdy brak detekcji twarzy — Arduino watchdog nie odpala sie przy wykrytej twarzy poza kadrem
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 22: HMI LCD + Buzzer + Przycisk
+**Goal**: Uzytkownik widzi stan systemu na LCD i slyszy potwierdzenie dzwiekowe przy zmianie stanu — fizyczny przycisk przywraca SCAN
+**Depends on**: Phase 21
+**Requirements**: HMI-01, HMI-02, HMI-03, HMI-04
+**Success Criteria** (what must be TRUE):
+  1. LCD Row 0 pokazuje aktualny tryb (SKANOWANIE / SLEDZENIE / BEZCZYNNOSC) — aktualizacja widoczna w ciagu 200ms od zmiany stanu
+  2. Buzzer emituje krotki ton przy przejsciu do trybu SLEDZENIE — slyszalne z odleglosci 1m
+  3. Wcisniecie przycisku D7 podczas SLEDZENIE przywraca tryb SKANOWANIE — reakcja w ciagu 50ms (debounce 20ms)
+  4. LCD bootscreen z nazwa systemu widoczny przez pierwsze 2 sekundy po wlaczeniu Arduino
+**Plans**: TBD
+
+### Phase 23: Integracja + Kalibracja
+**Goal**: System dziala end-to-end jako rozproszony tracker — twarz na RPi powoduje ruch serw przez Arduino PID, kierunki poprawne, kod modularny
+**Depends on**: Phase 22
+**Requirements**: INT-01, INT-02, INT-03, INT-04, INT-05
+**Success Criteria** (what must be TRUE):
+  1. Twarz wykryta na RPi powoduje ruch serw na Arduino w ciagu <100ms — latencja end-to-end mierzalna przez log timestamps
+  2. Twarz po prawej stronie kadru = serwo pan przesuwa kamera w prawo (negative feedback poprawny) — brak ucieczki serw
+  3. Os tilt dziala poprawnie w obu trybach: tilt oscyluje podczas SCAN, tilt sledzi twarz podczas TRACK
+  4. Kod podzielony na klasy VisionManager, SerialInterface, ServoPID — kazda klasa w oddzielnym pliku bez cyklicznych importow
+  5. Wszystkie komentarze, nazwy zmiennych i komunikaty w kodzie sa w jezyku polskim
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -130,3 +212,9 @@ Plans:
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
+| 18. Srodowisko + Protokol + Migracja | v2.0 | 0/? | Not started | - |
+| 19. Serial Link + Echo Test | v2.0 | 0/? | Not started | - |
+| 20. Firmware Arduino PID + Servo | v2.0 | 0/? | Not started | - |
+| 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
+| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |
+| 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |

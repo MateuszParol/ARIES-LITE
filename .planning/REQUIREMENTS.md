@@ -96,43 +96,43 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENV-01 | — | Pending |
-| ENV-02 | — | Pending |
-| SER-01 | — | Pending |
-| SER-02 | — | Pending |
-| SER-03 | — | Pending |
-| SER-04 | — | Pending |
-| SER-05 | — | Pending |
-| ARD-01 | — | Pending |
-| ARD-02 | — | Pending |
-| ARD-03 | — | Pending |
-| ARD-04 | — | Pending |
-| ARD-05 | — | Pending |
-| ARD-06 | — | Pending |
-| VIS-01 | — | Pending |
-| VIS-02 | — | Pending |
-| VIS-03 | — | Pending |
-| VIS-04 | — | Pending |
-| VIS-05 | — | Pending |
-| VIS-06 | — | Pending |
-| VIS-07 | — | Pending |
-| HMI-01 | — | Pending |
-| HMI-02 | — | Pending |
-| HMI-03 | — | Pending |
-| HMI-04 | — | Pending |
-| MIG-01 | — | Pending |
-| MIG-02 | — | Pending |
-| INT-01 | — | Pending |
-| INT-02 | — | Pending |
-| INT-03 | — | Pending |
-| INT-04 | — | Pending |
-| INT-05 | — | Pending |
+| ENV-01 | Phase 18 | Pending |
+| ENV-02 | Phase 18 | Pending |
+| SER-01 | Phase 18 | Pending |
+| MIG-01 | Phase 18 | Pending |
+| MIG-02 | Phase 18 | Pending |
+| SER-02 | Phase 19 | Pending |
+| SER-03 | Phase 19 | Pending |
+| SER-04 | Phase 19 | Pending |
+| SER-05 | Phase 19 | Pending |
+| ARD-01 | Phase 20 | Pending |
+| ARD-02 | Phase 20 | Pending |
+| ARD-03 | Phase 20 | Pending |
+| ARD-04 | Phase 20 | Pending |
+| ARD-05 | Phase 20 | Pending |
+| ARD-06 | Phase 20 | Pending |
+| VIS-01 | Phase 21 | Pending |
+| VIS-02 | Phase 21 | Pending |
+| VIS-03 | Phase 21 | Pending |
+| VIS-04 | Phase 21 | Pending |
+| VIS-05 | Phase 21 | Pending |
+| VIS-06 | Phase 21 | Pending |
+| VIS-07 | Phase 21 | Pending |
+| HMI-01 | Phase 22 | Pending |
+| HMI-02 | Phase 22 | Pending |
+| HMI-03 | Phase 22 | Pending |
+| HMI-04 | Phase 22 | Pending |
+| INT-01 | Phase 23 | Pending |
+| INT-02 | Phase 23 | Pending |
+| INT-03 | Phase 23 | Pending |
+| INT-04 | Phase 23 | Pending |
+| INT-05 | Phase 23 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 31 total
-- Mapped to phases: 0
-- Unmapped: 31 (awaiting roadmap)
+- Mapped to phases: 31
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after initial definition*
+*Last updated: 2026-03-30 — traceability mapped after roadmap creation*
