@@ -126,11 +126,15 @@ Plans:
 **Depends on**: Phase 17 (v1.9 shipped)
 **Requirements**: ENV-01, ENV-02, SER-01, MIG-01, MIG-02
 **Success Criteria** (what must be TRUE):
-  1. `import mediapipe` dziala na RPi4 bez bledow — potwierdzony Python 3.11 + Bookworm
+  1. `import mediapipe` dziala na RPi4 bez bledow — potwierdzony Python 3.12 + Trixie
   2. Arduino IDE / arduino-cli kompiluje szkielet firmware z QuickPID, Servo, LiquidCrystal bez bledow
   3. Plik specyfikacji protokolu opisuje wszystkie 8 bajtow ramki (start 0xAA, tryb, int16 error_x, int16 error_y, uint8 face_size, XOR checksum) — zamkniety przed jakimkolwiek kodem
   4. Katalogi src/arduino/ i src/vision/ istnieja w repo; stary kod dziala w legacy/ bez regresji
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 18-01-PLAN.md — Specyfikacja protokolu binarnego + migracja monolitu do legacy/ + nowa struktura src/
+- [ ] 18-02-PLAN.md — Python 3.12 venv z MediaPipe + arduino-cli z weryfikacja kompilacji
 
 ### Phase 19: Serial Link + Echo Test
 **Goal**: Warstwa szeregowa dziala end-to-end — RPi wysyla poprawne ramki binarne, Arduino parsuje je bez bledow i potwierdza odczyt przez Serial Monitor
@@ -212,7 +216,7 @@ Plans:
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
-| 18. Srodowisko + Protokol + Migracja | v2.0 | 0/? | Not started | - |
+| 18. Srodowisko + Protokol + Migracja | v2.0 | 0/2 | Not started | - |
 | 19. Serial Link + Echo Test | v2.0 | 0/? | Not started | - |
 | 20. Firmware Arduino PID + Servo | v2.0 | 0/? | Not started | - |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
