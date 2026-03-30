@@ -1,0 +1,10 @@
+# ARIES-LITE v2.0 — Python 3.12 na RPi4
+# Instalacja: pip install -r requirements-v2.txt
+# Wymaga Python 3.12 przez pyenv (system Debian Trixie ma 3.13, mediapipe wymaga <=3.12)
+mediapipe==0.10.18
+pyserial>=3.5
+numpy>=1.26
+# picamera2 — zainstalowane systemowo przez apt (python3-picamera2)
+# Uwaga: picamera2 nie importuje sie w Python 3.12 venv (cp312 vs cp313 systemowe)
+# Rozwiazanie: Phase 21 (kompilacja picamera2 dla Python 3.12 lub workaround)
+# opencv-python-headless — zainstalowane przez mediapipe jako zaleznosc (opencv-contrib-python 4.11.0)
