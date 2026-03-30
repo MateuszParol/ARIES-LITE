@@ -27,8 +27,8 @@ Przygotowanie srodowiska deweloperskiego na obu wezlach (RPi4 + Arduino Leonardo
 - **D-09:** Migracja via `git mv` — zachowuje historie plikow w `git log --follow`. Jeden commit: `refactor: move monolith to legacy/`
 
 ### Python venv
-- **D-10:** Nowy venv z systemowego Python 3.11 na RPi4 Bookworm. Weryfikacja: `python3 --version` na RPi jako pierwszy krok.
-- **D-11:** Flaga `--system-site-packages` w venv — wymagana dla picamera2 + libcamera (zainstalowane systemowo)
+- **D-10:** Nowy venv z Python 3.12 przez pyenv na RPi4 Trixie (system ma 3.13, mediapipe wymaga <=3.12). Weryfikacja: `python3 --version` na RPi jako pierwszy krok.
+- **D-11:** Flaga `--system-site-packages` w venv — wymagana dla picamera2 + libcamera (zainstalowane systemowo). UWAGA: picamera2 z cp313 moze nie importowac sie w cp312 venv — weryfikacja w Phase 21.
 - **D-12:** `pip install mediapipe pyserial numpy` w nowym venv. Jezeli mediapipe fail na Python 3.11 → eskalacja (deadsnakes PPA lub build ze zrodla)
 
 ### Arduino workflow

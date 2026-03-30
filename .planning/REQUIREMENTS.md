@@ -9,7 +9,7 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 ### Environment (ENV)
 
-- [ ] **ENV-01**: Python 3.11 venv na RPi4 z zainstalowanym MediaPipe (weryfikacja empiryczna)
+- [ ] **ENV-01**: Python 3.12 venv na RPi4 (przez pyenv — Trixie nie ma 3.11) z zainstalowanym MediaPipe (weryfikacja empiryczna)
 - [ ] **ENV-02**: Arduino IDE/arduino-cli z bibliotekami QuickPID, Servo, LiquidCrystal gotowe do kompilacji firmware
 
 ### Serial Protocol (SER)
