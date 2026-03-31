@@ -1,7 +1,7 @@
 // aries_controller.ino — parser state-machine + echo
 // Faza 19: serial link — odbior ramki 8B i echo identycznej ramki
 // Faza 20: fundament sterowania — PID dual-axis, safe startup, maszyna stanow
-// Implementacja LCD, HMI w fazach 22+
+// Faza 22: HMI — LCD 1602, buzzer, przycisk
 
 #include <QuickPID.h>       // PID z anti-windup (QuickPID 3.1.9)
 #include <Servo.h>           // sterowanie serwami MG-90S
@@ -42,6 +42,15 @@
 #define SCAN_AMP_PAN    70.0f    // stopnie — D-10
 #define SCAN_AMP_TILT   25.0f    // stopnie — D-10
 
+// --- HMI: LCD 1602 (D-04: piny 2,3,4,5,6,11) ---
+#define LCD_RS          2
+#define LCD_EN          3
+#define LCD_D4          4
+#define LCD_D5          5
+#define LCD_D6          6
+#define LCD_D7_PIN     11    // D7_PIN aby unikac konfliktu nazwy
+#define LCD_INTERVAL_MS 200  // 5 Hz odswiezanie (D-02, HMI-01)
+
 // --- Stan parsera ---
 enum StanParsera {
     WAIT_START,   // Oczekiwanie na bajt 0xAA
@@ -55,6 +64,10 @@ enum StanSystemu { IDLE, SCAN, TRACK };
 uint8_t ramka_buf[FRAME_SIZE];  // Bufor zebranej ramki
 uint8_t ramka_idx = 0;          // Aktualny indeks w buforze
 StanParsera stan_parsera = WAIT_START;  // Stan startowy: czekaj na marker
+
+// --- LCD 1602 (4-bit) ---
+LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7_PIN);
+unsigned long czas_ostatniego_lcd = 0;
 
 // --- Instancje Servo ---
 Servo serwo_pan;
@@ -244,6 +257,36 @@ void ustaw_serwa() {
     serwo_tilt.write((int)(kat_tilt + 90.0f));
 }
 
+// Odswiezanie LCD co 200ms — Row 0: tryb + katy, Row 1: bledy X/Y
+// setCursor + overwrite zamiast LCD.clear() — brak migotania (Pitfall 3)
+// dtostrf() zamiast sprintf("%f") — AVR nie obsluguje %f (Pitfall 1)
+void lcd_tick() {
+    unsigned long teraz = millis();
+    if (teraz - czas_ostatniego_lcd < LCD_INTERVAL_MS) return;
+    czas_ostatniego_lcd = teraz;
+
+    // Row 0: tryb (5 znakow) + katy pan/tilt
+    lcd.setCursor(0, 0);
+    const char* tryb_str;
+    switch (stan_systemu) {
+        case TRACK: tryb_str = "SLEDZ"; break;
+        case SCAN:  tryb_str = "SKAN "; break;
+        default:    tryb_str = "IDLE "; break;
+    }
+    char pan_buf[5], tilt_buf[5];
+    dtostrf(kat_pan,  4, 0, pan_buf);    // np. " +12" lub " -60"
+    dtostrf(kat_tilt, 4, 0, tilt_buf);
+    char linia0[17];
+    snprintf(linia0, sizeof(linia0), "%sP:%-4sT:%-4s", tryb_str, pan_buf, tilt_buf);
+    lcd.print(linia0);
+
+    // Row 1: bledy X/Y z ostatniej ramki
+    lcd.setCursor(0, 1);
+    char linia1[17];
+    snprintf(linia1, sizeof(linia1), "Bx:%-5dBy:%-5d", (int)ostatni_blad_x, (int)ostatni_blad_y);
+    lcd.print(linia1);
+}
+
 void setup() {
     Serial.begin(115200);  // baudrate per PROTOCOL_SPEC.md
 
@@ -253,6 +296,15 @@ void setup() {
     while (!Serial && millis() - start < 3000) {
         delay(10);
     }
+
+    // --- LCD bootscreen (HMI-04, D-03) ---
+    lcd.begin(16, 2);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("ARIES-LITE v2.0");
+    lcd.setCursor(0, 1);
+    lcd.print("Inicjalizacja...");
+    delay(2000);
 
     // Podlacz serwa do pinow PWM — attach PRZED safe_startup() (D-05, Pitfall 1)
     serwo_pan.attach(PAN_PIN);
@@ -289,4 +341,7 @@ void loop() {
 
     // --- PID / skan tick (D-03) ---
     pid_tick();
+
+    // --- LCD odswiezanie (HMI-01) ---
+    lcd_tick();
 }
