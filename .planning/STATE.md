@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: verifying
-stopped_at: Phase 21 context gathered
-last_updated: "2026-03-31T07:22:45.435Z"
+status: executing
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-03-31T07:57:32.813Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 13
   completed_phases: 11
-  total_plans: 15
-  completed_plans: 14
+  total_plans: 17
+  completed_plans: 15
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial
-**Current focus:** Phase 20 — firmware-arduino-pid-servo
+**Current focus:** Phase 21 — wizja-rpi-mediapipe
 
 ## Current Position
 
-Phase: 20
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 21 (wizja-rpi-mediapipe) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -61,6 +61,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 20]: QuickPID enum kwalifikacja: QuickPID::iAwMode::iAwCondition / QuickPID::pMode::pOnError / QuickPID::dMode::dOnMeas (nie krotka forma)
 - [Phase 20-firmware-arduino-pid-servo]: Watchdog odpala sie tylko dla TRACK — IDLE i SCAN sa stanem stabilnym, nie wymagaja timeoutu
 - [Phase 20-firmware-arduino-pid-servo]: dispatch_ramke() resetuje watchdog po poprawnej checksumie — nie w przetwarzaj_bajt() (Pitfall 5)
+- [Phase 21-wizja-rpi-mediapipe]: NV12/YUV420p autodetection: cv2.COLOR_YUV2BGR_NV12 probe first, fallback COLOR_YUV420p2BGR — Bookworm compat
+- [Phase 21-wizja-rpi-mediapipe]: Sticky tracking umieszczony w WykrywaczTwarzy (nie MozgRPi) — bardziej modularny design
 
 ### Blockers/Concerns
 
@@ -74,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T07:22:45.361Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-wizja-rpi-mediapipe/21-CONTEXT.md
+Last session: 2026-03-31T07:57:32.761Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: None
