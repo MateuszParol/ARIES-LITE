@@ -33,11 +33,11 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 - [x] **VIS-01**: MediaPipe Face Detection (BlazeFace, bbox only) na Picamera2 stream 320x240
 - [x] **VIS-02**: Sticky tracking — priorytet dla najwiekszej twarzy (bbox area), stabilne sledzenie przy wielu twarzach
-- [ ] **VIS-03**: Obliczanie bledu X/Y wzgledem srodka klatki (znormalizowane do zakresu ramki)
+- [x] **VIS-03**: Obliczanie bledu X/Y wzgledem srodka klatki (znormalizowane do zakresu ramki)
 - [x] **VIS-04**: AWB fix dla sensora IMX219 — poprawne kolory bez blue/green tint
-- [ ] **VIS-05**: Wysylanie ramek binarnych do Arduino przez SerialInterface (OOP)
-- [ ] **VIS-06**: Heartbeat TX co 200ms (nawet gdy brak detekcji twarzy)
-- [ ] **VIS-07**: Graceful shutdown — zamkniecie kamery, portu serial, czysty exit
+- [x] **VIS-05**: Wysylanie ramek binarnych do Arduino przez SerialInterface (OOP)
+- [x] **VIS-06**: Heartbeat TX co 200ms (nawet gdy brak detekcji twarzy)
+- [x] **VIS-07**: Graceful shutdown — zamkniecie kamery, portu serial, czysty exit
 
 ### HMI (HMI)
 
@@ -113,11 +113,11 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 | ARD-06 | Phase 20 | Complete |
 | VIS-01 | Phase 21 | Complete |
 | VIS-02 | Phase 21 | Complete |
-| VIS-03 | Phase 21 | Pending |
+| VIS-03 | Phase 21 | Complete |
 | VIS-04 | Phase 21 | Complete |
-| VIS-05 | Phase 21 | Pending |
-| VIS-06 | Phase 21 | Pending |
-| VIS-07 | Phase 21 | Pending |
+| VIS-05 | Phase 21 | Complete |
+| VIS-06 | Phase 21 | Complete |
+| VIS-07 | Phase 21 | Complete |
 | HMI-01 | Phase 22 | Pending |
 | HMI-02 | Phase 22 | Pending |
 | HMI-03 | Phase 22 | Pending |
