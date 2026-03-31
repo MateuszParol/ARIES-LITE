@@ -65,7 +65,7 @@
 - [x] **Phase 19: Serial Link + Echo Test** - SerialSender (RPi) + parser state-machine (Arduino) + end-to-end echo test (completed 2026-03-31)
 - [x] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny (completed 2026-03-31)
 - [x] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown (completed 2026-03-31)
-- [ ] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track
+- [x] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track (completed 2026-03-31)
 - [ ] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie
 
 ## Phase Details
@@ -193,7 +193,7 @@ Plans:
 
 Plans:
 - [x] 22-01-PLAN.md — LCD 1602: defines, lcd_tick(), bootscreen w setup()
-- [ ] 22-02-PLAN.md — Buzzer tone() przy TRACK + przycisk abort TRACK→SCAN
+- [x] 22-02-PLAN.md — Buzzer tone() przy TRACK + przycisk abort TRACK→SCAN
 
 ### Phase 23: Integracja + Kalibracja
 **Goal**: System dziala end-to-end jako rozproszony tracker — twarz na RPi powoduje ruch serw przez Arduino PID, kierunki poprawne, kod modularny
@@ -232,5 +232,5 @@ Plans:
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 1/2 | In Progress|  |
+| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete   | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |

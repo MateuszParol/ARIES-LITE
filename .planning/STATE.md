@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: executing
-stopped_at: Completed 22-01-PLAN.md
-last_updated: "2026-03-31T13:51:02.709Z"
+status: verifying
+stopped_at: Completed 22-02-PLAN.md
+last_updated: "2026-03-31T13:56:31.688Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 14
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 Phase: 22 (hmi-lcd-buzzer-przycisk) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -68,6 +68,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 22-hmi-lcd-buzzer-przycisk]: setCursor+overwrite zamiast lcd.clear() w lcd_tick() — brak migotania LCD (Pitfall 3)
 - [Phase 22-hmi-lcd-buzzer-przycisk]: dtostrf() dla float na AVR zamiast sprintf('%f') — avr-libc standard (Pitfall 1)
 - [Phase 22-hmi-lcd-buzzer-przycisk]: Bootscreen LCD przed serwo attach — uzytkownik widzi status podczas inicjalizacji serw
+- [Phase 22-hmi-lcd-buzzer-przycisk]: tone(BUZZER_PIN, 1000, 100) wywolywane wylacznie w przejdz_do() przy TRACK — nie w pid_tick() ani loop()
+- [Phase 22-hmi-lcd-buzzer-przycisk]: przycisk_tick() aktualizuje przycisk_ostatni_stan na koncu funkcji — edge detect HIGH→LOW z debounce 20ms
 
 ### Blockers/Concerns
 
@@ -81,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T13:51:02.603Z
-Stopped at: Completed 22-01-PLAN.md
+Last session: 2026-03-31T13:56:31.562Z
+Stopped at: Completed 22-02-PLAN.md
 Resume file: None
