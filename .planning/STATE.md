@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: verifying
-stopped_at: Phase 22 context gathered
-last_updated: "2026-03-31T08:14:20.699Z"
+status: executing
+stopped_at: Completed 22-01-PLAN.md
+last_updated: "2026-03-31T13:51:02.709Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 14
   completed_phases: 12
-  total_plans: 17
-  completed_plans: 16
+  total_plans: 19
+  completed_plans: 17
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial
-**Current focus:** Phase 21 — wizja-rpi-mediapipe
+**Current focus:** Phase 22 — hmi-lcd-buzzer-przycisk
 
 ## Current Position
 
-Phase: 21
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 22 (hmi-lcd-buzzer-przycisk) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -65,6 +65,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 21-wizja-rpi-mediapipe]: Sticky tracking umieszczony w WykrywaczTwarzy (nie MozgRPi) — bardziej modularny design
 - [Phase 21-wizja-rpi-mediapipe]: Mutowalny ref [float] dla czasu TX miedzy MozgRPi a WatekHeartbeat — prostszy niz Event/Condition, thread-safe pod GIL
 - [Phase 21-wizja-rpi-mediapipe]: Heartbeat wysyla MODE_SCAN (nie MODE_IDLE) — per D-07, Arduino skanuje gdy brak twarzy
+- [Phase 22-hmi-lcd-buzzer-przycisk]: setCursor+overwrite zamiast lcd.clear() w lcd_tick() — brak migotania LCD (Pitfall 3)
+- [Phase 22-hmi-lcd-buzzer-przycisk]: dtostrf() dla float na AVR zamiast sprintf('%f') — avr-libc standard (Pitfall 1)
+- [Phase 22-hmi-lcd-buzzer-przycisk]: Bootscreen LCD przed serwo attach — uzytkownik widzi status podczas inicjalizacji serw
 
 ### Blockers/Concerns
 
@@ -78,6 +81,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T08:14:20.651Z
-Stopped at: Phase 22 context gathered
-Resume file: .planning/phases/22-hmi-lcd-buzzer-przycisk/22-CONTEXT.md
+Last session: 2026-03-31T13:51:02.603Z
+Stopped at: Completed 22-01-PLAN.md
+Resume file: None

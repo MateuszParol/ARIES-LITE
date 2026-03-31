@@ -41,10 +41,10 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 
 ### HMI (HMI)
 
-- [ ] **HMI-01**: LCD 1602 wyswietla tryb (SCAN/TRACK/IDLE) i blad X/Y — update max 5Hz (nie w petli PID!)
+- [x] **HMI-01**: LCD 1602 wyswietla tryb (SCAN/TRACK/IDLE) i blad X/Y — update max 5Hz (nie w petli PID!)
 - [ ] **HMI-02**: Buzzer (D8) krotki dzwiek przy przejsciu do TRACK ("Target Lock")
 - [ ] **HMI-03**: Przycisk akcji (D7, INPUT_PULLUP) — "Abort Track" przywraca tryb SCAN
-- [ ] **HMI-04**: LCD bootscreen z nazwa systemu przy starcie Arduino
+- [x] **HMI-04**: LCD bootscreen z nazwa systemu przy starcie Arduino
 
 ### Migracja (MIG)
 
@@ -118,10 +118,10 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 | VIS-05 | Phase 21 | Complete |
 | VIS-06 | Phase 21 | Complete |
 | VIS-07 | Phase 21 | Complete |
-| HMI-01 | Phase 22 | Pending |
+| HMI-01 | Phase 22 | Complete |
 | HMI-02 | Phase 22 | Pending |
 | HMI-03 | Phase 22 | Pending |
-| HMI-04 | Phase 22 | Pending |
+| HMI-04 | Phase 22 | Complete |
 | INT-01 | Phase 23 | Pending |
 | INT-02 | Phase 23 | Pending |
 | INT-03 | Phase 23 | Pending |
