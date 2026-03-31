@@ -19,7 +19,7 @@ Running both vision and PID control on a single RPi4 limits servo update rate to
 
 **v1.9** partially started — AWB/Color Fix phase 14 in progress (continuous AWB approach).
 
-**v2.0** Phase 18 complete — srodowisko gotowe (Python 3.12 + mediapipe 0.10.18, arduino-cli + QuickPID), protokol binarny 8B LOCKED, monolit w legacy/.
+**v2.0** Phase 19 complete — serial link end-to-end: SerialInterface (pyserial, DTR=False, low_latency), Arduino parser state-machine z echo, echo_test.py (hardware verify pending). Phase 18: srodowisko gotowe, protokol 8B LOCKED, monolit w legacy/.
 
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
 - Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
