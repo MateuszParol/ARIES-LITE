@@ -2,7 +2,7 @@
 
 Dostarcza MozgRPi — synchroniczna petla sterowania: kamera -> detekcja
 -> obliczenie bledu X/Y -> wyslanie ramki binarnej 8B do Arduino.
-Osobny daemon thread WatekHeartbeat zapewnia heartbeat co 200ms
+Osobny watek daemon WatekHeartbeat zapewnia heartbeat co 200ms
 niezaleznie od FPS detekcji (per protokol D-07).
 """
 
@@ -23,15 +23,15 @@ logger = logging.getLogger(__name__)
 # --- Stale modulowe ---
 HEARTBEAT_INTERVAL: float = 0.200   # 200ms — max odstep miedzy TX (per D-07)
 HEARTBEAT_POLL: float = 0.050       # 50ms poll w watku heartbeat
-MODE_IDLE: int = 0                   # Tryb spoczynkowy
-MODE_SCAN: int = 1                   # Tryb skanowania (Arduino skanuje autonomicznie)
-MODE_TRACK: int = 2                  # Tryb sledzenia twarzy
+TRYB_BEZCZYNNOSC: int = 0           # Tryb spoczynkowy
+TRYB_SKANOWANIE: int = 1            # Tryb skanowania (Arduino skanuje autonomicznie)
+TRYB_SLEDZENIE: int = 2             # Tryb sledzenia twarzy
 
 
 class WatekHeartbeat(threading.Thread):
-    """Daemon thread wysylajacy heartbeat co HEARTBEAT_INTERVAL sekund.
+    """Watek daemon wysylajacy heartbeat co HEARTBEAT_INTERVAL sekund.
 
-    Monitoruje czas ostatniej TX i wysyla ramke SCAN gdy minelo
+    Monitoruje czas ostatniej TX i wysyla ramke SKANOWANIE gdy minelo
     HEARTBEAT_INTERVAL bez wysylki z petli glownej. Zapobiega uruchomieniu
     watchdog Arduino (per D-07: Arduino watchdog odpala sie przy braku ramki >500ms).
     """
@@ -44,7 +44,7 @@ class WatekHeartbeat(threading.Thread):
         Args:
             serial_iface: Interfejs szeregowy do wysylania ramek heartbeat.
             czas_ostatniej_tx_ref: Mutowalny ref (lista [float]) do czasu ostatniej TX.
-                                   Wspodzielony z MozgRPi — aktualizowany przez obie strony.
+                                   Wspoldzielony z MozgRPi — aktualizowany przez obie strony.
         """
         super().__init__(daemon=True, name="heartbeat")
         self._serial = serial_iface
@@ -56,13 +56,13 @@ class WatekHeartbeat(threading.Thread):
         self._stop_event.set()
 
     def run(self) -> None:
-        """Petla heartbeat: sprawdza czas TX i wysyla ramke SCAN gdy potrzeba."""
+        """Petla heartbeat: sprawdza czas TX i wysyla ramke SKANOWANIE gdy potrzeba."""
         while not self._stop_event.is_set():
             try:
                 # Sprawdz czy minelo HEARTBEAT_INTERVAL od ostatniej TX
                 if time.time() - self._czas_ref[0] >= HEARTBEAT_INTERVAL:
                     self._serial.send_frame(
-                        mode=MODE_SCAN, error_x=0, error_y=0, face_size=0
+                        mode=TRYB_SKANOWANIE, error_x=0, error_y=0, face_size=0
                     )
                     self._czas_ref[0] = time.time()
             except Exception as e:
@@ -165,30 +165,30 @@ class MozgRPi:
                 # Oblicz blad i wyslij ramke do Arduino
                 if bbox is not None:
                     error_x, error_y, face_size = self._oblicz_error(bbox, klatka.shape)
-                    tryb = "TRACK"
+                    tryb = "SLEDZENIE"
                     try:
                         czas_przed_tx = time.monotonic_ns() // 1_000_000
                         self._serial.send_frame(
-                            mode=MODE_TRACK,
+                            mode=TRYB_SLEDZENIE,
                             error_x=error_x,
                             error_y=error_y,
                             face_size=face_size,
                         )
                         czas_po_tx = time.monotonic_ns() // 1_000_000
                         logger.info(
-                            f"[LAT] TX TRACK: {czas_po_tx - czas_przed_tx}ms "
+                            f"[LAT] TX SLEDZENIE: {czas_po_tx - czas_przed_tx}ms "
                             f"err_x={error_x} err_y={error_y} ts={czas_po_tx}"
                         )
                         self._czas_ostatniej_tx[0] = time.time()
                     except Exception as e:
-                        logger.error(f"TX (TRACK) blad: {e}")
+                        logger.error(f"TX (SLEDZENIE) blad: {e}")
                 else:
-                    # Brak twarzy — per D-07: wyslij SCAN, Arduino skanuje autonomicznie
+                    # Brak twarzy — per D-07: wyslij SKANOWANIE, Arduino skanuje autonomicznie
                     error_x, error_y, face_size = 0, 0, 0
-                    tryb = "SCAN"
+                    tryb = "SKANOWANIE"
                     try:
                         self._serial.send_frame(
-                            mode=MODE_SCAN,
+                            mode=TRYB_SKANOWANIE,
                             error_x=0,
                             error_y=0,
                             face_size=0,
@@ -197,9 +197,9 @@ class MozgRPi:
                         self._licznik_scan_log += 1
                         if self._licznik_scan_log % 50 == 0:
                             czas_po_tx = time.monotonic_ns() // 1_000_000
-                            logger.info(f"[LAT] TX SCAN: heartbeat ok ts={czas_po_tx}")
+                            logger.info(f"[LAT] TX SKANOWANIE: heartbeat ok ts={czas_po_tx}")
                     except Exception as e:
-                        logger.error(f"TX (SCAN) blad: {e}")
+                        logger.error(f"TX (SKANOWANIE) blad: {e}")
 
                 # HUD — rysuj na klatce i wyswietl (z headless fallback)
                 self._rysuj_hud(klatka, bbox, error_x, error_y, tryb)

@@ -60,7 +60,7 @@ class WykrywaczTwarzy:
         )
         self._detektor = mp_vision.FaceDetector.create_from_options(opcje)
 
-        # Stan sticky tracking
+        # Stan sledzenia przyklejonego (sticky tracking)
         self._sticky_bbox: Optional[Tuple[int, int, int, int]] = None
 
         logger.info(f"MediaPipe FaceDetector zaladowany: {model_path}")
@@ -86,7 +86,7 @@ class WykrywaczTwarzy:
             # Konwersja BGR → RGB — MediaPipe wymaga RGB (Pitfall 2)
             klatka_rgb = cv2.cvtColor(klatka_bgr, cv2.COLOR_BGR2RGB)
 
-            # Utworz obiekt mp.Image z danych RGB
+            # Utworz obiekt obrazu MediaPipe z danych RGB
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=klatka_rgb)
 
             # Synchroniczna detekcja — blokuje do uzyskania wyniku
@@ -142,14 +142,14 @@ class WykrywaczTwarzy:
         # Przeskocz na nowy cel tylko gdy wyraznie wiekszy (o STICKY_PROG%)
         if area_max > area_sticky * (1.0 + STICKY_PROG):
             logger.debug(
-                f"Sticky switch: area {area_sticky} → {area_max} "
+                f"Przelaczenie sticky: obszar {area_sticky} → {area_max} "
                 f"(wzrost {(area_max / area_sticky - 1.0) * 100:.1f}%)"
             )
             self._sticky_bbox = twarz_max
             return twarz_max
 
-        # Szukaj aktualnej pozycji sticky bbox wsrod wykrytych twarzy
-        # Kryteria: najblizszy srodek do poprzedniego srodka sticky
+        # Szukaj aktualnej pozycji celu sticky wsrod wykrytych twarzy
+        # Kryterium: najblizszy srodek do poprzedniego srodka celu
         sx = self._sticky_bbox[0] + self._sticky_bbox[2] // 2
         sy = self._sticky_bbox[1] + self._sticky_bbox[3] // 2
 
@@ -164,12 +164,12 @@ class WykrywaczTwarzy:
                 najblizszy_dist = dist
                 najblizszy_bbox = twarz
 
-        # Jezeli znaleziono bliska twarz — aktualizuj wspolrzedne sticky
+        # Jezeli znaleziono bliska twarz — aktualizuj wspolrzedne celu sticky
         if najblizszy_bbox is not None:
             self._sticky_bbox = najblizszy_bbox
             return najblizszy_bbox
 
-        # Sticky zniknal z kadru — trzymaj ostatnia znana pozycje (hold)
+        # Cel sticky zniknal z kadru — trzymaj ostatnia znana pozycje (hold)
         return self._sticky_bbox
 
     def zamknij(self) -> None:

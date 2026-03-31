@@ -1,4 +1,8 @@
-"""Interfejs szeregowy RPi → Arduino. Protokol ARIES-LITE v1.0."""
+"""Interfejs szeregowy RPi → Arduino. Protokol ARIES-LITE v1.0.
+
+Obsluguje otwarcie portu, DTR=False (zapobiega resetowi Leonardo),
+tryb niskich opoznien oraz wysylanie ramek binarnych 8B.
+"""
 
 import struct
 import logging
@@ -36,14 +40,14 @@ class SerialInterface:
 
         DTR=False musi byc ustawione PRZED otwarciem portu — zapobiega
         automatycznemu resetowi Arduino Leonardo przy polaczeniu USB CDC
-        (Caterina bootloader). Po otwarciu wlacza tryb niskich opoznien
+        (bootloader Caterina). Po otwarciu wlacza tryb niskich opoznien
         przez pyserial 3.5 set_low_latency_mode (TIOCGSERIAL ioctl,
         bez potrzeby sudo ani setserial).
 
         Raises:
             serial.SerialException: Gdy port nie moze zostac otwarty.
         """
-        # Tworz obiekt bez natychmiastowego otwarcia (open=False)
+        # Tworz obiekt bez natychmiastowego otwarcia
         ser = serial.Serial()
         ser.port = self._port
         ser.baudrate = self.BAUDRATE
@@ -52,7 +56,7 @@ class SerialInterface:
         ser.stopbits = serial.STOPBITS_ONE
         ser.timeout = self._timeout
 
-        # DTR=False PRZED open() — zapobiega resetowi Leonardo (Caterina bootloader)
+        # DTR=False PRZED open() — zapobiega resetowi Leonardo (bootloader Caterina)
         ser.dtr = False
 
         ser.open()
@@ -63,7 +67,7 @@ class SerialInterface:
         except ValueError as e:
             logger.warning(
                 f"set_low_latency_mode niedostepny na tym systemie: {e}. "
-                "Latency moze byc wyzsza."
+                "Opoznienie moze byc wyzsze."
             )
 
         self._ser = ser
@@ -75,7 +79,7 @@ class SerialInterface:
         """Wysyla ramke 8B zgodna z PROTOCOL_SPEC.md.
 
         Args:
-            mode: Tryb pracy (0=IDLE, 1=SCAN, 2=TRACK).
+            mode: Tryb pracy (0=BEZCZYNNOSC, 1=SKANOWANIE, 2=SLEDZENIE).
             error_x: Blad poziomy w pikselach (int16, -160..+160).
             error_y: Blad pionowy w pikselach (int16, -160..+160).
             face_size: Rozmiar twarzy jako procent * 255/100 (0..255).
@@ -90,7 +94,7 @@ class SerialInterface:
         self._ser.write(ramka)
 
     def send_heartbeat(self) -> None:
-        """Wysyla ramke heartbeat (IDLE, wszystkie pola zero).
+        """Wysyla ramke heartbeat (BEZCZYNNOSC, wszystkie pola zero).
 
         Alias na send_frame(mode=0, error_x=0, error_y=0, face_size=0) per D-11.
         Arduino traktuje kazda poprawna ramke jako dowod zywotnosci RPi.
@@ -117,7 +121,7 @@ class SerialInterface:
         Checksum = XOR bajtow 1-6 (bez start markera 0xAA).
 
         Args:
-            mode: Tryb pracy (0=IDLE, 1=SCAN, 2=TRACK).
+            mode: Tryb pracy (0=BEZCZYNNOSC, 1=SKANOWANIE, 2=SLEDZENIE).
             error_x: Blad poziomy (int16 little-endian, -160..+160 px).
             error_y: Blad pionowy (int16 little-endian, -160..+160 px).
             face_size: Rozmiar twarzy 0..255.
@@ -125,13 +129,13 @@ class SerialInterface:
         Returns:
             Ramka binarna 8 bajtow.
         """
-        # Pakuj payload: mode (uint8), error_x (int16 LE), error_y (int16 LE), face_size (uint8)
-        payload = struct.pack('<BhhB', mode, error_x, error_y, face_size)
+        # Pakuj dane: mode (uint8), error_x (int16 LE), error_y (int16 LE), face_size (uint8)
+        dane = struct.pack('<BhhB', mode, error_x, error_y, face_size)
 
-        # Oblicz checksum XOR bajtow payload (bajty 1-6 pelnej ramki)
+        # Oblicz checksum XOR bajtow danych (bajty 1-6 pelnej ramki)
         checksum: int = 0
-        for bajt in payload:
+        for bajt in dane:
             checksum ^= bajt
 
-        # Pelna ramka: start marker + payload + checksum
-        return bytes([0xAA]) + payload + bytes([checksum])
+        # Pelna ramka: start marker + dane + checksum
+        return bytes([0xAA]) + dane + bytes([checksum])

@@ -186,7 +186,7 @@ class KameraRPi:
             return self._klatka.copy() if self._klatka is not None else None
 
     def zatrzymaj(self) -> None:
-        """Zatrzymuje daemon thread i zamyka kamera (dwuetapowe: stop() + close()).
+        """Zatrzymuje watek daemon i zamyka kamera (dwuetapowe: stop() + close()).
 
         Czeka na zakonczenie watku z timeout=2.0s.
         """
