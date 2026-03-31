@@ -96,6 +96,9 @@ class MozgRPi:
         self._heartbeat: Optional[WatekHeartbeat] = None
         self._zatrzymano: bool = False  # guard przeciw podwojnemu wywolaniu zatrzymaj()
 
+        # Licznik klatek SCAN — do ograniczenia czestotliwosci logowania latencji
+        self._licznik_scan_log: int = 0
+
         # Zmienne HUD — FPS tracking
         self._czas_klatki_prev: float = 0.0
 
@@ -164,11 +167,17 @@ class MozgRPi:
                     error_x, error_y, face_size = self._oblicz_error(bbox, klatka.shape)
                     tryb = "TRACK"
                     try:
+                        czas_przed_tx = time.monotonic_ns() // 1_000_000
                         self._serial.send_frame(
                             mode=MODE_TRACK,
                             error_x=error_x,
                             error_y=error_y,
                             face_size=face_size,
+                        )
+                        czas_po_tx = time.monotonic_ns() // 1_000_000
+                        logger.info(
+                            f"[LAT] TX TRACK: {czas_po_tx - czas_przed_tx}ms "
+                            f"err_x={error_x} err_y={error_y} ts={czas_po_tx}"
                         )
                         self._czas_ostatniej_tx[0] = time.time()
                     except Exception as e:
@@ -185,6 +194,10 @@ class MozgRPi:
                             face_size=0,
                         )
                         self._czas_ostatniej_tx[0] = time.time()
+                        self._licznik_scan_log += 1
+                        if self._licznik_scan_log % 50 == 0:
+                            czas_po_tx = time.monotonic_ns() // 1_000_000
+                            logger.info(f"[LAT] TX SCAN: heartbeat ok ts={czas_po_tx}")
                     except Exception as e:
                         logger.error(f"TX (SCAN) blad: {e}")
 
