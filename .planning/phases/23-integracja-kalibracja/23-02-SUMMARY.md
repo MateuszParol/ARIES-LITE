@@ -60,7 +60,7 @@ completed: 2026-03-31
 - **Duration:** 10 min
 - **Started:** 2026-03-31T19:44:32Z
 - **Completed:** 2026-03-31T19:55:03Z
-- **Tasks:** 2/3 (Task 3 = checkpoint hardware — oczekiwanie na weryfikacje)
+- **Tasks:** 2/3 (Task 3 = DEFERRED — Arduino Leonardo niedostepne, USB enumeration blocker)
 - **Files modified:** 5
 
 ## Accomplishments
@@ -75,7 +75,7 @@ Kazdy task commitowany atomowo:
 
 1. **Task 1: Refaktoryzacja Arduino firmware na klasy C++ (INT-04 + INT-05)** - `7ccca38` (feat)
 2. **Task 2: Polonizacja kodu RPi Python (INT-05)** - `769cacf` (feat)
-3. **Task 3: Weryfikacja E2E po refaktorze** - oczekuje hardware (checkpoint:human-verify)
+3. **Task 3: Weryfikacja E2E po refaktorze** - DEFERRED (Arduino Leonardo niedostepne — USB enumeration blocker)
 
 ## Files Created/Modified
 - `src/arduino/aries_controller/aries_controller.ino` - Przepisany na OOP: klasy ServoPID, MaszynaStanow, HMI; spolonizowane enumy i komentarze
@@ -111,9 +111,11 @@ Brak problemow technicznych. Arduino-cli skompilowalo firmware poprawnie za pier
 
 Brak — kod jest czysto strukturalna zmiana, zadne wartosci danych nie sa placeholder ani mockiem.
 
-## User Setup Required
+## Deferred Verification (Task 3)
 
-**Task 3 wymaga weryfikacji hardware.** Kroki weryfikacji:
+**Status: DEFERRED** — Arduino Leonardo niedostepne. Ten sam bloker co Plan 23-01 (USB enumeration bug). Oczekiwanie na nowy model Arduino.
+
+Gdy hardware bedzie dostepny, wykonaj kroki weryfikacji E2E:
 
 1. Skompiluj i wgraj firmware:
    ```
@@ -133,6 +135,10 @@ Brak — kod jest czysto strukturalna zmiana, zadne wartosci danych nie sa place
    - HUD powinien pokazywac "Tryb: SLEDZENIE" (polskie nazwy)
    - LCD Arduino powinien pokazywac "SLEDZ" / "SKAN " / "BEZCZ"
 4. Zweryfikuj brak regresji HMI: buzzer, przycisk abort, watchdog
+
+## User Setup Required
+
+None — nie ma kroków konfiguracyjnych do wykonania teraz.
 
 ## Next Phase Readiness
 
