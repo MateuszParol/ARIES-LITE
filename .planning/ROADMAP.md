@@ -176,6 +176,10 @@ Plans:
 **Plans**: 2 plans
 **UI hint**: yes
 
+Plans:
+- [ ] 21-01-PLAN.md — KameraRPi (Picamera2 + AWB fix) + WykrywaczTwarzy (MediaPipe FaceDetector + sticky tracking)
+- [ ] 21-02-PLAN.md — MozgRPi (petla glowna + error calc + serial TX + heartbeat + HUD) + run_pi_brain.py entry point
+
 ### Phase 22: HMI LCD + Buzzer + Przycisk
 **Goal**: Uzytkownik widzi stan systemu na LCD i slyszy potwierdzenie dzwiekowe przy zmianie stanu — fizyczny przycisk przywraca SCAN
 **Depends on**: Phase 21
@@ -223,6 +227,6 @@ Plans:
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
+| 21. Wizja RPi MediaPipe | v2.0 | 0/2 | Not started | - |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |
 | 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |
