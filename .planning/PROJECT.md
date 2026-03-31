@@ -19,7 +19,7 @@ Running both vision and PID control on a single RPi4 limits servo update rate to
 
 **v1.9** partially started — AWB/Color Fix phase 14 in progress (continuous AWB approach).
 
-**v2.0** Phase 20 complete — firmware Arduino PID + sterowanie serwami: QuickPID dual-axis 100Hz, safe_startup() (rampa 500→1500µs), skan Lissajous 2D (f_pan=0.05Hz, f_tilt=0.073Hz), watchdog 500ms→SCAN, maszyna stanów IDLE/SCAN/TRACK. Phase 19: serial link end-to-end (SerialInterface, Arduino parser, echo_test.py). Phase 18: środowisko gotowe, protokół 8B LOCKED, monolit w legacy/.
+**v2.0** Phase 21 complete — wizja RPi MediaPipe: KameraRPi (Picamera2 + dwuetapowy AWB fix), WykrywaczTwarzy (MediaPipe FaceDetector + sticky tracking 20% histereza), MozgRPi (pętla sterowania + error calc + serial TX + heartbeat 200ms + HUD), run_pi_brain.py. Pętla RPi→Arduino zamknięta end-to-end. Phase 20: firmware Arduino PID + serwa. Phase 19: serial link. Phase 18: środowisko + protokół 8B LOCKED + legacy/.
 
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
 - Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
