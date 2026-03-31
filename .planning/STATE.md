@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: executing
-stopped_at: Phase 20 context gathered
-last_updated: "2026-03-31T06:01:31.232Z"
+stopped_at: Completed 20-01-PLAN.md
+last_updated: "2026-03-31T06:32:02.056Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 12
   completed_phases: 10
-  total_plans: 13
-  completed_plans: 12
+  total_plans: 15
+  completed_plans: 13
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial
-**Current focus:** Phase 19 — serial-link-echo-test
+**Current focus:** Phase 20 — firmware-arduino-pid-servo
 
 ## Current Position
 
-Phase: 19
-Plan: Not started
+Phase: 20 (firmware-arduino-pid-servo) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
 Last activity: 2026-03-31
 
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase Phase 18]: picamera2 nie importuje sie w Python 3.12 venv — rozwiazanie odlozone do Phase 21 (systemowy pakiet cp313 niekompatybilny z cp312 venv)
 - [Phase 19-serial-link-echo-test]: set_low_latency_mode(True) zamiast subprocess+setserial — pyserial 3.5 wbudowane ioctl bez sudo
 - [Phase 19-serial-link-echo-test]: DTR=False przed ser.open() — Caterina bootloader Leonardo no-reset przy polaczeniu USB
+- [Phase 20]: QuickPID enum kwalifikacja: QuickPID::iAwMode::iAwCondition / QuickPID::pMode::pOnError / QuickPID::dMode::dOnMeas (nie krotka forma)
 
 ### Blockers/Concerns
 
@@ -71,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T06:01:31.156Z
-Stopped at: Phase 20 context gathered
-Resume file: .planning/phases/20-firmware-arduino-pid-servo/20-CONTEXT.md
+Last session: 2026-03-31T06:32:01.938Z
+Stopped at: Completed 20-01-PLAN.md
+Resume file: None

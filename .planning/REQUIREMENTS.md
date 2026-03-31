@@ -23,10 +23,10 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 ### Arduino Firmware (ARD)
 
 - [ ] **ARD-01**: QuickPID dual-axis (pan + tilt) z anti-windup, deterministyczny loop 100Hz via millis()
-- [ ] **ARD-02**: Servo safe startup — plynny ruch do 90/90 przy starcie (nie skok)
+- [x] **ARD-02**: Servo safe startup — plynny ruch do 90/90 przy starcie (nie skok)
 - [ ] **ARD-03**: Software watchdog (millis()) — powrot do trybu SCAN gdy brak ramek >500ms
-- [ ] **ARD-04**: Konfigurowalny kierunek serw (PAN_INVERT / TILT_INVERT define) dla empirycznej kalibracji
-- [ ] **ARD-05**: Maszyna stanow: IDLE → SCAN → TRACK z przejsciami sterowanymi przez ramki z RPi
+- [x] **ARD-04**: Konfigurowalny kierunek serw (PAN_INVERT / TILT_INVERT define) dla empirycznej kalibracji
+- [x] **ARD-05**: Maszyna stanow: IDLE → SCAN → TRACK z przejsciami sterowanymi przez ramki z RPi
 - [ ] **ARD-06**: Skanowanie sinusoidalne w trybie SCAN (autonomiczne, bez ramek z RPi)
 
 ### RPi Vision (VIS)
@@ -106,10 +106,10 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 | SER-04 | Phase 19 | Complete |
 | SER-05 | Phase 19 | Complete |
 | ARD-01 | Phase 20 | Pending |
-| ARD-02 | Phase 20 | Pending |
+| ARD-02 | Phase 20 | Complete |
 | ARD-03 | Phase 20 | Pending |
-| ARD-04 | Phase 20 | Pending |
-| ARD-05 | Phase 20 | Pending |
+| ARD-04 | Phase 20 | Complete |
+| ARD-05 | Phase 20 | Complete |
 | ARD-06 | Phase 20 | Pending |
 | VIS-01 | Phase 21 | Pending |
 | VIS-02 | Phase 21 | Pending |
