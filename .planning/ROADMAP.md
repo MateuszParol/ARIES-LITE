@@ -191,6 +191,10 @@ Plans:
   4. LCD bootscreen z nazwa systemu widoczny przez pierwsze 2 sekundy po wlaczeniu Arduino
 **Plans**: 2 plans
 
+Plans:
+- [ ] 22-01-PLAN.md — LCD 1602: defines, lcd_tick(), bootscreen w setup()
+- [ ] 22-02-PLAN.md — Buzzer tone() przy TRACK + przycisk abort TRACK→SCAN
+
 ### Phase 23: Integracja + Kalibracja
 **Goal**: System dziala end-to-end jako rozproszony tracker — twarz na RPi powoduje ruch serw przez Arduino PID, kierunki poprawne, kod modularny
 **Depends on**: Phase 22
@@ -228,5 +232,5 @@ Plans:
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |
+| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/2 | Not started | - |
 | 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |
