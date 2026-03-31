@@ -82,7 +82,7 @@ unsigned long czas_startowy_skanu  = 0;  // czas wejscia w SCAN
 // Przetwarza pojedynczy bajt odebrany z Serial.
 // Non-blocking — wywolywana z loop() dla kazdego dostepnego bajtu.
 // Po zebraniu pelnej ramki (8B) weryfikuje checksum XOR bajtow 1-6.
-// Poprawna checksum: echo identycznej ramki (Serial.write).
+// Poprawna checksum: dispatch do maszyny stanow (dispatch_ramke).
 // Bledna checksum lub nieoczekiwany bajt: cichy drop + resync do WAIT_START.
 void przetwarzaj_bajt(uint8_t bajt) {
     switch (stan_parsera) {
@@ -109,8 +109,8 @@ void przetwarzaj_bajt(uint8_t bajt) {
                 }
 
                 if (obliczona == ramka_buf[7]) {
-                    // Checksum poprawna — echo identycznej ramki 8B (D-02)
-                    Serial.write(ramka_buf, FRAME_SIZE);
+                    // Checksum poprawna — dispatch do maszyny stanow (Phase 20)
+                    dispatch_ramke();
                 }
                 // Bledna checksum: cichy drop (D-03) — brak echo, RPi wykrywa timeout
 
@@ -273,9 +273,20 @@ void setup() {
 }
 
 void loop() {
-    // Przetworz wszystkie dostepne bajty — non-blocking, bajt po bajcie
+    // --- Parser serial (zachowany z Phase 19) ---
     while (Serial.available() > 0) {
         uint8_t bajt = (uint8_t)Serial.read();
         przetwarzaj_bajt(bajt);
     }
+
+    // --- Watchdog millis() (D-07) ---
+    // Po 500ms bez poprawnej ramki → autonomiczny powrot do SCAN
+    if (stan_systemu != IDLE && stan_systemu != SCAN) {
+        if (millis() - czas_ostatniej_ramki > WATCHDOG_TIMEOUT_MS) {
+            przejdz_do(SCAN);
+        }
+    }
+
+    // --- PID / skan tick (D-03) ---
+    pid_tick();
 }
