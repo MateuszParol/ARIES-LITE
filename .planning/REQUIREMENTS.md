@@ -56,8 +56,8 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 - [x] **INT-01**: End-to-end tracking — twarz wykryta na RPi → blad wyslany → Arduino PID koryguje serwa → kamera sledzi twarz
 - [x] **INT-02**: Poprawna logika kierunkow (negative feedback) — twarz po prawej = ruch serwa w prawo
 - [x] **INT-03**: Os pionowa (tilt) dziala poprawnie w obu trybach (SCAN i TRACK)
-- [ ] **INT-04**: Kod modularny OOP: klasy VisionManager, SerialInterface, ServoPID
-- [ ] **INT-05**: Wszystkie komentarze w kodzie w jezyku polskim
+- [x] **INT-04**: Kod modularny OOP: klasy VisionManager, SerialInterface, ServoPID
+- [x] **INT-05**: Wszystkie komentarze w kodzie w jezyku polskim
 
 ## v2.1 Requirements (Deferred)
 
@@ -125,8 +125,8 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 | INT-01 | Phase 23 | Complete |
 | INT-02 | Phase 23 | Complete |
 | INT-03 | Phase 23 | Complete |
-| INT-04 | Phase 23 | Pending |
-| INT-05 | Phase 23 | Pending |
+| INT-04 | Phase 23 | Complete |
+| INT-05 | Phase 23 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 31 total

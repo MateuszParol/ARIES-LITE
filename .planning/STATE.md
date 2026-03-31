@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: executing
-stopped_at: Completed Phase 23 Plan 01 — Tasks 1-2 done, Task 3 deferred (Arduino Leonardo niedostepne)
-last_updated: "2026-03-31T19:43:10.851Z"
+status: verifying
+stopped_at: "Phase 23 Plan 02 done (Tasks 1-2) — checkpoint:human-verify Task 3 oczekuje hardware"
+last_updated: "2026-03-31T19:57:06.581Z"
 last_activity: 2026-03-31
 progress:
   total_phases: 15
-  completed_phases: 13
+  completed_phases: 14
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 20
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-03-30)
 
 Phase: 23 (integracja-kalibracja) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
@@ -73,6 +73,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 23-integracja-kalibracja]: petla 20 Hz w kalibracji serw — watchdog Arduino 500ms wymaga ciaglego TX per krok
 - [Phase 23-integracja-kalibracja]: [LAT] prefix w logach latencji brain.py — grepowalny dowod mierzalny TX <100ms per INT-01
 - [Phase 23-integracja-kalibracja]: Task 3 weryfikacja hardware DEFERRED — Arduino Leonardo niedostepne (USB enumeration blocker), oczekiwanie na nowy model
+- [Phase 23-02]: przycisk_krok() zwraca bool zamiast callback — avr-gcc nie wspiera lambdy z capture; loop() wywoluje wymus_skanowanie()
+- [Phase 23-02]: MaszynaStanow jako global z referencjami do ServoPID i HMI — stabilne wskazniki przez caly czas zycia
 
 ### Blockers/Concerns
 
@@ -86,6 +88,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T19:43:10.752Z
-Stopped at: Completed Phase 23 Plan 01 — Tasks 1-2 done, Task 3 deferred (Arduino Leonardo niedostepne)
+Last session: 2026-03-31T19:57:06.538Z
+Stopped at: Phase 23 Plan 02 done (Tasks 1-2) — checkpoint:human-verify Task 3 oczekuje hardware
 Resume file: None

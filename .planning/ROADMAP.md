@@ -66,7 +66,7 @@
 - [x] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny (completed 2026-03-31)
 - [x] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown (completed 2026-03-31)
 - [x] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track (completed 2026-03-31)
-- [ ] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie
+- [x] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie (completed 2026-03-31)
 
 ## Phase Details
 
@@ -209,7 +209,7 @@ Plans:
 
 Plans:
 - [x] 23-01-PLAN.md — Skrypt kalibracyjny kierunkow serw + pomiar latencji E2E
-- [ ] 23-02-PLAN.md — Refaktoryzacja Arduino OOP (ServoPID/MaszynaStanow/HMI) + polonizacja kodu
+- [x] 23-02-PLAN.md — Refaktoryzacja Arduino OOP (ServoPID/MaszynaStanow/HMI) + polonizacja kodu
 
 ## Progress
 
@@ -237,4 +237,4 @@ Plans:
 | 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 23. Integracja + Kalibracja | v2.0 | 1/2 | In Progress|  |
+| 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete   | 2026-03-31 |
