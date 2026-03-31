@@ -19,7 +19,7 @@ Running both vision and PID control on a single RPi4 limits servo update rate to
 
 **v1.9** partially started — AWB/Color Fix phase 14 in progress (continuous AWB approach).
 
-**v2.0** Phase 22 complete — HMI: LCD 1602 (tryb + kąty serw + błędy X/Y, bootscreen 2s, 5Hz bez migotania), buzzer tone(D8, 1kHz, 100ms) przy TRACK, przycisk D7 abort TRACK→SCAN z debounce 20ms. Kompilacja: 16506B flash (57%), 565B RAM (22%). Hardware UAT pending (Arduino Leonardo USB blocker). Phase 21: wizja RPi MediaPipe. Phase 20: firmware Arduino PID + serwa. Phase 19: serial link. Phase 18: środowisko + protokół 8B LOCKED + legacy/.
+**v2.0** Phase 23 complete (code) — Integracja + Kalibracja: skrypt kalibracyjny kierunków serw (`scripts/kalibracja_serw.py`), logowanie latencji TX `[LAT]` w brain.py, Arduino firmware zrefaktoryzowany na klasy C++ (ServoPID, MaszynaStanow, HMI — 59% flash, 22% RAM), pełna polonizacja kodu RPi + Arduino (TRYB_BEZCZYNNOSC/SKANOWANIE/SLEDZENIE). Hardware UAT pending (Arduino Leonardo USB blocker — 3 testy czekają na nowy model). Phase 22: HMI LCD+buzzer+przycisk. Phase 21: wizja RPi MediaPipe. Phase 20: firmware Arduino PID + serwa. Phase 19: serial link. Phase 18: środowisko + protokół 8B LOCKED + legacy/.
 
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
 - Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
