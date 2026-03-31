@@ -232,5 +232,5 @@ Plans:
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete   | 2026-03-31 |
+| 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |
