@@ -208,7 +208,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 23-01-PLAN.md — Skrypt kalibracyjny kierunkow serw + pomiar latencji E2E
+- [x] 23-01-PLAN.md — Skrypt kalibracyjny kierunkow serw + pomiar latencji E2E
 - [ ] 23-02-PLAN.md — Refaktoryzacja Arduino OOP (ServoPID/MaszynaStanow/HMI) + polonizacja kodu
 
 ## Progress
@@ -237,4 +237,4 @@ Plans:
 | 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |
+| 23. Integracja + Kalibracja | v2.0 | 1/2 | In Progress|  |

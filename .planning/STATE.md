@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: verifying
-stopped_at: Phase 23 context gathered
-last_updated: "2026-03-31T17:24:28.235Z"
-last_activity: 2026-03-31
+status: executing
+stopped_at: "Phase 23 Plan 01 — checkpoint:human-verify po Task 2 (hardware weryfikacja)"
+last_updated: "2026-03-31T19:07:36.907Z"
+last_activity: 2026-03-31 -- Phase 23 execution started
 progress:
   total_phases: 15
   completed_phases: 13
-  total_plans: 19
-  completed_plans: 18
+  total_plans: 21
+  completed_plans: 19
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial
-**Current focus:** Phase 22 — hmi-lcd-buzzer-przycisk
+**Current focus:** Phase 23 — integracja-kalibracja
 
 ## Current Position
 
-Phase: 22
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-31
+Phase: 23 (integracja-kalibracja) — EXECUTING
+Plan: 1 of 2
+Status: Executing Phase 23
+Last activity: 2026-03-31 -- Phase 23 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -70,6 +70,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 22-hmi-lcd-buzzer-przycisk]: Bootscreen LCD przed serwo attach — uzytkownik widzi status podczas inicjalizacji serw
 - [Phase 22-hmi-lcd-buzzer-przycisk]: tone(BUZZER_PIN, 1000, 100) wywolywane wylacznie w przejdz_do() przy TRACK — nie w pid_tick() ani loop()
 - [Phase 22-hmi-lcd-buzzer-przycisk]: przycisk_tick() aktualizuje przycisk_ostatni_stan na koncu funkcji — edge detect HIGH→LOW z debounce 20ms
+- [Phase 23-integracja-kalibracja]: petla 20 Hz w kalibracji serw — watchdog Arduino 500ms wymaga ciaglego TX per krok
+- [Phase 23-integracja-kalibracja]: [LAT] prefix w logach latencji brain.py — grepowalny dowod mierzalny TX <100ms per INT-01
 
 ### Blockers/Concerns
 
@@ -83,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-31T17:24:28.092Z
-Stopped at: Phase 23 context gathered
-Resume file: .planning/phases/23-integracja-kalibracja/23-CONTEXT.md
+Last session: 2026-03-31T19:07:10.881Z
+Stopped at: Phase 23 Plan 01 — checkpoint:human-verify po Task 2 (hardware weryfikacja)
+Resume file: None
