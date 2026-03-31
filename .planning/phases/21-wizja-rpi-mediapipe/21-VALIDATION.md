@@ -19,8 +19,8 @@ created: 2026-03-31
 |----------|-------|
 | **Framework** | arduino-cli compile (firmware) + python -c import checks + grep verification |
 | **Config file** | none — no pytest, empirical verification on RPi hardware |
-| **Quick run command** | `python3 -c "from src.vision.detector import DetekcjaTwarzyMP; print('OK')"` |
-| **Full suite command** | `python3 -c "from src.vision.camera import Picamera2Stream; from src.vision.detector import DetekcjaTwarzyMP; from src.vision.brain import PiBrain; print('All imports OK')"` |
+| **Quick run command** | `python3 -c "from src.vision.detector import WykrywaczTwarzy; print('OK')"` |
+| **Full suite command** | `python3 -c "from src.vision.camera import KameraRPi; from src.vision.detector import WykrywaczTwarzy; from src.vision.brain import MozgRPi; print('All imports OK')"` |
 | **Estimated runtime** | ~5 seconds (import checks only, no hardware) |
 
 ---
@@ -40,8 +40,8 @@ created: 2026-03-31
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
 | 21-01-01 | 01 | 1 | VIS-01,VIS-04 | import+grep | `grep -c "FaceDetector" src/vision/detector.py` | ❌ W0 | ⬜ pending |
 | 21-01-02 | 01 | 1 | VIS-02 | grep | `grep -c "sticky\|histereza\|area" src/vision/detector.py` | ❌ W0 | ⬜ pending |
-| 21-02-01 | 02 | 2 | VIS-05,VIS-06,VIS-07 | import+grep | `grep -c "send_frame\|send_heartbeat" src/vision/brain.py` | ❌ W0 | ⬜ pending |
-| 21-02-02 | 02 | 2 | VIS-03 | grep | `grep -c "imshow\|HUD\|hud" src/vision/brain.py` | ❌ W0 | ⬜ pending |
+| 21-02-01 | 02 | 2 | VIS-03,VIS-05,VIS-06 | import+grep | `grep -c "send_frame\|send_heartbeat\|_oblicz_error" src/vision/brain.py` | ❌ W0 | ⬜ pending |
+| 21-02-02 | 02 | 2 | VIS-07 | grep | `grep -c "signal\|SIGINT\|zatrzymaj" run_pi_brain.py` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
