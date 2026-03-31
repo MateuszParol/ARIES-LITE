@@ -18,7 +18,7 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 - [x] **SER-02**: Arduino parser state-machine (non-blocking, WAIT_START → READ_PAYLOAD → VERIFY_CHECKSUM → DISPATCH)
 - [x] **SER-03**: RPi nadajnik pyserial z dtr=False, timeout, low_latency na /dev/ttyACM0 @ 115200 baud
 - [x] **SER-04**: Heartbeat TX z RPi co 200ms — Arduino rozpoznaje utrate komunikacji
-- [ ] **SER-05**: Echo test — RPi wysyla ramke, Arduino potwierdza odczyt poprawny (walidacja end-to-end)
+- [x] **SER-05**: Echo test — RPi wysyla ramke, Arduino potwierdza odczyt poprawny (walidacja end-to-end)
 
 ### Arduino Firmware (ARD)
 
@@ -104,7 +104,7 @@ Requirements for distributed architecture milestone. Each maps to roadmap phases
 | SER-02 | Phase 19 | Complete |
 | SER-03 | Phase 19 | Complete |
 | SER-04 | Phase 19 | Complete |
-| SER-05 | Phase 19 | Pending |
+| SER-05 | Phase 19 | Complete |
 | ARD-01 | Phase 20 | Pending |
 | ARD-02 | Phase 20 | Pending |
 | ARD-03 | Phase 20 | Pending |
