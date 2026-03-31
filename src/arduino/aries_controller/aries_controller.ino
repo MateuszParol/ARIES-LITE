@@ -128,6 +128,79 @@ void przetwarzaj_bajt(uint8_t bajt) {
     }
 }
 
+// Przejscie do nowego stanu z resetem PID i scan timer
+void przejdz_do(StanSystemu nowy_stan) {
+    stan_systemu = nowy_stan;
+    if (nowy_stan == SCAN) {
+        czas_startowy_skanu = millis();  // reset czasu skanu
+        pidPan.Reset();                   // reset integratora PID
+        pidTilt.Reset();
+    } else if (nowy_stan == TRACK) {
+        pidPan.Reset();                   // reset PID przy wejsciu w TRACK
+        pidTilt.Reset();
+    }
+    // IDLE: nic dodatkowego
+}
+
+// Ekstrakcja pol z ramki i dispatch do maszyny stanow (D-08: bezposredni)
+void dispatch_ramke() {
+    uint8_t tryb     = ramka_buf[1];
+    int16_t blad_x   = (int16_t)(ramka_buf[2] | (ramka_buf[3] << 8));
+    int16_t blad_y   = (int16_t)(ramka_buf[4] | (ramka_buf[5] << 8));
+    // ramka_buf[6] = face_size — zarezerwowane na Phase 23
+
+    czas_ostatniej_ramki = millis();  // reset watchdog (D-07, Pitfall 5)
+
+    ostatni_blad_x = blad_x;
+    ostatni_blad_y = blad_y;
+
+    // Bezposredni dispatch — mode z ramki ustawia stan (D-08)
+    if (tryb <= 2) {  // walidacja zakresu mode: 0=IDLE, 1=SCAN, 2=TRACK
+        StanSystemu nowy = (StanSystemu)tryb;
+        if (nowy != stan_systemu) {
+            przejdz_do(nowy);
+        }
+    }
+}
+
+// Skan sinusoidalny Lissajous 2D — autonomiczne skanowanie (D-09)
+// f_pan=0.05 Hz, f_tilt=0.073 Hz — irracjonalny stosunek (D-11)
+// PAN=70 deg, TILT=25 deg (D-10)
+void skan_tick(unsigned long teraz) {
+    float t = (teraz - czas_startowy_skanu) / 1000.0f;  // sekundy
+    kat_pan  = SCAN_AMP_PAN  * sin(2.0f * M_PI * SCAN_FREQ_PAN  * t);
+    kat_tilt = SCAN_AMP_TILT * sin(2.0f * M_PI * SCAN_FREQ_TILT * t);
+    // Clamp dla bezpieczenstwa (powinien byc zbedny przy AMP < MAX, ale defense-in-depth)
+    kat_pan  = constrain(kat_pan,  PAN_MIN,  PAN_MAX);
+    kat_tilt = constrain(kat_tilt, TILT_MIN, TILT_MAX);
+    ustaw_serwa();
+}
+
+// Petla PID 100 Hz z millis() throttle (D-03)
+// Normalizacja bledu error_px / 160.0f → -1.0..+1.0 (D-01)
+void pid_tick() {
+    unsigned long teraz = millis();
+    if (teraz - czas_ostatniego_pid < PID_INTERVAL_MS) return;
+    czas_ostatniego_pid = teraz;
+
+    if (stan_systemu == TRACK) {
+        // D-01: normalizacja bledu — piksel / polowa_ramki
+        pan_wej  = (float)ostatni_blad_x / HALF_FRAME_W;
+        tilt_wej = (float)ostatni_blad_y / HALF_FRAME_W;
+
+        pidPan.Compute();
+        pidTilt.Compute();
+
+        // Zastosuj kierunek (D-12: PAN_INVERT / TILT_INVERT) + clamp
+        kat_pan  = constrain(kat_pan  + PAN_INVERT  * pan_wyj,  PAN_MIN,  PAN_MAX);
+        kat_tilt = constrain(kat_tilt + TILT_INVERT * tilt_wyj, TILT_MIN, TILT_MAX);
+        ustaw_serwa();
+    } else if (stan_systemu == SCAN) {
+        skan_tick(teraz);
+    }
+    // IDLE: nic nie rob — serwa nieruchome
+}
+
 // Bezpieczny startup — rampa writeMicroseconds() 500→1500us w 1000ms
 // Minimalne obciazenie zasilacza 6V, brak skoku pradu (D-04)
 void safe_startup() {
