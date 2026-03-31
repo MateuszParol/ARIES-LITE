@@ -217,7 +217,7 @@ Plans:
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
-| 19. Serial Link + Echo Test | v2.0 | 0/? | Not started | - |
+| 19. Serial Link + Echo Test | v2.0 | 1/2 | In Progress|  |
 | 20. Firmware Arduino PID + Servo | v2.0 | 0/? | Not started | - |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: verifying
-stopped_at: Phase 19 context gathered
-last_updated: "2026-03-30T20:43:14.858Z"
-last_activity: 2026-03-30
+status: executing
+stopped_at: Completed 19-01-PLAN.md
+last_updated: "2026-03-31T05:18:35.169Z"
+last_activity: 2026-03-31
 progress:
   total_phases: 11
   completed_phases: 9
-  total_plans: 11
-  completed_plans: 10
+  total_plans: 13
+  completed_plans: 11
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Leonardo (PID + HMI) polaczone USB Serial
-**Current focus:** Phase 18 — srodowisko-protokol-migracja
+**Current focus:** Phase 19 — serial-link-echo-test
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-03-30
+Phase: 19 (serial-link-echo-test) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-03-31
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -56,6 +56,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 18]: picamera2 nie importuje sie w Python 3.12 venv — rozwiazanie odlozone do Phase 21
 - [Phase Phase 18]: Servo i LiquidCrystal wymagaly arduino-cli lib install — nie sa builtin w arduino:avr 1.8.7
 - [Phase Phase 18]: picamera2 nie importuje sie w Python 3.12 venv — rozwiazanie odlozone do Phase 21 (systemowy pakiet cp313 niekompatybilny z cp312 venv)
+- [Phase 19-serial-link-echo-test]: set_low_latency_mode(True) zamiast subprocess+setserial — pyserial 3.5 wbudowane ioctl bez sudo
+- [Phase 19-serial-link-echo-test]: DTR=False przed ser.open() — Caterina bootloader Leonardo no-reset przy polaczeniu USB
 
 ### Blockers/Concerns
 
@@ -69,6 +71,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-30T20:43:14.828Z
-Stopped at: Phase 19 context gathered
-Resume file: .planning/phases/19-serial-link-echo-test/19-CONTEXT.md
+Last session: 2026-03-31T05:18:35.117Z
+Stopped at: Completed 19-01-PLAN.md
+Resume file: None
