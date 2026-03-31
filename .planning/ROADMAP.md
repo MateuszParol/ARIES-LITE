@@ -207,6 +207,10 @@ Plans:
   5. Wszystkie komentarze, nazwy zmiennych i komunikaty w kodzie sa w jezyku polskim
 **Plans**: 2 plans
 
+Plans:
+- [ ] 23-01-PLAN.md — Skrypt kalibracyjny kierunkow serw + pomiar latencji E2E
+- [ ] 23-02-PLAN.md — Refaktoryzacja Arduino OOP (ServoPID/MaszynaStanow/HMI) + polonizacja kodu
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
