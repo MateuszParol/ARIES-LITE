@@ -49,14 +49,14 @@ completed: 2026-03-31
 
 # Phase 23 Plan 01: Kalibracja Serw + Latencja TX Summary
 
-**Skrypt kalibracyjny 4-krokowy (PAN+/-, TILT+/-) z petla 20 Hz + logowanie latencji TX [LAT] w MozgRPi — lancuch E2E gotowy do weryfikacji hardware**
+**Skrypt kalibracyjny 4-krokowy (PAN+/-, TILT+/-) z petla 20 Hz + logowanie latencji TX [LAT] w MozgRPi — kod gotowy, weryfikacja hardware odroczona (Arduino Leonardo niedostepne)**
 
 ## Performance
 
 - **Duration:** ~15 min
 - **Started:** 2026-03-31T19:00:00Z
-- **Completed:** 2026-03-31 (checkpoint: oczekiwanie na weryfikacje hardware)
-- **Tasks:** 2 z 3 (Task 3 = checkpoint:human-verify)
+- **Completed:** 2026-03-31 (Tasks 1-2); Task 3 DEFERRED
+- **Tasks:** 2/3 (Task 3 deferred — hardware niedostepny)
 - **Files modified:** 2
 
 ## Accomplishments
@@ -71,6 +71,7 @@ Kazde zadanie zostalo scommitowane atomicznie:
 
 1. **Task 1: Skrypt kalibracyjny kierunkow serw** - `a9d5bee` (feat)
 2. **Task 2: Logowanie latencji TX w MozgRPi** - `c72222d` (feat)
+3. **Task 3: Weryfikacja kalibracji na hardware** - DEFERRED (Arduino Leonardo niedostepne — blokada enumeracji USB)
 
 ## Files Created/Modified
 
@@ -89,12 +90,15 @@ Brak — plan wykonany dokladnie zgodnie ze specyfikacja.
 
 ## Issues Encountered
 
-Brak.
+- Arduino Leonardo niedostepne (blokada enumeracji USB na RPi4) — Task 3 (weryfikacja hardware) odroczona. Oczekiwanie na nowy model Leonardo.
 
-## User Setup Required
+## Deferred: Task 3 — Weryfikacja kalibracji na hardware
 
-**Task 3 (checkpoint:human-verify) wymaga weryfikacji hardware:**
+**Status:** DEFERRED — nie FAIL. Kod jest gotowy; brakuje sprzetu.
 
+**Powod:** Arduino Leonardo nie enumeruje sie na RPi4 (znany bloker USB, oczekiwanie na nowy model).
+
+**Kroki po dostepnosci sprzetu:**
 1. Podlacz Arduino Leonardo z serwami do RPi4
 2. Uruchom `sudo pigpiod` (jezeli nie uruchomiony)
 3. Upewnij sie ze Arduino ma aktualny firmware (z Phase 22)
@@ -105,19 +109,23 @@ Brak.
    python3 scripts/kalibracja_serw.py
    ```
 5. Obserwuj serwa w kazdym z 4 krokow i odpowiadaj t/n
-6. Jezeli jakis krok FAIL: zmien `#define PAN_INVERT` lub `#define TILT_INVERT` w firmware, rekompiluj, wgraj, powtorz
-7. Test E2E: `python3 run_pi_brain.py` — sprawdz logi `[LAT] TX TRACK:`
+6. Jezeli jakis krok FAIL: zmien `#define PAN_INVERT` lub `#define TILT_INVERT` w `src/arduino/aries_controller/aries_controller.ino` linia 30-31, rekompiluj, wgraj, powtorz
+7. Test E2E: `python3 run_pi_brain.py` — sprawdz logi `[LAT] TX TRACK:` — cel: <100ms per INT-01
+
+## User Setup Required
+
+Brak zewnetrznej konfiguracji. Weryfikacja hardware (Task 3) wymaga fizycznego Arduino Leonardo.
 
 ## Next Phase Readiness
 
-- Skrypt kalibracyjny gotowy do uruchomienia na hardware
-- Logi `[LAT]` pozwola empirycznie potwierdzic latencje <100ms (INT-01)
-- Po weryfikacji hardware: plan 23-02 (strojenie PID + end-to-end test suite)
+- Kod gotowy: `scripts/kalibracja_serw.py` i zmodyfikowany `src/vision/brain.py` sa zaimplementowane i zatwierdzone
+- Blokada: weryfikacja E2E (INT-01, INT-02, INT-03) oczekuje na Arduino Leonardo
+- Po dostepnosci sprzetu: uruchomic Task 3 per instrukcje powyzej przed przejsciem do planu 23-02
 
 ---
 *Phase: 23-integracja-kalibracja*
 *Plan: 01*
-*Completed: 2026-03-31 (oczekiwanie na checkpoint hardware)*
+*Completed: 2026-03-31 (Tasks 1-2); Task 3 deferred — Arduino Leonardo niedostepne*
 
 ## Self-Check: PASSED
 
