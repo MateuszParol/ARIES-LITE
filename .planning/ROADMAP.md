@@ -63,7 +63,7 @@
 
 - [x] **Phase 18: Srodowisko + Protokol + Migracja** - MediaPipe zweryfikowany na RPi4, binarny protokol 8-bajtowy specyfikacja zamknieta, stary kod w legacy/ (completed 2026-03-30)
 - [x] **Phase 19: Serial Link + Echo Test** - SerialSender (RPi) + parser state-machine (Arduino) + end-to-end echo test (completed 2026-03-31)
-- [ ] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny
+- [x] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny (completed 2026-03-31)
 - [ ] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown
 - [ ] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track
 - [ ] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie
@@ -162,7 +162,7 @@ Plans:
 
 Plans:
 - [x] 20-01-PLAN.md — Fundament: stale, globale, safe_startup(), init_pid(), ustaw_serwa(), setup()
-- [ ] 20-02-PLAN.md — Logika sterowania: dispatch, PID tick, skan Lissajous, watchdog, loop()
+- [x] 20-02-PLAN.md — Logika sterowania: dispatch, PID tick, skan Lissajous, watchdog, loop()
 ### Phase 21: Wizja RPi MediaPipe
 **Goal**: RPi4 wykrywa twarze przez MediaPipe, oblicza blad X/Y i wysyla ramki do Arduino w sposob ciagly — kamera sledzi twarz bez Flaska
 **Depends on**: Phase 20
@@ -222,7 +222,7 @@ Plans:
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 20. Firmware Arduino PID + Servo | v2.0 | 1/2 | In Progress|  |
+| 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete   | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |
 | 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |
