@@ -51,6 +51,11 @@
 #define LCD_D7_PIN     11    // D7_PIN aby unikac konfliktu nazwy
 #define LCD_INTERVAL_MS 200  // 5 Hz odswiezanie (D-02, HMI-01)
 
+// --- HMI: Buzzer + Przycisk (D-05, D-07) ---
+#define BUZZER_PIN      8     // D8 — tone() uzywa Timer3 na Leonardo (D-06)
+#define PRZYCISK_PIN    7     // D7 — INPUT_PULLUP, abort TRACK (D-07)
+#define DEBOUNCE_MS     20    // debounce przycisku (D-08)
+
 // --- Stan parsera ---
 enum StanParsera {
     WAIT_START,   // Oczekiwanie na bajt 0xAA
@@ -68,6 +73,10 @@ StanParsera stan_parsera = WAIT_START;  // Stan startowy: czekaj na marker
 // --- LCD 1602 (4-bit) ---
 LiquidCrystal lcd(LCD_RS, LCD_EN, LCD_D4, LCD_D5, LCD_D6, LCD_D7_PIN);
 unsigned long czas_ostatniego_lcd = 0;
+
+// --- Przycisk debounce ---
+bool przycisk_ostatni_stan = HIGH;       // INPUT_PULLUP: HIGH = nie wcisniety
+unsigned long przycisk_czas_zmiany = 0;  // timestamp ostatniej zmiany stanu
 
 // --- Instancje Servo ---
 Servo serwo_pan;
@@ -149,6 +158,7 @@ void przejdz_do(StanSystemu nowy_stan) {
         pidPan.Reset();                   // reset integratora PID
         pidTilt.Reset();
     } else if (nowy_stan == TRACK) {
+        tone(BUZZER_PIN, 1000, 100);  // 1kHz, 100ms — "Target Lock" (HMI-02)
         pidPan.Reset();                   // reset PID przy wejsciu w TRACK
         pidTilt.Reset();
     }
@@ -287,6 +297,24 @@ void lcd_tick() {
     lcd.print(linia1);
 }
 
+// Obsluga przycisku abort — debounce millis() (D-08)
+// Aktywny TYLKO w trybie TRACK — przerywa sledzenie → SCAN (D-07, HMI-03)
+// INPUT_PULLUP: LOW = wcisniety, HIGH = nie wcisniety (Pitfall 6)
+void przycisk_tick() {
+    if (stan_systemu != TRACK) return;  // D-07: ignoruj poza TRACK
+
+    bool aktualny = digitalRead(PRZYCISK_PIN);
+    if (aktualny != przycisk_ostatni_stan) {
+        przycisk_czas_zmiany = millis();
+    }
+    // Zbocze stabilne przez DEBOUNCE_MS i przycisk wcisniety (LOW)
+    if ((millis() - przycisk_czas_zmiany >= DEBOUNCE_MS) &&
+        aktualny == LOW && przycisk_ostatni_stan == HIGH) {
+        przejdz_do(SCAN);  // Abort TRACK → SCAN
+    }
+    przycisk_ostatni_stan = aktualny;
+}
+
 void setup() {
     Serial.begin(115200);  // baudrate per PROTOCOL_SPEC.md
 
@@ -305,6 +333,10 @@ void setup() {
     lcd.setCursor(0, 1);
     lcd.print("Inicjalizacja...");
     delay(2000);
+
+    // --- HMI: buzzer i przycisk (HMI-02, HMI-03) ---
+    pinMode(BUZZER_PIN, OUTPUT);
+    pinMode(PRZYCISK_PIN, INPUT_PULLUP);
 
     // Podlacz serwa do pinow PWM — attach PRZED safe_startup() (D-05, Pitfall 1)
     serwo_pan.attach(PAN_PIN);
@@ -344,4 +376,7 @@ void loop() {
 
     // --- LCD odswiezanie (HMI-01) ---
     lcd_tick();
+
+    // --- Przycisk abort (HMI-03) ---
+    przycisk_tick();
 }
