@@ -62,7 +62,7 @@
 **Milestone Goal:** Calkowita przebudowa na architekture rozproszona — RPi4 (MediaPipe wizja + serial TX) + Arduino Leonardo (PID 100 Hz + HMI) polaczone USB Serial 115200 baud.
 
 - [x] **Phase 18: Srodowisko + Protokol + Migracja** - MediaPipe zweryfikowany na RPi4, binarny protokol 8-bajtowy specyfikacja zamknieta, stary kod w legacy/ (completed 2026-03-30)
-- [ ] **Phase 19: Serial Link + Echo Test** - SerialSender (RPi) + parser state-machine (Arduino) + end-to-end echo test
+- [x] **Phase 19: Serial Link + Echo Test** - SerialSender (RPi) + parser state-machine (Arduino) + end-to-end echo test (completed 2026-03-31)
 - [ ] **Phase 20: Firmware Arduino PID + Servo** - QuickPID 100 Hz, safe startup, watchdog millis(), konfigurowalny kierunek serw, maszyna stanow, skan sinusoidalny
 - [ ] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown
 - [ ] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track
@@ -217,7 +217,7 @@ Plans:
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
-| 19. Serial Link + Echo Test | v2.0 | 1/2 | In Progress|  |
+| 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 20. Firmware Arduino PID + Servo | v2.0 | 0/? | Not started | - |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |
