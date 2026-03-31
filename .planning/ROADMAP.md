@@ -222,7 +222,7 @@ Plans:
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete   | 2026-03-31 |
+| 20. Firmware Arduino PID + Servo | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 21. Wizja RPi MediaPipe | v2.0 | 0/? | Not started | - |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 0/? | Not started | - |
 | 23. Integracja + Kalibracja | v2.0 | 0/? | Not started | - |
