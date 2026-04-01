@@ -231,7 +231,11 @@ Plans:
   3. pi_brain.py laczy sie z Uno R4 bez DTR workaround — Serial komunikuje sie normalnie przez /dev/ttyACM0
   4. Serwo PAN (D6) i TILT (D9) poruszaja sie plynnie w tescie Sweep — brak jittera lub tykania wskazujacego na problem z timerem PWM
   5. Kolejne 5 cykli zasilania nie powoduje zadnego restartu Arduino podczas ruchu serw
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 24-01-PLAN.md — Migracja firmware: piny, dtostrf→snprintf, Soft Start, CDC wait, wersja v2.1 + Python DTR fix
+- [ ] 24-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (LCD, serwa, serial, stabilnosc)
 
 ### Phase 25: RTC DS1307 Izolowana Integracja
 **Goal**: DS1307 dostarcza poprawny czas, LCD pokazuje HH:MM:SS aktualizowany co sekunde, inicjalizacja Wire→RTC→SD dziala w prawidlowej kolejnosci
@@ -293,7 +297,7 @@ Plans:
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 0/? | Not started | - |
+| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 0/2 | Not started | - |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/? | Not started | - |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
