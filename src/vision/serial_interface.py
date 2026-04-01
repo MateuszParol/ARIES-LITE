@@ -1,6 +1,6 @@
 """Interfejs szeregowy RPi → Arduino. Protokol ARIES-LITE v1.0.
 
-Obsluguje otwarcie portu, DTR=False (zapobiega resetowi Leonardo),
+Obsluguje otwarcie portu kompatybilny z Arduino Uno R4 WiFi,
 tryb niskich opoznien oraz wysylanie ramek binarnych 8B.
 """
 
@@ -16,8 +16,8 @@ class SerialInterface:
     """Interfejs szeregowy RPi → Arduino. Protokol ARIES-LITE v1.0.
 
     Klasa OOP opakowujaca pyserial do wysylania ramek binarnych 8B
-    zgodnych z PROTOCOL_SPEC.md. Obsluguje otwarcie portu, DTR=False
-    (zapobiega resetowi Leonardo), tryb niskich opoznien oraz heartbeat.
+    zgodnych z PROTOCOL_SPEC.md. Obsluguje otwarcie portu kompatybilny
+    z Arduino Uno R4 WiFi, tryb niskich opoznien oraz heartbeat.
     """
 
     BAUDRATE: int = 115200
@@ -36,11 +36,10 @@ class SerialInterface:
         self._ser: serial.Serial | None = None
 
     def open(self) -> None:
-        """Otwiera port szeregowy z DTR=False i trybem niskich opoznien.
+        """Otwiera port szeregowy z trybem niskich opoznien.
 
-        DTR=False musi byc ustawione PRZED otwarciem portu — zapobiega
-        automatycznemu resetowi Arduino Leonardo przy polaczeniu USB CDC
-        (bootloader Caterina). Po otwarciu wlacza tryb niskich opoznien
+        Uno R4 WiFi nie wymaga DTR workaround (ESP32-S3 bridge, nie USB CDC).
+        Po otwarciu wlacza tryb niskich opoznien
         przez pyserial 3.5 set_low_latency_mode (TIOCGSERIAL ioctl,
         bez potrzeby sudo ani setserial).
 
@@ -56,9 +55,7 @@ class SerialInterface:
         ser.stopbits = serial.STOPBITS_ONE
         ser.timeout = self._timeout
 
-        # DTR=False PRZED open() — zapobiega resetowi Leonardo (bootloader Caterina)
-        ser.dtr = False
-
+        # Uno R4 WiFi: DTR nie resetuje ukladu (ESP32-S3 bridge) — brak workaround
         ser.open()
 
         # Tryb niskich opoznien — pyserial 3.5 wbudowane ioctl (bez subprocess+setserial)
