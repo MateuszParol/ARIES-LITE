@@ -74,7 +74,7 @@
 **Milestone Goal:** Port firmware na Arduino Uno R4 WiFi z nowa mapa pinow, integracja DataLogger Shield (RTC DS1307 + SD card logging CSV) i Soft Start — pelna kompatybilnosc z istniejacym protokolem binarnym 8B z RPi.
 
 - [x] **Phase 24: Migracja Pinow i Kompilacja Bazowa** - Nowa mapa pinow, usuniecie specyfik Leonardo, fix dtostrf, Servo 1.3.0, Soft Start 500ms — firmware kompiluje sie i dziala na Uno R4 (completed 2026-04-01)
-- [ ] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS, poprawna kolejnosc inicjalizacji Wire→RTC→SD
+- [ ] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS na bootscreen, poprawna kolejnosc inicjalizacji Wire->RTC
 - [ ] **Phase 26: SD Card + DataLogger CSV** - Zapis CSV z RTC timestamps, rotacja dobowa LYYMMDD.CSV, ring buffer, graceful degradation bez karty, benchmark latencji
 - [ ] **Phase 27: Pelna Integracja DataLogger z MaszynaStanow** - Klasa DataLogger zintegrowana ze zmianami stanow, end-to-end tracking z RPi i logowaniem telemetrii
 
@@ -238,19 +238,19 @@ Plans:
 - [x] 24-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (LCD, serwa, serial, stabilnosc)
 
 ### Phase 25: RTC DS1307 Izolowana Integracja
-**Goal**: DS1307 dostarcza poprawny czas, LCD pokazuje HH:MM:SS aktualizowany co sekunde, inicjalizacja Wire→RTC→SD dziala w prawidlowej kolejnosci
+**Goal**: DS1307 dostarcza poprawny czas, LCD bootscreen pokazuje statyczny snapshot HH:MM:SS, inicjalizacja Wire->RTC dziala w prawidlowej kolejnosci
 **Depends on**: Phase 24
 **Requirements**: RTC-01, RTC-02, RTC-03, INT-07
 **Success Criteria** (what must be TRUE):
   1. I2C scanner wykrywa DS1307 pod adresem 0x68 — shield header poprawnie osadzony na Uno R4
-  2. LCD Row 1 wyswietla aktualny czas HH:MM:SS i aktualizuje sie co 1s — rok wyswietlany to 2026
-  3. Po 30-sekundowym odlaczeniu zasilania RTC dalej pokazuje poprawny czas — bateria CR1220 sprawna
-  4. Przy braku baterii lub nieskonfigurowanym RTC system startuje normalnie z fallbackiem millis() — brak zawieszenia w setup()
+  2. LCD bootscreen wyswietla jednorazowy snapshot czasu RTC w formacie "v2.1  HH:MM:SS" — statyczny odczyt przy starcie, NIE aktualizacja co 1s (czas dostepny przez Serial)
+  3. Po 30-sekundowym odlaczeniu zasilania RTC dalej pokazuje poprawny czas — bateria CR1220 sprawna (weryfikacja hardware-only w checkpoint Task 2)
+  4. Przy braku RTC lub roku < 2025 system STARTUJE normalnie z ostrzezeniem buzzer (krotki alarm) + LCD "RTC: FAIL" przez ~2s — NIE blokuje sie w setup(), kontynuuje bez timestampow RTC
 **Plans**: 2 plans
 
 Plans:
 - [ ] 25-01-PLAN.md — Instalacja RTClib + BusIO, I2C scanner sketch, weryfikacja 0x68 na hardware
-- [ ] 25-02-PLAN.md — Klasa ZegarRTC + modyfikacja setup/HMI + blokada startu + weryfikacja sprzetowa
+- [ ] 25-02-PLAN.md — Klasa ZegarRTC + modyfikacja setup/HMI + ostrzezenie RTC + weryfikacja sprzetowa
 
 ### Phase 26: SD Card + DataLogger CSV
 **Goal**: Telemetria zapisuje sie na karte SD w formacie CSV z RTC timestamps, rotacja dobowa dziala, system startuje normalnie bez karty SD
