@@ -1,17 +1,19 @@
 # Project Research Summary
 
-**Project:** ARIES-LITE v2.0 — Architektura Rozproszona (RPi4 Mozg + Arduino Leonardo Uklad Wykonawczy)
-**Domain:** Distributed embedded face tracking — RPi4 (vision + serial TX) + Arduino Leonardo (PID + servo + HMI)
-**Researched:** 2026-03-30
-**Confidence:** HIGH (architecture and pitfalls from authoritative sources and project-specific empirical history)
+**Project:** ARIES-LITE v2.1 — Migracja Arduino Leonardo → Uno R4 WiFi + DataLogger Shield
+**Domain:** Distributed embedded face tracking — Arduino firmware migration (ATmega32U4 → Renesas RA4M1) + DataLogger Shield (RTC DS1307 + SD card) integration into 100 Hz real-time PID system
+**Researched:** 2026-04-01
+**Confidence:** HIGH (stack and pitfalls verified against official sources) / MEDIUM (SD write timing specifics require empirical validation)
+
+---
 
 ## Executive Summary
 
-ARIES-LITE v2.0 migrates from a Python monolith (single RPi4, gpiozero/pigpio servos, ~30 Hz PID) to a distributed two-node system: the RPi4 handles only vision (MediaPipe FaceDetector) and serial transmission, while an Arduino Leonardo runs dual-axis PID at 100+ Hz with MG-90S servos, LCD 1602 HMI, buzzer, and an abort button. The core motivation is deterministic real-time servo control: the Arduino loop achieves 10ms±1ms dT stability versus Python's 30ms with 10-30ms GIL/GC jitter. This is the same pattern used in industrial robotics (compute node + controller node) and validated by the SaraKIT MediaPipe/RPi reference implementation.
+v2.1 is a hardware migration milestone. The existing v2.0 firmware (OOP Arduino, binary 8B protocol, QuickPID 100 Hz, watchdog, HMI) is code-complete but was blocked by an Arduino Leonardo USB enumeration bug. The resolution is a board swap to Arduino Uno R4 WiFi (Renesas RA4M1), which requires a targeted pin map migration, removal of Leonardo-specific USB CDC workarounds, and one AVR-to-ARM code compatibility fix (`dtostrf` → `sprintf`). Simultaneously, the DataLogger Shield (DS1307 RTC + SD card) is being integrated to add timestamped CSV telemetry logging. Both changes are well-understood and fully documented in the Arduino ecosystem.
 
-The recommended approach is a strict Brain-Muscle split: the RPi computes pixel error from MediaPipe bounding boxes and sends 8-byte binary frames (start byte + mode + int16 error_x + int16 error_y + uint8 face_size + XOR checksum) over USB Serial at 115200 baud. The Arduino receives frames via a non-blocking byte-state-machine parser, runs PID independently of the serial rate, and uses a millis()-based software watchdog (not hardware AVR WDT) to return to autonomous scan if the Pi goes silent. This architecture guarantees servo motion continues even when the Pi restarts or Python crashes.
+The central risk for v2.1 is the interaction between SD card blocking writes and the 100 Hz PID loop. Standard `SD.h` writes are blocking and can stall for 200–300 ms on FAT32 sector boundary events. Architecture research confirms that a keep-file-open + flush-every-N-rows pattern (N=50) keeps typical write latency at ~0.35 ms per CSV row, well within the 10 ms loop budget. The worst-case flush (~1–2 ms) also remains safe. The dangerous anti-patterns — `file.close()` per write or synchronous `SD.open()/close()` inside the PID loop — must be avoided entirely.
 
-The primary risks are: MediaPipe installation failing on Python 3.13 (stay on Bookworm + Python 3.11), Arduino Leonardo DTR-reset disrupting the USB connection on every Python reconnect (open serial with dtr=False), Linux USB CDC 16ms latency batching that disrupts timing (setserial low_latency required), and Arduino PID integral windup at servo limits (use QuickPID with iAwCondition anti-windup, not the default br3ttb PID library). The serial protocol frame format must be locked before any other implementation begins — both sides depend on it and changing it mid-implementation forces simultaneous changes to two code bodies.
+The recommended build order is sequential: pin migration and Servo library upgrade first (validates hardware without new peripherals), then soft start verification, then RTC DS1307 in isolation, then SD card + DataLogger CSV, then full integration with MaszynaStanow state transitions. This order isolates failure modes and ensures each layer is working before the next is added. Five specific pitfalls (Servo library version, DataLogger shield header contact, SD.begin() blocking, SD write latency, ESP32 USB bridge startup delay) have concrete prevention steps and must be addressed before reaching Phase 4 (SD integration).
 
 ---
 
@@ -19,156 +21,150 @@ The primary risks are: MediaPipe installation failing on Python 3.13 (stay on Bo
 
 ### Recommended Stack
 
-The v2.0 stack replaces the Python-side servo control (gpiozero + pigpio) entirely. On the RPi4, the new dependencies are `mediapipe` (BlazeFace FaceDetector via Tasks API) and `pyserial`. The `picamera2` backend is retained unchanged; the AWB lock sequence (start + 2s sleep + capture_metadata + set_controls) is validated and must be carried into `pi_brain.py` verbatim. On the Arduino, the firmware uses the standard `Servo` library on D9/D10, `LiquidCrystal` in 4-bit mode on D2-D5/D11/D12, and `QuickPID` (replaces br3ttb PID) for anti-windup support.
+The core change is the board package: **ArduinoCore-renesas 1.4.1** (2025-03-10) is the required minimum, as it includes the fix for DS1307 I2C Wire master-only mode (issue #180, PR #191) and is compatible with the Servo 1.3.0 PWM timer fix. All other libraries are either bundled (SD.h, Wire.h, SPI.h) or already locked from v2.0 (QuickPID 3.1.9, LiquidCrystal). The only library requiring a mandatory update is Servo: versions before 1.2.2 produce 100 µs step jitter on RA4M1 hardware, causing visible servo ticking that is unrelated to PID quality.
 
-A critical installation constraint: MediaPipe wheels are not published for Linux aarch64 on PyPI as of March 2026, and v1.8 research documented this as a blocker. The resolution is to use piwheels or a confirmed community wheel targeting Python 3.11. The project must stay on RPi OS Bookworm (Python 3.11) and must NOT upgrade to Trixie (Python 3.13). Installation must be verified via `import mediapipe` before writing any vision code.
+Uno R4 WiFi differs from Leonardo in three architecturally relevant ways: USB Serial is bridged through an ESP32-S3 coprocessor (no DTR trick needed, but 100–500 ms startup delay on first connect), GPIO current limits drop from 40 mA to 8 mA per pin (passive buzzers acceptable, active buzzers may need transistor), and I2C pull-ups are not populated on-board (DataLogger Shield V1.0 supplies its own 2.2 kΩ — sufficient).
 
 **Core technologies:**
-- `mediapipe` (Tasks API, FaceDetector, BlazeFace): vision — estimated 15-25 FPS on RPi4, lighter than Face Mesh (~4-5 FPS)
-- `pyserial` 3.x: USB serial TX from Pi — fire-and-forget, no blocking ACK
-- `picamera2` (system apt package): camera backend — YUV420/NV12 capture, AWB lock; requires `--system-site-packages` venv
-- `QuickPID` (Arduino library): PID with iAwCondition anti-windup and derivative-on-measurement — replaces br3ttb PID_v1
-- `Servo` (Arduino built-in): MG-90S PWM control on D9 (pan) / D10 (tilt)
-- `LiquidCrystal` (Arduino built-in): LCD 1602 in 4-bit mode
-
-**What is removed from requirements.txt:** `gpiozero`, `pigpio`, `dlib`, `face_recognition`. The Flask web server and MJPEG stream move to `legacy/` for v2.0 (re-addable as a v2.1 milestone).
-
----
+- **ArduinoCore-renesas 1.4.1**: Board support package — mandatory minimum for DS1307 I2C and Servo timer fixes
+- **Servo 1.3.0**: PWM servo control — versions < 1.2.2 produce jitter on RA4M1; must update via Library Manager before any PID work
+- **RTClib (Adafruit) 2.1.4**: DS1307 RTC access via I2C — officially PASS on Arduino R4 compatibility matrix
+- **SD.h (bundled)**: FAT32 SD card read/write via SPI D10–D13 — officially PASS; keep file open, use flush not close
+- **Wire.h (bundled)**: I2C for DS1307 — must call `Wire.begin()` before `rtc.begin()` and before `SD.begin()`
+- **QuickPID 3.1.9** (locked from v2.0): runs without modification on 32-bit ARM; hardware FPU on RA4M1 is a performance bonus
 
 ### Expected Features
 
-The protocol spec is the absolute first deliverable — it blocks all other work on both sides. Every other feature depends on the agreed 8-byte frame layout.
+**Must have (table stakes — v2.1 launch blockers):**
+- Pin map migration (LCD, servos, buzzer, button to new Uno R4 assignments: PAN=D6, TILT=D9, LCD on A0/A1/D2–D5, Buzzer=D8, Button=D7, SD_CS=D10)
+- Remove Leonardo USB CDC handling (`while (!Serial)` without timeout, `dtr=False` in pi_brain.py) — blocks serial link
+- SD initialization with graceful degradation (`sd_dostepne` flag) — system must run without SD card present
+- RTC DS1307 initialization with millis() fallback — system must run with dead or absent RTC battery
+- CSV write on state transitions (SCAN/TRACK/IDLE changes) — core telemetry requirement
+- CSV column header on file creation — self-documenting log files
+- Daily log file rotation as `LYYMMDD.CSV` (8.3 FAT32 filename constraint; `log_YYYYMMDD.csv` is too long)
 
-**Must have (table stakes — system non-functional without these):**
-- Framed binary serial protocol (0xAA start byte, mode byte, int16 error_x, int16 error_y, uint8 face_size, XOR checksum, fixed 8 bytes) — gate for all other work
-- MediaPipe FaceDetector + largest-face sticky selection + pixel error calculation (RPi)
-- AWB warm-up + lock (2s sleep + capture_metadata + set_controls) — carried from validated v1.9 code
-- Heartbeat TX from RPi at 200ms intervals when no face detected — keeps Arduino watchdog alive
-- Graceful Python shutdown: serial.close() in try/finally
-- Arduino non-blocking serial parser (byte-state-machine: WAIT_START → READ_PAYLOAD → VERIFY_XOR → DISPATCH)
-- Arduino dual-axis PID at 100 Hz via millis() timing, QuickPID with anti-windup
-- Arduino Servo on D9/D10, safe startup (smooth interpolation to center at 1 degree per 20ms in setup())
-- Servo angle clamp (pan ±60°, tilt ±30°) enforced in Arduino before servo.write()
-- Software watchdog (millis()-based, NOT AVR hardware WDT): return to SCAN if no valid frame for 2000ms
-- `#define PAN_DIR / TILT_DIR` empirical sign calibration constants
+**Should have (add after P1 validated on hardware):**
+- CSV write every 10th TRACKING tick (10 Hz continuous telemetry)
+- In-RAM ring buffer (8 rows x ~80 chars = 640 bytes, Uno R4 has 32 KB RAM) — implement only if empirical testing shows 10 Hz direct writes disrupt PID
+- RTC time displayed on LCD Row 1 during IDLE state
 
-**Should have (differentiators — system functional but incomplete without):**
-- LCD 1602 showing current mode (SKANOWANIE / SLEDZENIE / BEZCZYNNOSC) — physical HMI proving state machine
-- Buzzer beep on TRACKING entry and TARGET_LOST transition — audio confirmation of state changes
-- Abort button D7 (INPUT_PULLUP, debounce 20ms) — physical safety override
-- Face size field in serial frame (uint8, enables LCD Row 1 diagnostic)
-- IIR low-pass filter on error input in Arduino — add only if PID oscillates from MediaPipe detection jitter
-
-**Defer (v2.1+):**
-- Flask web UI re-integration (adds CPU load competing with MediaPipe; put in legacy/ for v2.0)
-- Face identity database / target selection (requires dlib back on RPi; contradicts lean vision strategy)
-- systemd auto-start service (operational concern, after functional v2.0 validated)
-- Runtime PID tuning over serial (out of scope; reflash with updated #define constants instead)
-- Bidirectional serial with Arduino ACK (doubles protocol complexity for zero functional gain)
-
----
+**Defer (v2.2+):**
+- WiFi telemetry upload (ESP32-S3 coprocessor available but adds substantial complexity and conflicts with v2.1 scope)
+- ToF distance sensor over I2C (A4/A5 bus already reserved; separate milestone)
+- SD card USB Mass Storage (requires USB-MSC firmware — separate project)
 
 ### Architecture Approach
 
-The system is organized as two independent execution contexts connected by a unidirectional serial link. The RPi4 runs a minimal 2-thread Python process: a daemon thread captures Picamera2 YUV420/NV12 frames, and the main thread runs MediaPipe detection, error calculation, and serial TX. The Arduino runs a single-threaded deterministic loop: parse serial (non-blocking), run PID tick at 100 Hz via millis() guard, update LCD at 5 Hz, handle button debounce. The serial link is fire-and-forget from the Pi side; Arduino holds last-known error values between frames and runs PID independently. If serial goes silent, the software watchdog transitions Arduino to autonomous SCAN after 2000ms.
+The DataLogger integrates as a new component in the existing single-threaded loop, called after HMI tick. The keep-file-open + flush-every-N-writes pattern is the key architectural decision: the CSV file stays open from daily rotation until the next day's rotation or shutdown, with `flush()` every ~50 entries (~17 seconds). This limits worst-case power-loss data loss to 17 seconds of telemetry — acceptable for a research logger. `DataLogger::krok()` is called every loop iteration but performs SD IO only on the 10th TRACKING frame (~3 writes/second at 30 Hz input). `loguj_zmiane_stanu()` is called directly from `MaszynaStanow::_przejdz_do()` for immediate state transition capture. Timing analysis confirms the DataLogger write path (~0.35 ms typical, ~1–2 ms flush every 50 rows) does not disrupt the 10 ms PID period.
 
 **Major components:**
-1. `Picamera2Stream` (RPi daemon thread) — YUV420/NV12 capture, AWB lock, shared frame buffer with threading.Lock
-2. `MediaPipe FaceDetector + ErrorCalculator` (RPi main thread) — BlazeFace detection, largest-face selection, pixel error to int16
-3. `SerialSender` (RPi main thread) — 8-byte binary frame encoding, XOR checksum, pyserial.write (non-blocking, <0.1ms per frame)
-4. `SerialParser` (Arduino) — byte state machine, XOR verify, updates shared volatile state (error_x, error_y, tryb)
-5. `PIDController` (Arduino, 100 Hz) — QuickPID dual-axis, iAwCondition anti-windup, dOnMeas derivative mode, millis() timing
-6. `ServoDriver` (Arduino) — Servo.write(angle+90) for pan D9 / tilt D10, angle clamp before write
-7. `WatchdogTimer` (Arduino) — millis()-based, NOT hardware AVR WDT (documented Leonardo/Caterina bootloader bug)
-8. `LCD1602 + BuzzerButton` (Arduino, throttled to 5 Hz) — LiquidCrystal update, tone() on state transitions, D7 abort
-
----
+1. **Pin map v2.1** — `#define` constants: PAN=D6, TILT=D9, SD_CS=D10, LCD on A0/A1/D2–D5, Buzzer=D8, Button=D7
+2. **DataLogger class** (new) — SD init, RTC time cache (updated every 200 ms), CSV write, daily rotation, `sd_dostepne` guard
+3. **MaszynaStanow** (modified) — holds DataLogger reference; calls `loguj_zmiane_stanu()` in `_przejdz_do()`
+4. **HMI** (modified) — LCD Row 1 shows RTC time during IDLE, sourced from DataLogger cache
+5. **setup() ordering** — `Wire.begin()` → `rtc.begin()` → `SD.begin(10)` → DataLogger init (strict order required on R4)
 
 ### Critical Pitfalls
 
-1. **MediaPipe not installable on Python 3.13** — Verify `python3 --version` on the RPi before writing any code. Must be 3.11 (Bookworm). Use `--system-site-packages` venv for picamera2 access. Fail fast in Phase 1 before any vision code is written.
-
-2. **Arduino Leonardo DTR reset on serial.open()** — pyserial default behavior triggers bootloader reset on Leonardo via DTR toggle. Open with `ser.dtr = False` before `ser.open()` and add a 2s sleep before first TX. Add reconnection loop on SerialException in pi_brain.py. Address in Phase 2 protocol implementation, not as an afterthought.
-
-3. **Linux USB CDC 16ms latency timer** — Default kernel USB polling batches serial data in 16ms windows. At 100 Hz PID (10ms cycle), Pi packets arrive in bursts, potentially causing spurious watchdog fires. Run `setserial /dev/ttyACM0 low_latency` at startup. Document as a required step. Measure latency early in Phase 2.
-
-4. **Arduino PID integral windup at servo limits** — The default br3ttb PID library does not prevent integral accumulation past output limits. Use QuickPID with `iAwCondition` and `dOnMeas`. Also reduce I gain 3x from v1.8 values (Python 30 Hz → Arduino 100 Hz = 3x stronger integral action for the same Ki starting value of 0.001 → use 0.0003). Address in Phase 3 firmware design, not during gain tuning.
-
-5. **AVR hardware WDT locks Leonardo bootloader** — `wdt_enable()` on Leonardo creates an infinite reset loop that prevents USB reprogramming (documented 32u4/Caterina bug). Use millis()-based software watchdog exclusively. Never call `wdt_enable()` in v2.0 firmware.
-
-6. **Serial frame sync loss on Pi reconnect** — Arduino serial buffer may contain partial frame tail from a prior session. The 0xAA start byte allows parser re-sync: discard bytes until 0xAA, then read exactly 7 more bytes and verify XOR. Test by unplugging and re-plugging USB during operation in Phase 2.
-
-7. **Servo direction undefined on new Arduino mount** — v1.7 empirical sign convention (TILT_DIR = -1) was validated for gpiozero/pigpio hardware path, not Arduino Servo library. Run a direction calibration routine as the first integration test in Phase 4, before enabling closed-loop PID.
-
-8. **LCD blocking at PID rate** — LiquidCrystal `lcd.clear()` takes ~1500µs. Calling it in the 10ms PID loop consumes 15% of the PID budget and causes servo update jitter. Update LCD at maximum 5 Hz with millis() guard; never call `lcd.clear()` in the high-rate path. Address in Phase 5 HMI code.
+1. **Servo library < 1.2.2 causes jitter on R4** — update to 1.3.0 via Library Manager before any PID test; verify with `Sweep` example showing smooth continuous motion
+2. **DataLogger Shield header pins lose I2C contact when fully seated** — tin the A4/A5 stacking headers; run I2C scanner (must see 0x68) before writing any RTClib code
+3. **SD.begin() blocks setup() when SD card is absent or wrong format** — always check return value and set `sd_dostepne = false` on failure; never block PID on SD init; system must boot without SD
+4. **SD write latency stalls 100 Hz PID loop** — use keep-file-open + flush-every-50-rows pattern; measure `micros()` around `file.print()` before integrating into loop; never call `file.close()` inside loop
+5. **`dtostrf()` does not exist on ARM/RA4M1** — replace every `dtostrf(v, w, p, buf)` with `snprintf(buf, sizeof(buf), "%w.pf", v)` before attempting compilation; the compile error blocks the entire build
 
 ---
 
 ## Implications for Roadmap
 
-Based on the dependency graph from FEATURES.md and the build order from ARCHITECTURE.md, a 6-phase structure is recommended. The serial protocol is a hard gate for all other work. Arduino firmware phases are ordered to allow hardware testing at each stage without requiring the full Pi vision stack.
+Based on research, the build order maps directly to 5 phases with clear dependency gates. Each phase has a binary verification condition before proceeding to the next.
 
-### Phase 1: Environment + Protocol Specification
-**Rationale:** Two hard prerequisites before any code can be written: MediaPipe must be confirmed installable on the target RPi, and the 8-byte frame format must be fully specified and locked. Every other component on both sides depends on the agreed frame layout.
-**Delivers:** Verified MediaPipe import on RPi4, documented binary protocol spec (byte layout, field widths, XOR formula), project structure (`src/arduino/aries_controller/`, `src/vision/pi_brain.py`, `legacy/`)
-**Addresses:** Foundation for all table-stakes features; framed protocol is their shared prerequisite
-**Avoids:** Pitfall 1 (MediaPipe Python 3.13 — fail fast here), Pitfall 6 (frame sync loss — spec locked before implementation)
-**Research flag:** Standard patterns. Protocol design is covered by Eli Bendersky framing article and ARCHITECTURE.md Pattern 3.
+### Phase 1: Migracja pinow i kompilacja bazowa
 
-### Phase 2: Serial Link — Pi Sender + Arduino Parser (Echo Test)
-**Rationale:** Implement both ends of the serial link independently of vision and PID. Test with hardcoded values from the Pi and an Arduino Serial Monitor echo. Isolates the serial layer and validates DTR handling and latency before either vision or servo hardware is involved.
-**Delivers:** `SerialSender` in pi_brain.py (dtr=False open, 2s delay, reconnection loop, low_latency mode), non-blocking byte state machine parser in aries_controller.ino, echo test confirming frame round-trip
-**Uses:** pyserial, Arduino Serial, XOR checksum
-**Avoids:** Pitfall 2 (DTR reset), Pitfall 3 (16ms USB latency), Pitfall 6 (frame sync re-sync on reconnect)
-**Research flag:** Standard patterns. No additional research needed.
+**Rationale:** Pin map migration is the prerequisite for every other phase. Serial communication cleanup (DTR removal, `dtostrf` fix) must also happen here because AVR-specific code produces compile errors that block all subsequent work. This phase has no new hardware — it only changes `#define` constants and removes dead code. It is the lowest-risk phase and produces the highest-leverage unblocking.
 
-### Phase 3: Arduino Firmware — Safe Startup + PID + Servo
-**Rationale:** With a working serial parser, inject hardcoded error values from the Pi and validate Arduino PID against live servos. Isolates the firmware layer from MediaPipe. Anti-windup configuration is a firmware architecture decision that must be made here, not during gain tuning.
-**Delivers:** QuickPID dual-axis with iAwCondition + dOnMeas, millis()-throttled PID loop at 100 Hz, safe startup (smooth interpolation to center in setup()), servo angle clamp, millis()-based software watchdog (NOT AVR WDT), `#define PAN_DIR / TILT_DIR` with calibration routine
-**Implements:** PIDController + ServoDriver + WatchdogTimer components
-**Avoids:** Pitfall 4 (integral windup — architecture decision here), Pitfall 5 (AVR WDT bootloader lock), Pitfall 7 (servo direction — calibration routine before any PID test)
-**Research flag:** Standard patterns. QuickPID is well-documented. Safe startup pattern validated in v1.7.
+**Delivers:** Firmware that compiles under Arduino Uno R4 WiFi board target, runs all existing v2.0 features (LCD, servos, buzzer, abort button, watchdog, binary 8B protocol, QuickPID) with new pin assignments.
 
-### Phase 4: RPi Vision — MediaPipe + Error Calculation + Serial TX
-**Rationale:** With the Arduino firmware accepting and acting on serial frames, implement the RPi vision pipeline and connect end-to-end. First integration test: run direction calibration before enabling closed-loop PID.
-**Delivers:** `pi_brain.py` with Picamera2Stream, MediaPipe FaceDetector Tasks API (VIDEO mode), largest-face sticky selection, AWB lock sequence (start + 2s sleep + capture_metadata + set_controls), int16 error calculation, heartbeat TX at 200ms, graceful SIGINT shutdown
-**Avoids:** Pitfall 1 (MediaPipe install — verified in Phase 1), Pitfall 7 (direction — calibration before closed-loop PID)
-**Research flag:** MEDIUM confidence on MediaPipe FPS. 15-25 FPS is an estimate from face_landmarker benchmarks. Measure empirically at the start of this phase. If FPS < 10, reduce resolution to 240x180.
+**Addresses:** Pin map migration (P1), Leonardo USB CDC removal (P1), Servo 1.3.0 update, `dtostrf` → `snprintf` replacement
 
-### Phase 5: Arduino HMI — LCD + Buzzer + Button
-**Rationale:** After end-to-end tracking is validated, add the HMI layer. These are independent of PID correctness and should not be in the critical path for functional validation.
-**Delivers:** LCD 1602 showing SKANOWANIE/SLEDZENIE/BEZCZYNNOSC (Row 0), diagnostic data (Row 1), buzzer tone() on state transitions, D7 abort button with 20ms debounce
-**Implements:** LCD1602 + BuzzerButton component
-**Avoids:** Pitfall 8 (LCD blocking PID loop — millis() guard at 200ms, no lcd.clear() in high-rate path)
-**Research flag:** Standard patterns. LiquidCrystal library well-documented.
+**Avoids:** Servo jitter (confirm Servo >= 1.2.2), ESP32 USB bridge startup delay (add 500 ms timeout to `while (!Serial)`), `dtostrf` compile error (full-text search and replace), Leonardo Caterina-specific register code
 
-### Phase 6: Watchdog Validation + Stability Testing
-**Rationale:** Final phase validates the hardware safety net and system stability under fault conditions. Tests include: Pi crash → Arduino autonomously scans after 2000ms → Pi restarts → tracking resumes.
-**Delivers:** Confirmed watchdog behavior on deliberate Pi shutdown, latency measurements confirming serial timing, empirical PID gain re-tuning if needed (starting from v1.8 values with I reduced 3x for 100 Hz rate: Ki=0.0003), optional IIR error low-pass if detection jitter causes oscillation
-**Avoids:** All pitfalls — this phase stress-tests the mitigations installed in Phases 2-4
-**Research flag:** No additional research needed. Tests are empirical.
+**Verification:** `Sketch → Verify/Compile` zero errors; serial communicates with RPi (pi_brain.py connects without DTR workaround); LCD shows bootscreen; servos move smoothly via `Sweep` test (no jitter or ticking).
+
+---
+
+### Phase 2: Soft Start weryfikacja na R4
+
+**Rationale:** Soft start (`smooth_move_to()` / `_bezpieczny_start()`) must be verified empirically on the new hardware before adding DataLogger. If the ramp causes brownout on the 6V servo supply with the new D6/D9 pin assignments, it must be fixed before any other feature is layered on top. This is a short empirical phase, not a code phase.
+
+**Delivers:** Confirmed no-brownout servo startup on Uno R4 WiFi with v2.1 pin map; soft start duration confirmed (500 ms or 1000 ms).
+
+**Addresses:** Soft start preservation (inherited P1 feature from v2.0)
+
+**Avoids:** Servo current spike brownout during DataLogger integration testing (which would confound Phase 3/4 debugging)
+
+**Verification:** Servo moves smoothly to center at boot; no reset loop; 6V supply stable; confirmed by absence of restart behavior during 5 repeated power cycles.
+
+---
+
+### Phase 3: RTC DS1307 izolowana integracja
+
+**Rationale:** RTC is simpler than SD (I2C vs SPI; no blocking writes) and its output (timestamps, dates) is required by SD filename generation and every CSV row. Validating I2C in isolation catches the physical shield header contact problem before SD is involved. If I2C fails here, the diagnosis space is narrow: either header contact or Wire ordering.
+
+**Delivers:** DS1307 returning correct time; LCD Row 1 showing `HH:MM:SS` updated every 200 ms; millis() fallback confirmed when RTC is not set or battery is absent.
+
+**Uses:** RTClib 2.1.4, Wire.h from ArduinoCore-renesas 1.4.1
+
+**Avoids:** Shield header contact failure (tin A4/A5 stacking pins before testing; I2C scanner verification at 0x68); Wire.begin() before rtc.begin() ordering; unset RTC (use `rtc.adjust(DateTime(F(__DATE__), F(__TIME__)))` at first flash)
+
+**Verification:** LCD shows current year (2026); time continues after 30-second power interruption (CR1220 battery present and working); millis() fallback activates when battery removed.
+
+---
+
+### Phase 4: SD Card + DataLogger CSV (podstawowe logowanie)
+
+**Rationale:** SD integration is the highest-risk phase due to blocking write latency. It is implemented after RTC is stable so daily filenames can be generated from real timestamps. This phase builds the DataLogger class with keep-file-open + flush-every-50-rows architecture and benchmarks actual write latency on the hardware before connecting to the PID loop.
+
+**Delivers:** CSV files on SD card with correct 8.3 filename (`LYYMMDD.CSV`), header row, state-transition rows, and 10 Hz TRACKING telemetry rows. System operates normally without SD card (`sd_dostepne` guard active).
+
+**Uses:** SD.h (bundled), DataLogger class, snprintf() for CSV row formatting (no dtostrf), `SD.begin(10)` with FAT32-formatted card
+
+**Avoids:** SD.begin() blocking setup() without card; file.close() inside PID loop; FAT32 filename > 8.3 chars (`LYYMMDD.CSV` = 7+3, correct); SD.h with exFAT or NTFS formatted card; in-loop `String` allocation (use `char[80]` + snprintf)
+
+**Verification:** 60-second TRACKING session; eject SD card; open CSV on PC; verify header, RTC timestamps, servo angles, state transitions present. Run without SD card — Arduino boots normally, Serial prints "SD fail", PID runs uninterrupted. Benchmark `micros()` around `file.print()` confirms < 1000 µs typical.
+
+---
+
+### Phase 5: Pelna integracja DataLogger z MaszynaStanow
+
+**Rationale:** Passing DataLogger reference to MaszynaStanow and wiring `loguj_zmiane_stanu()` into `_przejdz_do()` is the final integration step. It is last because it requires all prior phases working independently and adds the cross-component dependency between the state machine and the logger.
+
+**Delivers:** Complete telemetry: every SCAN/TRACK/IDLE state transition logged with RTC timestamp, plus 10 Hz continuous rows during TRACKING. Full v2.1 feature set operational.
+
+**Addresses:** CSV write on state transitions (P1), daily rotation (P1), complete DataLogger integration
+
+**Verification:** Full session with RPi sending face detections; extract SD card; verify CSV shows state transitions correlated with known events (manual face cover/uncover test); no PID disruption observable during logging.
 
 ---
 
 ### Phase Ordering Rationale
 
-- Protocol spec before any code: the 8-byte frame layout is shared state between two code bodies. Defining it first prevents the most expensive rework scenario (mid-implementation protocol change requiring simultaneous edits to pi_brain.py and aries_controller.ino).
-- Serial link tested in isolation (Phase 2) before adding vision complexity (Phase 4) or servo hardware complexity (Phase 3): single-variable failure modes during debugging.
-- PID firmware (Phase 3) before Pi vision (Phase 4): lets Phase 3 use hardcoded test values, keeping servo hardware debugging independent of MediaPipe FPS variability.
-- HMI (Phase 5) after tracking validated (Phase 4): LCD and buzzer add no functional capability to the tracking system and should not be in the critical path.
-- Watchdog testing last (Phase 6): requires the full system to be functional before fault conditions can be injected meaningfully.
+- **Phase 1 is the gate for all others:** Pin map errors cause compile failures; Serial cleanup and `dtostrf` fix are zero-cost if done first but catastrophic if left for later when two systems are under test simultaneously.
+- **Phase 2 before DataLogger hardware:** Brownout at boot produces unstable test results that confound Phase 3 and Phase 4 debugging.
+- **RTC before SD (Phase 3 before Phase 4):** Daily filename requires RTC date; I2C is simpler to debug without SPI conflicts; header contact failure diagnosis is cleaner in isolation.
+- **SD standalone before MaszynaStanow integration (Phase 4 before Phase 5):** DataLogger must be stable and benchmarked in isolation before adding the state machine reference dependency.
+- **In-RAM ring buffer deferred:** Architecture analysis shows keep-file-open + flush-every-50 is sufficient for ~3 writes/second (10 Hz TRACKING ticks). Ring buffer should only be implemented if Phase 4 empirical benchmarking reveals PID disruption.
 
 ### Research Flags
 
-Phases needing deeper research or empirical measurement during planning/execution:
-- **Phase 4 (MediaPipe FPS):** 15-25 FPS is an estimate. Measure at the start of Phase 4. Decision point: if FPS < 10, reduce resolution to 240x180 or investigate hardware acceleration.
-- **Phase 1 (MediaPipe install):** Confirm piwheels provides a compatible aarch64 wheel for Python 3.11 on the actual RPi OS version before any Phase 2+ work proceeds.
+Phases needing empirical measurement (cannot be confirmed from docs alone):
+- **Phase 2:** Soft start brownout risk is hardware-dependent (specific 6V supply, new D6/D9 assignments). Cannot be confirmed without hardware test.
+- **Phase 4:** SD write latency with specific DataLogger Shield V1.0 hardware and SD card. Research provides typical values (0.35 ms write, 1–2 ms flush) confirmed by forum data, but worst-case 200–300 ms is only triggered by FAT32 sector boundaries. Measure with `micros()` bracketing on actual hardware before declaring Phase 4 complete.
 
-Phases with standard patterns (skip additional research):
-- **Phase 1 (Protocol Spec):** Binary framing with start byte + XOR checksum is canonical. Covered by ARCHITECTURE.md Pattern 3.
-- **Phase 2 (Serial Link):** dtr=False and low_latency are documented, tested patterns. ASCII protocol and blocking ACK explicitly ruled out.
-- **Phase 3 (Arduino Firmware):** QuickPID documentation is comprehensive. millis()-based watchdog pattern is from Memfault best practices. Smooth startup validated from v1.7.
-- **Phase 5 (HMI):** LiquidCrystal 4-bit mode and tone() are standard Arduino patterns.
+Phases with well-documented patterns (standard execution, no additional research needed):
+- **Phase 1:** Pure define changes + compile; documented migration path is complete and all fixes are confirmed merged.
+- **Phase 3:** RTClib + Wire integration is fully documented; ArduinoCore-renesas fix is merged and confirmed.
+- **Phase 5:** Reference passing and callback wiring is standard OOP Arduino pattern.
 
 ---
 
@@ -176,46 +172,40 @@ Phases with standard patterns (skip additional research):
 
 | Area | Confidence | Notes |
 |------|------------|-------|
-| Stack | MEDIUM-HIGH | Python side (pyserial, picamera2, AWB sequence) is HIGH — official docs and empirically validated in v1.7/v1.9. MediaPipe FPS estimate is MEDIUM — interpolated from face_landmarker benchmarks, requires empirical confirmation. QuickPID is HIGH — well-documented. |
-| Features | HIGH | Feature set derived directly from PROJECT.md architectural decisions (locked) and validated against reference implementations (SaraKIT, PyImageSearch). Dependency graph is internally consistent. |
-| Architecture | HIGH | Brain-Muscle split pattern validated by industrial robotics (ROS), SaraKIT reference, and theoretical analysis of Python GIL jitter vs. Arduino determinism. Frame format is a design decision — implementation will validate it. |
-| Pitfalls | HIGH (serial/Arduino) / MEDIUM (MediaPipe) | Arduino Leonardo DTR reset, AVR WDT bootloader lock, and Linux USB 16ms latency are documented in official issues and forums with specific reproduction steps. MediaPipe aarch64 install status is MEDIUM — wheel availability changes between releases. |
+| Stack | HIGH | Core library versions verified against official Arduino compatibility matrix and GitHub release notes; all fixes confirmed merged in specific PRs with dates |
+| Features | MEDIUM-HIGH | Protocol/RTC integration is MEDIUM-HIGH (official docs, confirmed hardware tests reported in forum threads); SD write timing specifics are MEDIUM (forum data, not Uno R4 specific benchmarks — requires Phase 4 empirical validation) |
+| Architecture | HIGH | Timing analysis based on multiple confirmed forum benchmarks; component separation validated against existing codebase structure; keep-file-open pattern confirmed as correct approach by multiple independent sources |
+| Pitfalls | HIGH | All 5 critical pitfalls traced to specific GitHub issues and forum threads with confirmed reproduction steps and fix verification; physical shield header contact issue confirmed by multiple independent Adafruit forum reports |
 
-**Overall confidence:** HIGH for architecture decisions. MEDIUM for MediaPipe FPS and install path — requires early empirical validation.
+**Overall confidence:** HIGH for migration correctness and architecture decisions. MEDIUM for SD write performance under 100 Hz load — requires empirical validation in Phase 4 before concluding that no ring buffer is needed.
 
 ### Gaps to Address
 
-- **MediaPipe aarch64 wheel status:** Confirm pip install succeeds on the actual RPi4 as the first action in Phase 1. STACK.md v1.8 section documents this as blocked on Python 3.13; the v2.0 research section references confirmed 10-15 FPS. Depends on OS version. Fail fast rather than assuming.
-- **MediaPipe FPS at 320x240:** If measured FPS is below 10, the Pi TX rate drops below 10 Hz. The 200ms heartbeat provides a safety buffer for the 2000ms watchdog, but slower vision means fewer tracking frames. Measure in Phase 4 before committing to watchdog timing values.
-- **Servo direction on new Arduino mount:** `TILT_DIR = -1` was validated for gpiozero/pigpio. Direction sign through Arduino Servo library may differ. Treat as empirically undefined until Phase 3 calibration routine runs.
-- **Serial low_latency persistence:** `setserial low_latency` does not persist across USB reconnects. Decide whether to add it to a startup script, udev rule, or pi_brain.py init code during Phase 2 implementation.
+- **SD write latency on actual Uno R4 + DataLogger V1.0 hardware:** Research shows typical 0.35 ms, worst-case 200–300 ms. The 200–300 ms case must be triggered and measured on real hardware during Phase 4. If it disrupts PID, the in-RAM ring buffer (640 bytes, flush every ~17 seconds) should be activated. Decision deferred to Phase 4 empirical benchmarking.
+- **DS1307 battery absent at first boot:** CR1220 may not be pre-installed in all DataLogger Shield variants. Time must be set via `rtc.adjust(DateTime(F(__DATE__), F(__TIME__)))` at first flash. This should be in Phase 3 setup instructions.
+- **Active buzzer current draw on D8:** Passive buzzers are typically < 5 mA (safe on R4's 8 mA per-pin limit); active buzzers can draw up to 30 mA (requires NPN transistor). Verify buzzer type before Phase 1 hardware test.
 
 ---
 
 ## Sources
 
 ### Primary (HIGH confidence)
-- `PROJECT.md` — v2.0 architecture decisions (distributed RPi4 + Arduino Leonardo, protocol, components) — project source of truth
-- `CLAUDE.md` — v1.x validated decisions (smooth_move_to, AWB lock sequence, servo limits, PID gains P=0.05 I=0.001 D=0.005)
-- [MediaPipe Face Detector Python API — Google AI Edge](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector/python) — Tasks API, bounding box format
-- [Framing in Serial Communications — Eli Bendersky](https://eli.thegreenplace.net/2009/08/12/framing-in-serial-communications/) — start byte + checksum framing pattern
-- [Firmware Watchdog Best Practices — Interrupt/Memfault](https://interrupt.memfault.com/blog/firmware-watchdog-best-practices) — software watchdog vs. hardware WDT
-- [PySerial API docs](https://pyserial.readthedocs.io/en/latest/pyserial_api.html) — dtr=False, non-blocking read
+- https://github.com/arduino/uno-r4-library-compatibility — Official Arduino compatibility matrix; SD PASS, RTClib PASS
+- https://github.com/arduino/ArduinoCore-renesas/issues/180 — DS1307 Wire master-only fix, merged PR #191 (2023-11-16)
+- https://github.com/arduino/ArduinoCore-renesas/releases/tag/1.4.1 — Latest core release 2025-03-10
+- https://github.com/arduino-libraries/Servo/releases — Servo 1.3.0 (2024-11-06), 1.2.2 PWM timer fix for R4
+- https://github.com/adafruit/RTClib — RTClib 2.1.4 release 2024-04-09
 
 ### Secondary (MEDIUM confidence)
-- [MediaPipe for Raspberry Pi — CNX Software (2023)](https://www.cnx-software.com/2023/08/21/mediapipe-for-raspberry-pi-released-no-code-low-code-on-device-machine-learning-solutions/) — RPi4 FaceDetector FPS context
-- [SaraKIT Face Tracking MediaPipe RPi — GitHub](https://github.com/SaraEye/SaraKIT-Face-Tracking-MediaPipe-Raspberry-Pi-64bit) — reference implementation (different HW, validates approach)
-- [Arduino Forum: Serial Port WatchDog](https://forum.arduino.cc/t/creating-a-serial-port-watchdog-with-arduino/468929) — millis()-based watchdog pattern
-- [Arduino Forum: Pan-tilt PID servo control](https://forum.arduino.cc/t/pan-tilt-servo-control-using-pid-for-face-tracking-webcam/1131405) — integration patterns
-- [Simple and Robust Arduino Serial Communication — Medium/@araffin](https://medium.com/@araffin/simple-and-robust-computer-arduino-serial-communication-f91b95596788) — fire-and-forget protocol design
-- [Raspberry Pi Arduino Serial Communication — The Robotics Back-End](https://roboticsbackend.com/raspberry-pi-arduino-serial-communication/) — baud rate, buffer, ACK patterns
-- raspberrypi/picamera2 GitHub issues #312, #592, #825 — ColourGains behavior, AWB lock sequence validation
-
-### Tertiary (LOW confidence / needs validation)
-- MediaPipe FPS estimate (15-25 FPS for FaceDetector on RPi4) — interpolated from face_landmarker measurements; requires empirical verification in Phase 4
-- piwheels MediaPipe aarch64 availability — wheel availability changes between releases; must be verified at project start
+- https://forum.arduino.cc/t/arduino-uno-r4-spi-with-sd-card/1328547 — SD card close() requirement, SPI R4 compatibility notes
+- https://forum.arduino.cc/t/data-logging-shield-for-r4-minima/1272770 — DataLogger shield I2C issues on R4
+- https://forum.arduino.cc/t/trouble-with-servos-on-r4-wifi/1151749 — Servo PWM resolution bug pre-1.2.2, confirmed fix
+- https://forums.adafruit.com/viewtopic.php?t=215319 — DataLogger Shield Rev C header contact physical issue (multiple reports)
+- https://forum.arduino.cc/t/sd-write-time-max-latency-depedencies/517159 — 200–300 ms worst-case write latency
+- https://forum.arduino.cc/t/cyclic-buffer-for-data-logging-on-sd-card/1275019 — Ring buffer approach for high-rate logging
+- https://lastminuteengineers.com/arduino-uno-r4-wifi-pinout-reference/ — Pin assignments, current limits, DAC/op-amp, I2C pull-ups
 
 ---
 
-*Research completed: 2026-03-30*
+*Research completed: 2026-04-01*
 *Ready for roadmap: yes*

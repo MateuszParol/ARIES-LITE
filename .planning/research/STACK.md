@@ -1,1193 +1,226 @@
 # Stack Research
 
-**Domain:** Picamera2 + pigpio face tracking on RPi4 Bookworm 64-bit
-**Researched:** 2026-03-26 (base), 2026-03-27 (v1.7 supplement), 2026-03-29 (v1.8 supplement), 2026-03-29 (v1.9 supplement)
-**Confidence:** HIGH (source-verified against official docs, GitHub issues, and simple_pid source code)
+**Domain:** Arduino Uno R4 WiFi firmware — DataLogger Shield integration (RTC DS1307 + SD card)
+**Researched:** 2026-04-01
+**Confidence:** HIGH (core libraries verified via official Arduino compatibility repo + community threads)
 
 ---
 
-## v1.9 Supplement: Motion Stabilization and Color Fix Research
+## Context: What Already Exists (DO NOT re-research)
 
-**Milestone:** v1.9 Stabilizacja Ruchu i Obrazu
-**Researched:** 2026-03-29
+The following are validated and locked from v2.0. Research below covers only what changes for v2.1.
 
-This section answers the four specific fix questions for v1.9:
-1. Tilt servo unresponsive in all modes (SCANNING and TRACKING)
-2. Scanning is jerky/choppy — smooth servo interpolation needed
-3. Green tint from start (G channel constant, scene-independent)
-4. Servo escape immediately on TRACKING entry
-
-No new pip packages are required for any of these fixes.
-
----
-
-### Fix 1: Tilt Servo Unresponsive — Diagnosis Paths
-
-**Problem:** Tilt servo does not react in either SCANNING or TRACKING mode.
-Physical servo is confirmed working (resists manual force).
-
-#### Root Cause Path A: `_skanuj()` sends `tilt=0.0` always (HIGH confidence)
-
-Looking at `src/modes/test_tracker.py` line 303:
-```python
-def _skanuj(self) -> None:
-    pan = SCAN_AMPLITUDE * math.sin(...)
-    self.hardware.set_angles(pan, 0.0)   # tilt hardcoded to 0.0
-```
-
-During SCANNING the tilt is intentionally held at 0.0. This is correct design — the sinusoidal scan is pan-only. Tilt movement only happens in `_sledz()` during TRACKING.
-
-If TRACKING is never reached (face not detected reliably enough to pass streak filter and trigger `_przejdz_do(STATE_TRACKING)`), tilt never fires.
-
-**Diagnosis:** Enable `--debug` flag and watch for `TRACKING` entry log. If it never appears, tilt not moving in SCANNING is expected behavior.
-
-#### Root Cause Path B: tilt_angle attribute not being updated (HIGH confidence)
-
-`set_angles()` in `src/hardware.py` stores the clamped value to `self.tilt_angle`.
-If `tilt_clamped` equals the current `self.tilt_angle` on every call (i.e., the
-servo is already at the clamped limit), the servo receives the same PWM value and
-appears frozen.
-
-This is the servo-escape-then-freeze pattern: PID drives tilt to limit on first tick,
-then every subsequent call is clamped at that same limit — log shows WARNING clamp on
-every tick but physical servo position does not change.
-
-**Diagnosis:** Add `logger.debug` after `set_angles` call in `_sledz`:
-```python
-self.hardware.set_angles(nowy_pan, nowy_tilt)
-logger.debug(f"set_angles called: pan={nowy_pan:.1f} tilt={nowy_tilt:.1f} "
-             f"stored: pan={self.hardware.pan_angle:.1f} tilt={self.hardware.tilt_angle:.1f}")
-```
-
-#### Root Cause Path C: pigpio tilt pin not initialized (MEDIUM confidence)
-
-If `pigpiod` daemon was restarted between sessions, gpiozero may silently lose the
-tilt servo reference while pan works. Pan pin 12 and tilt pin 13 are initialized
-together in `PanTiltSystem.__init__`. If the `AngularServo(tilt_pin, ...)` call
-raises an exception and is silently caught, `self.tilt_servo` remains None.
-
-Current `hardware.py` logs this at ERROR level:
-```python
-logger.error(f"Nie mozna uruchomic pigpio. Sprawdz czy dziala demon (sudo pigpiod): {e}")
-self._mock_mode = True
-```
-
-But if `self.tilt_servo` is None while `self.pan_servo` is valid (partial failure),
-the condition `if not self._mock_mode and self.pan_servo and self.tilt_servo:` prevents
-any servo from being commanded. Check: add per-servo init logging.
-
-**Recommendation for tilt diagnosis:** Add explicit guard and log in `set_angles`:
-```python
-if not self._mock_mode:
-    if self.pan_servo:
-        self.pan_servo.angle = self.pan_angle
-    else:
-        logger.warning("pan_servo is None — skip pan command")
-    if self.tilt_servo:
-        self.tilt_servo.angle = self.tilt_angle
-    else:
-        logger.warning("tilt_servo is None — skip tilt command")
-```
-
-This separates the two servos so one None does not silence both.
-
-**No new libraries needed.** Pure logic fix in `hardware.py`.
+| Component | Library | Status |
+|-----------|---------|--------|
+| Dual-axis PID 100 Hz | QuickPID 3.1.9 | Locked — compatible with 32-bit ARM (uses standard float arithmetic) |
+| Servo MG-90S | Servo (arduino-libraries) | Needs version update — see below |
+| LCD 1602 4-bit | LiquidCrystal (built-in) | Compatible — minor pin note below |
+| State machine + HMI | Custom OOP (Polish) | No library changes needed |
+| Binary protocol 8B | Serial (built-in) | Behavior change on R4 — see below |
 
 ---
 
-### Fix 2: Smooth Servo Interpolation for Scanning
+## Recommended Stack — New Additions for v2.1
 
-**Problem:** Sinusoidal scanning appears jerky/choppy. Each call to `_skanuj()` directly
-sets a new absolute angle with no interpolation between positions.
+### Core Technologies (New/Changed)
 
-**Root cause analysis:**
+| Technology | Version | Purpose | Why Recommended |
+|------------|---------|---------|-----------------|
+| ArduinoCore-renesas | 1.4.1 (2025-03-10) | Board support package for Renesas RA4M1 | Official Arduino BSP — must be this version minimum; fixes Wire master/slave switch (issue #180, merged Nov 2023), Servo timer resolution (Servo 1.2.2 dependency) |
+| Servo (arduino-libraries) | 1.3.0 (2024-11-06) | PWM servo control for MG-90S on D6, D9 | Pre-1.2.2 had 100 µs step resolution bug on R4 causing servo jitter (issue #113); 1.3.0 is current and includes KurtE's timer fix |
+| RTClib (Adafruit) | 2.1.4 (2024-04-09) | DS1307 RTC read/write via I2C | Arduino official compatibility matrix: PASS (compile + hardware). Supports DS1307 via `RTC_DS1307` class. Wire.h backed. |
+| SD (Arduino built-in) | bundled with ArduinoCore-renesas | SD card read/write via SPI D10-D13 | Arduino official compatibility matrix: PASS (compile + hardware). Use `SD.begin(10)` for CS=D10. Always call `dataFile.close()` after writes. |
+| Wire (Arduino built-in) | bundled with ArduinoCore-renesas | I2C bus for DS1307 on A4/A5 | Issue #180 fixed in core 1.0.4+ — DS1307 now works in master-only mode. External pull-ups required (see Critical Notes). |
 
-The main loop in `TestTracker.uruchom()` calls `self.maszyna.tick()` on every frame.
-Each frame where SCANNING is active calls `_skanuj()` which calls `set_angles(pan, 0.0)`
-directly. At 8–12 FPS (DNN inference on RPi4), the sinusoidal function is sampled 8–12
-times per second. Between samples, the servo jumps discretely — this is the jitter.
+### Supporting Libraries (Unchanged from v2.0, verified compatible)
 
-**Why pigpio hardware PWM still jerks:**
+| Library | Version | Purpose | When to Use |
+|---------|---------|---------|-------------|
+| QuickPID | 3.1.9 | Dual-axis PID control at 100 Hz | Standard float arithmetic — runs on 32-bit ARM without modification |
+| LiquidCrystal (built-in) | bundled | LCD 1602 4-bit parallel mode | A0/A1 used as digital output (RS, E) — functional but see A0/A1 note |
+| SPI (built-in) | bundled with ArduinoCore-renesas | SPI bus for SD card | Use `SPI.beginTransaction()` / `endTransaction()` explicitly when sharing bus |
 
-pigpio eliminates OS-level PWM jitter. It does not smooth the angle commands that the
-Python code issues. If Python sends pan=10 on frame N and pan=18 on frame N+1, the
-servo moves instantly from 10 to 18 degrees — no interpolation, no easing.
+### Development Tools
 
-**Recommended solution: Per-tick angle interpolation in `set_angles` (or a wrapper)**
-
-Implement exponential smoothing (low-pass filter) on the commanded angle:
-```python
-SERVO_ALPHA = 0.4  # smoothing factor, 0 = no movement, 1 = instant
-                   # 0.3–0.5 is good starting range for 10 FPS
-
-class PanTiltSystem:
-    def __init__(self, ...):
-        ...
-        self._pan_target = 0.0   # desired angle
-        self._tilt_target = 0.0  # desired angle
-        # pan_angle / tilt_angle remain as current (smoothed) angle
-
-    def set_angles(self, pan: float, tilt: float) -> None:
-        pan_clamped = max(config.PAN_LIMIT_MIN, min(config.PAN_LIMIT_MAX, pan))
-        tilt_clamped = max(config.TILT_LIMIT_MIN, min(config.TILT_LIMIT_MAX, tilt))
-        self._pan_target = pan_clamped
-        self._tilt_target = tilt_clamped
-
-    def update_servos(self) -> None:
-        """Call once per main loop tick to advance smoothed position."""
-        alpha = config.SERVO_ALPHA
-        self.pan_angle += alpha * (self._pan_target - self.pan_angle)
-        self.tilt_angle += alpha * (self._tilt_target - self.tilt_angle)
-        if not self._mock_mode and self.pan_servo and self.tilt_servo:
-            self.pan_servo.angle = self.pan_angle
-            self.tilt_servo.angle = self.tilt_angle
-```
-
-Call `self.hardware.update_servos()` once per main loop tick in `TestTracker.uruchom()`
-after `self.maszyna.tick(...)`.
-
-**Why exponential smoothing (not linear interpolation or easing curves):**
-
-- Linear interpolation requires knowing start and end and a fixed step count — adds
-  complexity and breaks when the setpoint changes every frame (which it does during PID).
-- Easing curves (sine, cubic) are designed for scripted motions to fixed targets —
-  not for real-time dynamic control where target changes continuously.
-- Exponential smoothing (EMA) is a single-line, stateless operation. Alpha controls
-  the bandwidth: small alpha = very smooth but slow; large alpha = fast but less smooth.
-- This is the standard technique for servo smoothing in robotics control loops.
-  HIGH confidence — used in virtually all real-time servo tracking implementations.
-
-**SERVO_ALPHA tuning guidance:**
-
-| Alpha | Behavior | Use |
-|-------|----------|-----|
-| 0.2 | Very smooth, slow response | OK for scanning, too slow for tracking |
-| 0.4 | Balanced — smooth scan, acceptable tracking lag | Recommended starting point |
-| 0.6 | Fast response, small smoothing benefit | Aggressive tracking with slight smoothing |
-| 1.0 | No smoothing (current behavior) | Instant jump, jerky |
-
-**Important: smooth_move_to() is unaffected** — it uses blocking while-loop and calls
-`set_angles()` with immediate application. The smoothing wrapper should be optional,
-activated only in the real-time loop. If `update_servos()` approach is used, ensure
-`smooth_move_to()` bypasses it (use direct servo assignment) to preserve safe-start behavior.
-
-**Alternative considered: separate background thread for servo interpolation**
-
-A dedicated servo thread sleeping 20ms could interpolate at 50Hz independent of
-the camera/detection rate. This decouples servo smoothness from detection FPS.
-However, it adds thread complexity and requires shared state synchronization.
-For this project's scope, EMA in the main loop is simpler and sufficient.
-
-**No new libraries needed.** Pure Python implementation.
+| Tool | Purpose | Notes |
+|------|---------|-------|
+| Arduino IDE 2.x | Compilation + upload | Board: "Arduino UNO R4 WiFi" from Boards Manager (ArduinoCore-renesas 1.4.1) |
+| Arduino Library Manager | Install RTClib, update Servo | Search: "RTClib" → Adafruit; "Servo" → arduino-libraries (must be 1.3.0+) |
+| Serial Monitor 115200 baud | Debugging over USB | Use `Serial` (USB-C) for debug; same object as pi_brain.py reads |
 
 ---
 
-### Fix 3: AWB / ColourGains Green Tint — Root Cause and Fix
-
-**Problem:** Green tint visible from first frame, constant G channel regardless of scene.
-Previous fix set `ColourGains=(1.0, 1.0)` in `create_video_configuration()`, replacing
-a blue tint with a green tint.
-
-#### Why `(1.0, 1.0)` causes green tint (HIGH confidence)
-
-`ColourGains = (red_gain, blue_gain)` — green is NOT a direct parameter.
-
-In a camera's ISP pipeline, the white balance gains are applied to R and B channels.
-Green is used as the reference channel and is not directly amplified. When you set:
-- `red_gain = 1.0` — red suppressed relative to daylight calibration (typically 1.5–2.5)
-- `blue_gain = 1.0` — blue suppressed relative to daylight calibration (typically 1.5–2.0)
-
-The result is that R and B are underamplified. Since G is the reference, the image
-appears green because G is relatively brighter than R or B.
-
-Setting `(1.0, 1.0)` does not mean "neutral" — it means "suppress both red and blue
-to 1x amplification." For the IMX219 under typical indoor lighting, the correct AWB
-gains are approximately R=1.5–2.5, B=1.5–2.0 (scene-dependent).
-
-**Source:** raspberrypi/picamera2 discussion #592 — maintainer confirms that
-setting ColourGains disables AWB and sets exact gains as specified. (HIGH confidence)
-
-#### Why the current code produces wrong gains
-
-Current `Picamera2Stream.start()` sets `ColourGains=(1.0, 1.0)` in
-`create_video_configuration()`. This locks the gains at configure time, BEFORE AWB
-has run at all. The camera never gets to auto-calculate appropriate gains.
-
-This is doubly wrong:
-1. Gains set at configure time may not be applied the same way as gains set after start
-2. `(1.0, 1.0)` is not a neutral value — it suppresses red and blue
-
-#### Correct AWB lock sequence (HIGH confidence — picamera2 official docs + issue #592)
-
-The only reliable sequence to get correct white balance:
-
-```python
-def start(self) -> None:
-    self._picam2 = Picamera2()
-    video_config = self._picam2.create_video_configuration(
-        lores={"size": (self._width, self._height), "format": "YUV420"}
-        # Do NOT set ColourGains here — let AWB run first
-    )
-    self._picam2.configure(video_config)
-    self._picam2.start()
-
-    # Wait for AWB to converge on actual scene illumination
-    logger.info("Czekam na stabilizację AWB (2s)...")
-    time.sleep(2.0)
-
-    # Read what AWB converged to
-    metadata = self._picam2.capture_metadata()
-    gains = metadata.get("ColourGains")
-    logger.info(f"ColourGains z AWB: {gains}")
-
-    if gains is None or gains == (0.0, 0.0):
-        # AWB did not produce gains — use realistic fallback for IMX219 daylight
-        gains = (2.2, 1.8)   # NOT (1.0, 1.0) — see above
-        logger.warning(f"AWB nie zwróciło gains — używam fallback {gains}")
-
-    # Lock at AWB-determined values — this also disables auto AWB
-    self._picam2.set_controls({"ColourGains": (float(gains[0]), float(gains[1]))})
-
-    # Verify application (next metadata read reflects new gains)
-    time.sleep(0.1)
-    post_meta = self._picam2.capture_metadata()
-    post_gains = post_meta.get("ColourGains")
-    r, b = gains
-    logger.info(f"ColourGains żądane=(R={r:.2f}, B={b:.2f}) zastosowane={post_gains}")
-```
-
-#### AWB_FALLBACK_GAINS constant update required
-
-The constant `AWB_FALLBACK_GAINS = (1.0, 1.0)` in `test_tracker.py` must be changed
-to a realistic neutral value. Recommended:
-```python
-AWB_FALLBACK_GAINS = (2.2, 1.8)  # IMX219 typowe oświetlenie wewnętrzne
-```
-
-Rationale: This matches the real-world range documented in RPi forum discussions
-(ColourGains values like `(2.522, 1.897)` and `(1.88, 0.941)` are commonly reported
-for IMX219). The fallback is only used when `capture_metadata()` returns None or (0.0, 0.0),
-which indicates AWB did not complete — the realistic fallback avoids visible green tint.
-
-#### YUV conversion flag — confirm NV12 vs YUV420p (from v1.8 research, still relevant)
-
-If correcting ColourGains does not eliminate tint, the YUV conversion flag may be wrong.
-Picamera2 on Bookworm typically produces NV12 (semi-planar). Using `cv2.COLOR_YUV420p2BGR`
-on NV12 data produces systematic color error. Test `cv2.COLOR_YUV2BGR_NV12` instead.
-
-**No new libraries needed.** Fix is configuration-only in `Picamera2Stream.start()`.
-
----
-
-### Fix 4: Servo Escape on TRACKING Entry — PID Anti-Windup and Output Clamping
-
-**Problem:** Servos immediately run to limits when TRACKING state is entered.
-
-#### Why this happens: integral windup across state transitions (HIGH confidence)
-
-When the system is in SCANNING and a face is detected, `_przejdz_do(STATE_TRACKING)`
-is called. This calls `pid_pan.reset()` and `pid_tilt.reset()` correctly.
-
-However, if the face detection produces an initial large error (e.g., face is at the
-extreme edge of frame at 150px offset), the first `_sledz()` call computes:
-- `blad_pan = 150` (large)
-- `pid_pan(150)` with P=0.05 → P-term = 0.05 × 150 = 7.5 degrees
-- `output_limits = (-10.0, 10.0)` — this is within limits, so output = -7.5
-- `nowy_pan = current_pan + (-7.5)` — large jump immediately
-
-At 10 FPS with `sample_time=0.033` (30ms), the PID controller updates faster than
-`sample_time` allows but the integral has not accumulated yet. The P-term alone on
-a large initial error creates the escape.
-
-**Root cause confirmation:** with `PID_PAN_P = 0.05` and pixel error of 160px (max,
-face at frame edge):
-- P-term = 0.05 × 160 = 8.0 degrees per tick
-- After 2 ticks: 16 degrees → 60-degree limit reached in ~8 ticks
-
-This is the expected P-gain behavior with large initial error, not a bug in the PID
-library. The fix is output clamping that is already in place — the issue is the
-output_limits value relative to the P gain.
-
-#### Fix A: Tighten PID_OUTPUT_LIMIT (HIGH confidence, immediate effect)
-
-`PID_OUTPUT_LIMIT = 10.0` in `test_tracker.py` allows 10 degrees/tick correction.
-At 10 FPS this is 100 degrees/second — too fast for smooth tracking.
-
-Recommended range: 3.0–5.0 degrees per tick.
-
-```python
-PID_OUTPUT_LIMIT = 3.0   # Maximum correction per PID tick (degrees)
-```
-
-This means at 10 FPS: max 30 degrees/second servo velocity. The servo will still
-reach the target but more gradually, preventing escape to limits.
-
-The `output_limits` on the PID objects must be updated to match:
-```python
-self.pid_pan.output_limits = (-PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT)
-self.pid_tilt.output_limits = (-PID_OUTPUT_LIMIT, PID_OUTPUT_LIMIT)
-```
-
-**Why simple-pid output_limits is the correct tool here (HIGH confidence — source verified):**
-
-From `simple_pid/pid.py` source: output limits clamp both the final output AND the
-integral accumulator on every call. This is the built-in anti-windup mechanism.
-The integral is not allowed to grow beyond the output limit bounds. So tightening
-`output_limits` directly reduces maximum per-tick correction AND prevents windup.
-
-The `reset()` call already in `_przejdz_do()` is correct behavior. The problem is
-not windup on TRACKING entry (integral is zero after reset) — it is the P-term
-magnitude on large initial errors. Output limiting is the right fix.
-
-#### Fix B: Add error deadband (MEDIUM confidence — standard technique)
-
-Ignore small errors to prevent micromovement:
-```python
-TRACKING_DEADBAND_PX = 15  # pixels — don't correct if error below this
-
-def _sledz(self, bbox, w, h):
-    ...
-    if abs(blad_pan) < TRACKING_DEADBAND_PX:
-        blad_pan = 0.0
-    if abs(blad_tilt) < TRACKING_DEADBAND_PX:
-        blad_tilt = 0.0
-    ...
-```
-
-This prevents continuous micro-corrections when the face is approximately centered,
-reducing servo wear and oscillation. Does not prevent escape on large initial errors —
-use in combination with Fix A, not as a replacement.
-
-#### Fix C: Proportional on measurement vs. on error
-
-`simple-pid` supports `proportional_on_measurement=True` which computes the P-term
-from the rate of change of input rather than error magnitude. This prevents the
-"derivative kick" on large setpoint changes.
-
-For face tracking with setpoint=0 (error is the input), this mode is equivalent to
-using the derivative term as the primary dampener. The current code uses
-`proportional_on_measurement=False` (default), which is correct for this application.
-Changing this would reduce initial P-term response but would require re-tuning all gains.
-
-**Verdict: Do not change proportional_on_measurement.** Fix A (tighten output_limits)
-is the correct and simpler intervention.
-
-#### Recommended PID configuration for v1.9
-
-```python
-# In test_tracker.py constants
-PID_OUTPUT_LIMIT = 3.0    # was 10.0 — tighter clamp prevents escape
-TRACKING_DEADBAND_PX = 15  # new — suppress micro-corrections
-
-# In config.py (if PID gains need retuning post output-limit change)
-# Start with existing values, reduce if still oscillating:
-PID_PAN_P = 0.05   # unchanged
-PID_PAN_I = 0.001  # unchanged
-PID_PAN_D = 0.005  # unchanged
-PID_TILT_P = 0.05  # unchanged — only adjust if still escaping after limit change
-```
-
-**Tuning protocol after fix (empirical, per project methodology):**
-
-1. Deploy with `PID_OUTPUT_LIMIT = 3.0` — confirm no escape
-2. If tracking is too sluggish (face moves fast, servo can't keep up), increase to 5.0
-3. If oscillation occurs, reduce `PID_PAN_P` by 20% (0.05 → 0.04)
-4. If steady-state offset remains (face held right of center permanently), increase `PID_PAN_I` by 50%
-
-**No new libraries needed.** Fix is constant and logic change only.
-
----
-
-## Recommended Stack Additions for v1.9
-
-### New Dependencies
-
-**None.** All four fixes use existing installed libraries.
-
-### Constants / Configuration Changes Required
-
-| File | Constant | Old Value | New Value | Reason |
-|------|----------|-----------|-----------|--------|
-| `src/modes/test_tracker.py` | `AWB_FALLBACK_GAINS` | `(1.0, 1.0)` | `(2.2, 1.8)` | `(1.0, 1.0)` suppresses R and B, causing green tint |
-| `src/modes/test_tracker.py` | `PID_OUTPUT_LIMIT` | `10.0` | `3.0` | 10 deg/tick at 10 FPS = uncontrolled escape; 3.0 limits velocity |
-| `src/modes/test_tracker.py` | `TRACKING_DEADBAND_PX` | (new) | `15` | Suppress micro-corrections, reduce oscillation |
-| `src/config.py` | `SERVO_ALPHA` | (new) | `0.4` | Exponential smoothing factor for scan smoothness |
-
-### Code Changes Required
-
-| File | Class/Function | Change Type | Description |
-|------|---------------|-------------|-------------|
-| `src/modes/test_tracker.py` | `Picamera2Stream.start()` | Logic fix | Remove `ColourGains` from `create_video_configuration()`, read AWB metadata after 2s, use realistic fallback |
-| `src/hardware.py` | `PanTiltSystem` | New method | Add `update_servos()` with EMA smoothing, add `_pan_target`/`_tilt_target` fields |
-| `src/hardware.py` | `set_angles()` | Refactor | Store to target fields instead of direct servo command |
-| `src/modes/test_tracker.py` | `TestTracker.uruchom()` | Add call | Call `self.hardware.update_servos()` once per main loop tick |
-| `src/modes/test_tracker.py` | `MaszynaStanow._sledz()` | Add deadband | Zero blad_pan/blad_tilt below TRACKING_DEADBAND_PX before PID call |
-| `src/hardware.py` | `set_angles()` | Split per-servo | Separate pan_servo and tilt_servo null-checks to diagnose tilt freeze |
-
----
-
-## Alternatives Considered for v1.9
-
-| Recommended | Alternative | Why Not |
-|-------------|-------------|---------|
-| Exponential smoothing (EMA) in main loop | Separate servo interpolation thread | Thread adds shared state complexity; EMA in main loop is simpler and sufficient at 10 FPS |
-| EMA alpha=0.4 | Fixed step size (smooth_move_to style) | Fixed step breaks for dynamic PID targets that change every frame; EMA adapts automatically |
-| Tighten PID_OUTPUT_LIMIT to 3.0 | Reduce PID_PAN_P | Output limit is the correct tool for escape prevention; gain reduction changes convergence behavior and requires full re-tuning |
-| AWB metadata read + set_controls | Manual ColourGains values hardcoded | Hardcoded values are scene-specific; reading actual AWB output adapts to room lighting |
-| AWB fallback (2.2, 1.8) | Keep fallback (1.0, 1.0) | (1.0, 1.0) suppresses R and B, causing green tint as documented |
-| Per-servo null-check in set_angles | Mock mode flag for full system | Per-servo check pinpoints whether only tilt init failed vs. whole hardware layer |
-
-## What NOT to Use
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| `ColourGains: (1.0, 1.0)` | Suppresses red and blue relative to green reference; causes green tint. Not a neutral value. | Read actual AWB gains from `capture_metadata()` after 2s warmup |
-| `ColourGains` in `create_video_configuration()` | Applied before AWB has run; gains may not reflect actual scene illumination | Set via `set_controls()` after `start()` + sleep |
-| `PID_OUTPUT_LIMIT = 10.0` with P=0.05 | At 10 FPS, 10 deg/tick = 100 deg/s max velocity; face at frame edge (160px error) drives P-term to 8 deg/tick — escape in 8 frames | `PID_OUTPUT_LIMIT = 3.0` limits to 30 deg/s maximum |
-| Direct `servo.angle = value` in main loop for scanning | Servo receives discrete angle commands at frame rate (10 FPS); produces visible stepping | EMA filter in `update_servos()` smooths position between frames |
-| `smooth_move_to()` for real-time tracking | Blocking while-loop; will block the entire tracking thread until target is reached | EMA in non-blocking `update_servos()` called once per tick |
-
----
-
-## Version Compatibility (v1.9)
-
-| Package | Version | Notes |
-|---------|---------|-------|
-| simple-pid | >=2.0.1 (pinned) | `output_limits` clamps integral (anti-windup confirmed from source); `reset()` zeroes all terms |
-| picamera2 | system pkg (>=0.3.x) | `capture_metadata()["ColourGains"]` returns `(red, blue)` tuple; `set_controls({"ColourGains": ...})` disables AWB implicitly |
-| gpiozero | 2.0 (pinned) | `AngularServo.angle` accepts float; direct assignment is immediate (no built-in smoothing) |
-| pigpio | 1.78 (pinned) | Hardware PWM eliminates OS-level jitter; Python-level angle stepping still discrete |
-
----
-
-## v1.8 Supplement (preserved from 2026-03-29)
-
-This section answers the three specific questions raised for the v1.8 milestone:
-1. Better face detector on RPi4 (replaces overly strict HAAR cascade)
-2. Picamera2 AWB/ColourGains debugging for IMX219 sensor on Bookworm
-3. PID diagnostic logging patterns for servo runaway debugging
-
-It supersedes any previous speculation on these topics.
-
----
-
-### 1. Face Detector Replacement — Decision: OpenCV DNN (res10_300x300)
-
-**Recommendation: OpenCV DNN with `res10_300x300_ssd_iter_140000.caffemodel`**
-
-**Rationale:** Three options were evaluated.
-
-#### Option A: MediaPipe Face Detection — REJECTED
-
-**Installation blocker on RPi4 Bookworm (64-bit):**
-
-MediaPipe PyPI (latest 0.10.33 as of March 2026) does NOT publish a Linux aarch64 wheel.
-The PyPI page lists wheels only for: Windows x86-64, Linux x86-64, macOS ARM64.
-Linux ARM64 (which RPi4 Bookworm 64-bit requires) is absent.
-
-Workarounds exist but add maintenance cost:
-- PINTO0309/mediapipe-bin: community-maintained, tracks behind official releases,
-  not a reliable dependency for a production system
-- Build from source: requires Docker + 4+ hour compile time on RPi4
-
-Additionally, MediaPipe achieves 9–12 FPS on RPi4 CPU-only (confirmed by benchmark
-from SaraEye/SaraKIT project) — competitive but with a heavyweight installation
-that is not straightforward on the target platform.
-
-**Verdict: Do not use MediaPipe for this project.**
-
-Sources:
-- PyPI mediapipe 0.10.33: no aarch64 Linux wheel listed
-- GitHub google-ai-edge/mediapipe issue #4673: confirms aarch64 install problems
-- PINTO0309/mediapipe-bin: community wheel workaround (fragile)
-
-#### Option B: OpenCV DNN (res10_300x300_ssd) — RECOMMENDED
-
-**Why this is the right choice:**
-
-Already on the system. `opencv-python-headless==4.8.1.78` is pinned in requirements.txt.
-The DNN module is bundled with OpenCV — no additional pip install needed.
-Only two external model files are required (~2MB total), downloaded once and committed.
-
-**Performance on RPi4 (64-bit, 300x300 input):**
-- DNN SSD res10 at 320x240 input: approximately 8–12 FPS (MEDIUM confidence — Q-engineering
-  benchmarks show the Ultra-Light-Fast slim-320 model at ~35–40 FPS with OpenCV,
-  but that is a different model; the res10 SSD Caffe model is slower due to ResNet-10 backbone)
-- HAAR at current settings (minNeighbors=8, minSize=80px): measured in project as
-  producing near-zero detections — the bottleneck is sensitivity, not FPS
-
-At 320x240 input the inference cost is lower than 300x300 because the blob resize
-is from a smaller input. Real throughput in the 8–15 FPS range is acceptable for the
-control loop (HAAR runs similarly on the same hardware when detection fires).
-
-**Accuracy advantage:** DNN SSD detects faces at non-frontal angles (+/-30 degrees),
-partial occlusions, and lower contrast. HAAR with minNeighbors=8 requires near-perfect
-frontal alignment — verified as the root cause of "brak zielonej ramki" in PROJECT.md.
-
-**Integration path is minimal:**
-```python
-# Drop-in replacement inside DetekcjaTwarzy
-net = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
-blob = cv2.dnn.blobFromImage(klatka, 1.0, (300, 300), (104, 177, 123))
-net.setInput(blob)
-detections = net.forward()
-# detections[0, 0, i, 2] is confidence; [3:7] is x1,y1,x2,y2 normalized
-```
-
-The class `DetekcjaTwarzy` in `src/modes/test_tracker.py` becomes a thin wrapper
-around this net — streak filter and bbox selection logic stays identical.
-
-**Model files (must be downloaded and committed to repo or a `models/` directory):**
-
-| File | Size | Source |
-|------|------|--------|
-| `deploy.prototxt` | ~28KB | github.com/sr6033/face-detection-with-OpenCV-and-DNN |
-| `res10_300x300_ssd_iter_140000.caffemodel` | ~10.1MB | same repo or OpenCV samples |
-
-**Confidence threshold:** 0.5 is the standard default. For a face-tracking system with
-streak filter in place, 0.5 works well. Lower to 0.4 if detections are sparse.
-
-#### Option C: OpenCV HAAR (improved parameters) — PARTIAL FIX ONLY
-
-Relaxing `minNeighbors` from 8 to 4–5 and `minSize` from (80,80) to (50,50) will
-improve detection rate without any new dependency. However:
-- Still fails at head rotation > ~15 degrees
-- False-positive rate increases noticeably without dlib backup
-- Appropriate only as a quick interim test, not the final fix
-
-**Verdict: Use OpenCV DNN as the replacement. Keep HAAR fallback path available for
-testing, controlled by a constructor flag.**
-
----
-
-### 2. Picamera2 AWB/ColourGains Debugging — IMX219 on Bookworm
-
-**Context:** v1.7 shipped AWB lock code. PROJECT.md says "AWB lock via set_controls
-after start()+2s sleep — Good — eliminates blue tint." v1.8 reports blue tint has
-returned or the fix did not execute correctly.
-
-**Diagnostic checklist (in priority order):**
-
-#### Check A: `ColourGains` capitalization (HIGH confidence — confirmed bug in picamera2)
-
-GitHub issue #312 documented a case-sensitivity bug in older picamera2 versions.
-The correct key is `"ColourGains"` (capital G). Using `"Colourgains"` silently fails
-in older versions and raises `RuntimeError` in newer ones.
-
-Verify the exact string in `Picamera2Stream.start()`:
-```python
-self._picam2.set_controls({"ColourGains": gains})  # capital G — correct
-```
-
-#### Check B: `ColourGains = (0.0, 0.0)` treated as AWB-on
-
-Confirmed from picamera2 issue #825: setting `ColourGains` to exactly `(0.0, 0.0)`
-is interpreted by libcamera as "enable AWB". If `capture_metadata()` returns
-`ColourGains = (0.0, 0.0)` (which can happen if the sensor has not yet computed
-AWB at 2s warmup — e.g., dark room, camera just reset), the fallback `(2.5, 1.9)`
-is used. But if the fallback gains are wrong for current lighting, blue tint persists.
-
-**Fix: Add verification log after set_controls to confirm gains were applied:**
-```python
-time.sleep(0.1)  # brief settle after set_controls
-post_meta = self._picam2.capture_metadata()
-applied = post_meta.get("ColourGains")
-logger.info(f"Gains po ustawieniu: {applied}")
-```
-
-The second `capture_metadata()` call reads the controls from the next delivered frame,
-confirming the gains were actually applied to the pipeline.
-
-#### Check C: YUV420 subformat (NV12 vs YUV420p) — HIGH confidence
-
-This was documented in the v1.7 research STACK.md but may not have been acted upon.
-Picamera2 on Bookworm with IMX219 delivers YUV420 as NV12 (semi-planar), NOT YUV420p
-(fully planar). Using `cv2.COLOR_YUV420p2BGR` on NV12 data produces a systematic colour
-error that LOOKS like a blue tint because the UV plane interleaving is misread.
-
-**Test: print the YUV frame shape before conversion:**
-```python
-logger.info(f"YUV klatka shape: {klatka_yuv.shape}")
-# 320x240 YUV → expected (360, 320) for both NV12 and YUV420p
-# Shape alone does not distinguish — must test both flags
-```
-
-**Diagnostic code for `_petla_przechwytywania`:**
-```python
-# Try NV12 first — this is what Picamera2/libcamera produces on Bookworm
-klatka_nv12 = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV2BGR_NV12)
-klatka_p = cv2.cvtColor(klatka_yuv, cv2.COLOR_YUV420p2BGR)
-# Log average B channel value of both; correct one will have B ~= G ~= R under white light
-b_nv12 = klatka_nv12[:,:,0].mean()
-b_p = klatka_p[:,:,0].mean()
-logger.debug(f"NV12 avg B={b_nv12:.1f}  YUV420p avg B={b_p:.1f}")
-```
-
-The correct conversion flag produces roughly equal mean values across R, G, B channels
-under neutral white light. A blue tint produces B significantly higher than R.
-
-**Recommendation:** Change default to `cv2.COLOR_YUV2BGR_NV12` and verify. If image
-looks correct, the old flag was wrong. This is the single most likely cause of
-persistent blue tint after AWB gains are set correctly.
-
-#### Check D: AWB warm-up duration
-
-2 seconds is documented to be sufficient for IMX219 under normal conditions.
-However, on cold start in a dark room or with significant backlight, AWB may need
-longer. If `ColourGains` from `capture_metadata()` looks unreasonable (e.g., gains
-below 1.0 or above 4.0), extend sleep to 3–4 seconds and re-test.
-
-#### Recommended minimal AWB debug patch for v1.8:
-
-```python
-def start(self) -> None:
-    self._picam2 = Picamera2()
-    video_config = self._picam2.create_video_configuration(
-        lores={"size": (self._width, self._height), "format": "YUV420"}
-    )
-    self._picam2.configure(video_config)
-    self._picam2.start()
-
-    logger.info("Czekam na stabilizację AWB (2s)...")
-    time.sleep(2.0)
-
-    metadata = self._picam2.capture_metadata()
-    gains = metadata.get("ColourGains")
-    logger.info(f"ColourGains z metadanych: {gains}")  # NEW: log raw value
-
-    if gains is None or gains == (0.0, 0.0):
-        logger.warning("ColourGains niedostępne lub zerowe — używam fallback (2.5, 1.9)")
-        gains = AWB_FALLBACK_GAINS
-
-    self._picam2.set_controls({"ColourGains": gains})
-
-    # NEW: verify gains were applied
-    time.sleep(0.1)
-    post_meta = self._picam2.capture_metadata()
-    applied_gains = post_meta.get("ColourGains")
-    r, b = gains
-    logger.info(f"ColourGains żądane: (R={r:.2f}, B={b:.2f}) | zastosowane: {applied_gains}")
-
-    self._running = True
-    self._thread = threading.Thread(target=self._petla_przechwytywania, daemon=True)
-    self._thread.start()
-```
-
-No new dependencies required. Pure Picamera2 API.
-
----
-
-### 3. PID Diagnostic Logging — simple-pid `components` Property
-
-**Context:** v1.8 reports pan runaway (instant escape to limit) and tilt frozen at 0.0.
-These are opposite failure modes requiring different root causes. Per-tick PID logging
-is the only reliable way to distinguish them without physical access to the hardware.
-
-**simple-pid `components` property — HIGH confidence (verified from source code)**
-
-Since v2.0, simple-pid exposes a `components` property returning `(P, I, D)` tuple
-of the last computed terms:
-
-```python
-p_term, i_term, d_term = pid.components
-# Available after any pid(error) call — read immediately after the call
-```
-
-Source: `github.com/m-lundberg/simple-pid/blob/master/simple_pid/pid.py`
-
-**Diagnostic logging pattern for `_sledz` in `MaszynaStanow`:**
-
-```python
-def _sledz(self, bbox, w, h):
-    x, y, bw, bh = bbox
-    srodek_x = x + bw // 2
-    srodek_y = y + bh // 2
-    ramka_cx, ramka_cy = w // 2, h // 2
-
-    blad_pan = srodek_x - ramka_cx
-    blad_tilt = srodek_y - ramka_cy
-
-    korekta_pan = -self.pid_pan(blad_pan)
-    p_pan, i_pan, d_pan = self.pid_pan.components
-
-    korekta_tilt = -self.pid_tilt(blad_tilt)
-    p_tilt, i_tilt, d_tilt = self.pid_tilt.components
-
-    nowy_pan = self.hardware.pan_angle + korekta_pan
-    nowy_tilt = self.hardware.tilt_angle + korekta_tilt
-
-    logger.debug(
-        f"blad=({blad_pan:+.0f},{blad_tilt:+.0f}) "
-        f"pid_out=({korekta_pan:+.2f},{korekta_tilt:+.2f}) "
-        f"PID_pan=P{p_pan:+.3f}/I{i_pan:+.3f}/D{d_pan:+.3f} "
-        f"PID_tilt=P{p_tilt:+.3f}/I{i_tilt:+.3f}/D{d_tilt:+.3f} "
-        f"angles=({nowy_pan:+.1f},{nowy_tilt:+.1f})"
-    )
-
-    self.hardware.set_angles(nowy_pan, nowy_tilt)
-```
-
-Use `logger.debug` (not `info`) to avoid flooding normal output. Enable with:
-```bash
-python3 run_test_tracker.py --log-level DEBUG
-# or temporarily change basicConfig level to DEBUG in main
-```
-
-**What each failure mode looks like in this log:**
-
-| Symptom | Log pattern | Root cause |
-|---------|-------------|------------|
-| Pan runaway to limit | `blad_pan` small, `korekta_pan` large and growing | I-term windup — integral not reset, or sign error causing positive feedback |
-| Tilt frozen at 0.0 | `blad_tilt` non-zero, `korekta_tilt=0.00` every tick | `pid_tilt(blad_tilt)` returns 0 — possible: `output_limits` set to (0,0), or `pid_tilt` never called |
-| Tilt frozen at 0.0 (v2) | `korekta_tilt` non-zero, `nowy_tilt` non-zero, but HUD shows 0.0 | `set_angles()` not called, or `tilt_angle` attribute not updated |
-
-**I-term windup detection:** If `i_pan` grows each tick toward `PID_OUTPUT_LIMIT`
-(currently 10.0) and the total output is dominated by I-term even when error is small,
-that confirms integral windup. Fix: verify `pid_pan.reset()` is called at SCANNING entry.
-
-**Additional: log `set_angles` actual writes (already in hardware.py via WARNING on clamp)**
-
-The clamp WARNING in `set_angles()` (already present in v1.7 hardware.py) will fire
-every tick if the servo is hitting limits — that confirms runaway vs. frozen.
-
-**CSV logging (if needed for post-session analysis):**
-
-```python
-import csv, io
-_pid_log_buffer = io.StringIO()
-_pid_csv = csv.writer(_pid_log_buffer)
-_pid_csv.writerow(["t","blad_pan","blad_tilt","k_pan","k_tilt","p_pan","i_pan","d_pan","p_tilt","i_tilt","d_tilt"])
-
-# Inside _sledz, after computing terms:
-_pid_csv.writerow([time.time(), blad_pan, blad_tilt, korekta_pan, korekta_tilt,
-                   p_pan, i_pan, d_pan, p_tilt, i_tilt, d_tilt])
-```
-
-Flush to file on shutdown. Visualize with any CSV viewer or numpy/matplotlib.
-No additional libraries required — `csv` and `io` are stdlib.
-
----
-
-## Recommended Stack Additions for v1.8
-
-### New Dependencies
-
-| Package | Version | Source | Purpose | Install |
-|---------|---------|--------|---------|---------|
-| OpenCV DNN models | n/a | Downloaded once (not pip) | res10 SSD face detection | `models/` directory in repo |
-
-No new pip packages required. All additions use existing installed libraries.
-
-### Model Files to Add
-
-```
-models/
-  deploy.prototxt                          (~28KB)
-  res10_300x300_ssd_iter_140000.caffemodel (~10.1MB — add to .gitignore or LFS)
-```
-
-Download script (run once on RPi):
-```bash
-mkdir -p models
-wget -O models/deploy.prototxt \
-  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/deploy.prototxt"
-wget -O models/res10_300x300_ssd_iter_140000.caffemodel \
-  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/res10_300x300_ssd_iter_140000.caffemodel"
-```
-
-### requirements.txt — No Changes Needed
-
-The existing pinned stack handles all v1.8 changes:
-```
-opencv-python-headless==4.8.1.78  # DNN module bundled
-simple-pid>=2.0.1                  # components property available since 2.0
+## Installation
+
+```cpp
+// Arduino IDE — Library Manager installs
+// 1. Boards Manager: "Arduino UNO R4 Boards" → version 1.4.1
+// 2. Library Manager: "RTClib by Adafruit" → 2.1.4
+// 3. Library Manager: "Servo by Arduino" → 1.3.0  (update if older!)
+// SD and Wire are bundled — no separate install
+
+// Sketch includes for new features
+#include <Wire.h>        // I2C — required by RTClib
+#include <RTClib.h>      // DS1307 RTC
+#include <SPI.h>         // SPI bus — required by SD
+#include <SD.h>          // SD card (CS=D10)
 ```
 
 ---
 
 ## Alternatives Considered
 
-| Recommended | Alternative | Why Not |
-|-------------|-------------|---------|
-| OpenCV DNN res10_300x300 | MediaPipe Face Detection | No aarch64 Linux wheel on PyPI as of 2026-03-29; requires community builds or compile-from-source |
-| OpenCV DNN res10_300x300 | HAAR minNeighbors=4 relaxed | Fixes threshold, not detector — still fails >15deg rotation; acceptable only as interim test |
-| simple-pid components property | Custom PID wrapper with logging | components is the official API; wrapping adds indirection for no benefit |
-| cv2.COLOR_YUV2BGR_NV12 | cv2.COLOR_YUV420p2BGR | Picamera2 on Bookworm delivers NV12 semi-planar; wrong flag produces systematic blue shift |
+| Recommended | Alternative | When to Use Alternative |
+|-------------|-------------|-------------------------|
+| Adafruit RTClib 2.1.4 | DS1307RTC (PaulStoffregen) | Never for this project — DS1307RTC is AVR-only, not tested on R4 |
+| Arduino built-in SD.h | SdFat (greiman) | If CSV write performance becomes a bottleneck (unlikely at 10-frame logging interval); SdFat is more efficient but adds complexity |
+| Wire (hardware I2C) | Software I2C | Never — software I2C has no advantage on R4; hardware Wire works with proper pull-ups |
+| Servo 1.3.0 | PWMServo | PWMServo not recommended for R4; requires timer configuration not supported in standard Arduino framework |
+
+---
 
 ## What NOT to Use
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| `mediapipe` pip install | No aarch64 Linux wheel; PINTO0309 community builds lag behind and add fragile dependency | OpenCV DNN res10_300x300 |
-| `ColourGains: (0.0, 0.0)` in set_controls | libcamera interprets (0.0, 0.0) as "enable AWB" — will re-enable auto white balance | Use actual measured gains or fallback (2.5, 1.9) |
-| `cv2.COLOR_YUV420p2BGR` without verification | Picamera2 on Bookworm likely outputs NV12 (semi-planar), not planar YUV420p | Test both flags; default to COLOR_YUV2BGR_NV12 |
-| Manual `_integral` attribute access in simple-pid | Private attribute; may break between versions | `pid.components` tuple — official public API |
-| `logger.info` per tick for PID values | Floods logs at 30 FPS, makes debugging harder | `logger.debug` + enable DEBUG level only when diagnosing |
+| Servo library < 1.2.2 | PWM resolution bug: only 10 discrete steps (~100 µs increments) on R4, causes servo jitter; affects MG-90S control quality | Servo 1.3.0 from Library Manager |
+| DS1307RTC (PaulStoffregen) | Targets AVR register-level TimeLib, not tested on Renesas RA4M1 | Adafruit RTClib 2.1.4 |
+| Wire as I2C slave | ArduinoCore-renesas issue #180 — switching between master/slave modes was broken; fixed in core 1.0.4+ but using as master-only is safest | Wire.begin() without address (master only) |
+| SoftwareSerial at 115200 baud | R4 SoftwareSerial only supports single instance; unreliable at 115200 baud | Hardware Serial1 on D0/D1 if needed; but this project uses USB Serial only |
+| WiFi / Bluetooth features of R4 | Not needed in v2.1; enabling WiFi draws burst current on 3.3V rail, risks brownout | Leave WiFi unconfigured; do not include WiFiS3.h |
+
+---
+
+## Arduino Uno R4 WiFi vs Leonardo (ATmega32U4) — Migration Differences
+
+This is the core of v2.1. Every difference below requires action in firmware.
+
+### USB Serial (CRITICAL)
+
+| Aspect | Leonardo (ATmega32U4) | Uno R4 WiFi (RA4M1 + ESP32-S3) |
+|--------|----------------------|--------------------------------|
+| USB hardware | Native USB CDC on MCU | ESP32-S3 bridges USB to RA4M1 via UART |
+| DTR signal | Exposed to sketch via `Serial.dtr()` | NOT implemented — DTR/RTS not forwarded |
+| Serial object | `Serial` = USB CDC | `Serial` = USB-C (same name, different implementation) |
+| Serial1 | D0/D1 UART | D0/D1 UART (same behavior) |
+| 1200-baud reset trick | Present (bootloader entry) | Not applicable |
+| Caterina bootloader | Yes — required `DTR=False` workaround in pyserial | No — standard DFU; pyserial does not need DTR trick |
+| Startup delay | Script needed `time.sleep(2)` after reset | No reset on connect; `Serial` available immediately |
+
+**Action for v2.1:** Remove any `DTR=False` / `time.sleep()` logic from `pi_brain.py`. On R4, `Serial` over USB-C works identically to any standard serial port — open at 115200, read/write normally. No special handshake needed.
+
+### I2C (Wire) — Pull-ups
+
+| Aspect | Leonardo / Uno R3 | Uno R4 WiFi |
+|--------|------------------|------------|
+| On-board pull-ups on A4/A5 | Present (built-in ~10 KΩ) | NOT mounted — footprints exist but unpopulated |
+| Consequence | I2C devices work without external resistors | I2C devices may fail or produce garbage without external pull-ups |
+
+**Action for v2.1:** The DataLogger Shield V1.0 includes its own I2C pull-up resistors (2.2 KΩ on SDA/SCL) on the shield PCB. When the shield is seated, these pull-ups are present — no additional wiring needed. Verify shield pull-ups are present before debugging I2C failures. If I2C fails, add external 4.7 KΩ resistors from A4 (SDA) to 5V and A5 (SCL) to 5V as a fallback.
+
+### SPI Performance
+
+| Aspect | Uno R3 (ATmega328P) | Uno R4 WiFi (RA4M1) |
+|--------|--------------------|--------------------|
+| Max SPI clock | 8 MHz | 24 MHz theoretical |
+| Practical SD card speed | ~4 MHz reliable | ~5 MHz practical max before instability |
+| Inter-transfer gap | < 2 µs | ~11 µs (FSP library reconfigures SPI each transfer) |
+| Impact on CSV logging | N/A baseline | Slower, but sufficient for 10-frame + state-change log rate |
+
+**Action for v2.1:** Use `SD.begin(10)` with default speed (SPISettings 4 MHz, MSBFIRST, SPI_MODE0). Do not attempt to maximize SPI clock — stability matters more than speed for CSV logging.
+
+### GPIO Current Limits
+
+| Aspect | Uno R3 | Uno R4 WiFi |
+|--------|--------|------------|
+| Per-pin max current | 40 mA | 8 mA |
+| Total GPIO budget | 200 mA | 60 mA |
+| Buzzer driver | Direct drive possible | Use transistor or ensure passive buzzer < 8 mA |
+
+**Action for v2.1:** Verify buzzer current draw on D8. Passive buzzers driven by PWM are typically < 5 mA — acceptable. Active buzzers can draw up to 30 mA — requires NPN transistor driver on D8.
+
+### Analog Pins A0/A1 as Digital Output (LCD RS, E)
+
+| Aspect | R3 | R4 WiFi |
+|--------|-----|---------|
+| A0 special function | ADC only | DAC output (12-bit) + ADC |
+| A1 special function | ADC only | Op-amp non-inverting input + capacitive touch |
+| Use as digital OUTPUT | Yes, fully supported | Yes — `pinMode(A0, OUTPUT); digitalWrite(A0, HIGH)` works |
+| Risk | None | No conflict when used as digital output (DAC/op-amp disabled by default) |
+
+**Action for v2.1:** LiquidCrystal with RS=A0, E=A1 is functional. The DAC and op-amp are inactive by default. Use `pinMode(A0, OUTPUT)` and `pinMode(A1, OUTPUT)` explicitly in setup() before `LiquidCrystal.begin()`.
+
+### 32-bit vs 8-bit Arithmetic
+
+| Aspect | Leonardo (8-bit AVR) | R4 WiFi (32-bit ARM Cortex-M4) |
+|--------|---------------------|-------------------------------|
+| `int` size | 16-bit | 32-bit |
+| `long` size | 32-bit | 32-bit |
+| float arithmetic | Software (slow) | Hardware FPU (fast) |
+| millis() overflow | 49.7 days at 32-bit | Same — RA4M1 millis() is 32-bit |
+
+**Action for v2.1:** No arithmetic changes expected. QuickPID uses `float` — benefits from hardware FPU on RA4M1. `millis()` watchdog logic unchanged. Review any `int` variables used for timing — on R4 they are 32-bit, which is fine (same or wider than Leonardo).
+
+---
+
+## Stack Patterns by Variant
+
+**SD card file naming (daily rotation):**
+```cpp
+// RTClib DateTime object + SD.h filename construction
+DateTime now = rtc.now();
+char filename[16];
+snprintf(filename, sizeof(filename), "log_%04d%02d%02d.csv",
+         now.year(), now.month(), now.day());
+SD.open(filename, FILE_WRITE);
+// ALWAYS close after write:
+dataFile.close();
+```
+
+**I2C initialization order:**
+```cpp
+Wire.begin();       // Must call before RTClib — master-only mode
+RTC_DS1307 rtc;
+rtc.begin();        // DS1307 at 0x68
+```
+
+**SPI bus management (single device, no sharing needed):**
+```cpp
+// SD.h manages CS (D10) internally
+// No SPI.beginTransaction() needed unless a second SPI device is added
+SD.begin(10);  // CS=D10
+```
 
 ---
 
 ## Version Compatibility
 
-| Package | Version | Notes |
-|---------|---------|-------|
-| simple-pid | >=2.0.1 (pinned) | `components` property available since 2.0; `reset()` behavior verified |
-| opencv-python-headless | 4.8.1.78 (pinned) | DNN module stable, res10 Caffe model compatible |
-| picamera2 | system pkg (>=0.3.x) | `capture_metadata()` + `set_controls(ColourGains)` API stable; case-sensitive key required |
-
----
-
-## v1.7 Supplement (preserved from 2026-03-27)
-
-### 1. simple_pid Sign Convention
-
-**Source:** `github.com/m-lundberg/simple-pid` raw source — HIGH confidence.
-
-```python
-error = self.setpoint - input_   # setpoint=0: error = -input
-output = Kp * error              # positive input → negative output
-```
-
-Both axes require negation of PID output:
-```python
-korekta_pan  = -self.pid_pan(blad_pan)   # pan+ = right, face right → pan increases
-korekta_tilt = -self.pid_tilt(blad_tilt) # tilt+ = down,  face down  → tilt increases
-```
-
-### 2. Picamera2 AWB Configuration
-
-Correct API sequence: `configure()` → `start()` → `sleep(2)` → `capture_metadata()`
-→ `set_controls({"ColourGains": gains})`. Setting ColourGains implicitly disables AWB.
-
-### 3. simple_pid `reset()` and Anti-Windup
-
-`reset()` clears `_proportional`, `_integral`, `_derivative`, `_last_input`, `_last_error`.
-Anti-windup via `output_limits` clamping integral every iteration. Current code is correct —
-`reset()` called on SCANNING entry is the right pattern.
-
----
-
-## Original Stack Reference (unchanged from v1.6 research)
-
-### Core Technologies
-
-| Technology | Version | Purpose | Why Recommended |
-|------------|---------|---------|-----------------|
-| picamera2 | >=0.3.x (system pkg) | Camera capture via libcamera | Native camera stack on Bookworm; replaces deprecated picamera/V4L2 |
-| pigpio | 1.78+ | Hardware PWM for servos | Validated in v1.5; only library providing true H-PWM on RPi4 |
-| opencv-python-headless | 4.8+ | HAAR + DNN face detection | Already in deps; DNN module bundled |
-| simple-pid | 2.0+ | PID controller with components property | Already in deps; auto-integral clamping with output_limits |
-
-### Installation
-
-```bash
-# System packages (Bookworm 64-bit)
-sudo apt install -y python3-picamera2 python3-libcamera
-
-# Venv with system site-packages (CRITICAL for picamera2)
-python3 -m venv venv --system-site-packages
-source venv/bin/activate
-
-# Python packages (unchanged from v1.7)
-pip install -r requirements.txt
-
-# Model files (one-time download)
-mkdir -p models
-wget -O models/deploy.prototxt \
-  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/deploy.prototxt"
-wget -O models/res10_300x300_ssd_iter_140000.caffemodel \
-  "https://raw.githubusercontent.com/sr6033/face-detection-with-OpenCV-and-DNN/master/res10_300x300_ssd_iter_140000.caffemodel"
-```
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| ArduinoCore-renesas 1.4.1 | Servo 1.3.0 | Servo timer fix requires renesas core 1.0.4+; 1.4.1 confirmed |
+| ArduinoCore-renesas 1.4.1 | RTClib 2.1.4 | Wire master/slave issue fixed in core 1.0.4 (PR #191) |
+| ArduinoCore-renesas 1.4.1 | SD (bundled) | SD compile+hardware PASS per official compatibility matrix |
+| RTClib 2.1.4 | Wire (built-in) | RTClib uses Wire internally; call Wire.begin() before rtc.begin() |
+| QuickPID 3.1.9 | RA4M1 32-bit | Pure C++ float arithmetic — no AVR-specific code; compatible |
+| LiquidCrystal (built-in) | RA4M1 | Parallel 4-bit mode — no I2C involved; no compatibility issues |
 
 ---
 
 ## Sources
 
-### v1.9 supplement (2026-03-29)
-
-- GitHub raspberrypi/picamera2 discussion #592 — maintainer confirms ColourGains=(R,B) tuple where G is reference channel, (1.0,1.0) suppresses R and B (HIGH confidence)
-- GitHub raspberrypi/picamera2 issue #897 — green tint root cause: lens shading correction ISP block; workaround: different sensor mode or disable ALSC (MEDIUM confidence)
-- RPi Forums t=365052 — correct AWB lock sequence: set_controls after configure(), ColourGains implicitly disables AWB (HIGH confidence)
-- GitHub m-lundberg/simple-pid pid.py source — output_limits clamps integral (anti-windup), reset() clears all terms (HIGH confidence)
-- PyImageSearch pan/tilt face tracking — PID gains kP=0.09/kI=0.08/kD=0.002 for pan; in_range() clamping prevents runaway (MEDIUM confidence)
-- simple-pid readthedocs user guide — output_limits anti-windup, sample_time, proportional_on_measurement (HIGH confidence — blocked by Cloudflare but source code verified separately)
-- Hackaday smooth servo animatronics article — EMA smoothing for real-time servo control; alpha tuning guidelines (MEDIUM confidence)
-- RPi Forums servo jitter thread t=313651 — pigpio eliminates hardware jitter; Python discrete commands still produce stepping (HIGH confidence)
-
-### v1.8 supplement (2026-03-29)
-
-- PyPI mediapipe 0.10.33 release page — confirmed no aarch64 Linux wheel (HIGH confidence)
-- GitHub google-ai-edge/mediapipe issue #4673 — aarch64 install failures confirmed
-- PINTO0309/mediapipe-bin — community aarch64 wheel workaround (MEDIUM confidence)
-- GitHub Qengineering/Face-detection-Raspberry-Pi-32-64-bits — OpenCV DNN FPS benchmarks on RPi4
-- GitHub sr6033/face-detection-with-OpenCV-and-DNN — model files source
-- ai.google.dev/edge/mediapipe/solutions/vision/face_detector/python — official MediaPipe Face Detector API
-- GitHub raspberrypi/picamera2 issue #312 — ColourGains case-sensitivity confirmed fix
-- GitHub raspberrypi/picamera2 issue #825 — ColourGains (0,0) = AWB-on behaviour
-- GitHub raspberrypi/picamera2 issue #322 — CCM and AWB disabled behaviour
-- GitHub m-lundberg/simple-pid pid.py source — `components` property verified (HIGH confidence)
-
-### v1.7 supplement (2026-03-27, HIGH confidence)
-
-- simple_pid source code `raw.githubusercontent.com/m-lundberg/simple-pid/master/simple_pid/pid.py`
-- Picamera2 GitHub issues #825, #232, #592
-- RPi Forums t=365052
-
-### Base stack (2026-03-26, MEDIUM confidence — training data + codebase analysis)
-
-- Existing codebase analysis (src/hardware.py, src/config.py) — HIGH confidence
-- Training data (Picamera2 docs, RPi forums, libcamera guides) — MEDIUM confidence
-
----
-*Stack research for: Picamera2 test tracker on RPi4 Bookworm*
-*Base: 2026-03-26 | v1.7 supplement: 2026-03-27 | v1.8 supplement: 2026-03-29 | v1.9 supplement: 2026-03-29*
-
+- https://github.com/arduino/uno-r4-library-compatibility — Official Arduino compatibility matrix; SD PASS, RTClib PASS (HIGH confidence)
+- https://github.com/arduino/ArduinoCore-renesas/issues/180 — DS1307 Wire master-only fix, merged 2023-11-16 as PR #191 (HIGH confidence)
+- https://github.com/arduino/ArduinoCore-renesas/releases/tag/1.4.1 — Latest core release 2025-03-10 (HIGH confidence)
+- https://github.com/arduino-libraries/Servo/releases — Servo 1.3.0 (2024-11-06), 1.2.2 (2024-06-27) PWM timer fix for R4 (HIGH confidence)
+- https://github.com/adafruit/RTClib — RTClib 2.1.4 release 2024-04-09 (HIGH confidence)
+- https://lastminuteengineers.com/arduino-uno-r4-wifi-pinout-reference/ — Pin assignment reference for R4 WiFi including current limits, DAC/op-amp, I2C pull-ups (MEDIUM confidence)
+- https://forum.arduino.cc/t/serial1-serial-differences-and-how-to/1325960 — Serial vs Serial1 clarification on R4 (MEDIUM confidence)
+- https://forum.arduino.cc/t/data-logging-shield-for-r4-minima/1272770 — DataLogger shield RTC I2C issues on R4; shield pull-ups provide fix (MEDIUM confidence)
+- https://forum.arduino.cc/t/arduino-uno-r4-spi-with-sd-card/1328547 — SD card `close()` requirement, SPI transaction management on R4 (MEDIUM confidence)
+- https://github.com/arduino/ArduinoCore-renesas/issues/28 — SPI performance regression on R4 vs R3 (~11 µs inter-transfer gap) (MEDIUM confidence)
+- https://forum.arduino.cc/t/trouble-with-servos-on-r4-wifi/1151749 — Servo PWM resolution bug pre-1.2.2, confirmed fixed (MEDIUM confidence)
 
 ---
 
-## v2.0 Supplement: Distributed Architecture — RPi4 + Arduino Leonardo
-
-**Milestone:** v2.0 Architektura Rozproszona
-**Researched:** 2026-03-30
-**Confidence:** MEDIUM (MediaPipe aarch64 install path requires empirical verification on target hardware)
-
-This section covers only the NEW components introduced in v2.0. Previously validated v1.x
-stack (Picamera2, OpenCV, simple-pid, gpiozero/pigpio) remains in `legacy/` as reference.
-
----
-
-### New Python Dependencies (RPi4 Brain — pi_brain.py)
-
-| Package | Version | Purpose | Why Recommended |
-|---------|---------|---------|-----------------|
-| mediapipe | 0.10.x (latest) | Face detection replacing HAAR/DNN | Google BlazeFace achieves 12–30 FPS on RPi4 CPU — faster and more accurate than res10_300x300 Caffe SSD which needed every-5th-frame skipping. RPi4 is now freed from servo PID (offloaded to Arduino), making the heavier model viable. Normalized bbox output simplifies error calculation without pixel-to-degree conversion. |
-| pyserial | 3.5 | USB Serial to Arduino (/dev/ttyACM0, 115200 baud) | Industry-standard, complete API, no dependencies. Universal wheel works on all Python versions including 3.13. Has not needed updates since 2020 because the serial port API is stable. |
-| numpy | >=1.24,<2.0 (pinned) | Array ops for frame processing | Already installed. CRITICAL pin: mediapipe 0.10.x declares a hard numpy <2.0 runtime requirement. If pip upgrades numpy to 2.x (which OpenCV 4.11+ would prefer), mediapipe fails at import. Keep pinned at 1.x. |
-
-### New Arduino Libraries (Leonardo Firmware — aries_controller.ino)
-
-| Library | Version | Source | Purpose | Why Recommended |
-|---------|---------|--------|---------|-----------------|
-| Servo.h | Built-in (Arduino IDE) | Arduino standard library | PAN (D9) and TILT (D10) servo PWM output | Ships with Arduino IDE, no install needed. Uses Timer1 on Leonardo. D9=TIMER1A, D10=TIMER1B. No timer conflict arises here because we are not using analogWrite() on D9/D10 simultaneously with servos — the whole point of those pins is servo control. |
-| LiquidCrystal.h | Built-in (Arduino IDE) | Arduino standard library | LCD 1602 status display in 4-bit mode | Ships with Arduino IDE. Supports 4-bit parallel mode matching the hardware wiring: RS=12, E=11, D4=5, D5=4, D6=3, D7=2. Standard Hitachi HD44780 chipset driver. No I2C backpack present in hardware spec. |
-| QuickPID | 3.1.9 | Arduino Library Manager | Dual-axis PID at 100+ Hz | Faster compute cycle (51 µs) vs legacy PID_v1 (128 µs). TIMER mode enables ISR-driven deterministic 100 Hz updates via SetSampleTimeUs(10000). Anti-windup via clamping. Active maintenance — PID_v1 is unmaintained since 2017. |
-| avr/wdt.h | AVR-libc built-in | avr-libc (no install) | Hardware watchdog timer | Built into avr-libc, available on all AVR boards. wdt_enable(WDTO_2S) resets MCU if wdt_reset() not called within 2s. Enables autonomous SCAN fallback if RPi4 stops transmitting. No library install required. |
-
----
-
-### Installation
-
-#### RPi4 — Python venv additions
-
-```bash
-# Activate existing venv (must keep --system-site-packages for picamera2)
-source venv/bin/activate
-
-# v2.0 additions
-pip install mediapipe        # 0.10.x
-pip install pyserial         # 3.5
-
-# Verify numpy is still <2.0 (mediapipe hard dependency)
-python -c "import numpy; print(numpy.__version__)"
-# If >=2.0, pin back:
-pip install "numpy<2.0"
-
-# Verify mediapipe works on this aarch64 platform
-python -c "import mediapipe as mp; print('mediapipe', mp.__version__)"
-```
-
-#### Arduino Leonardo — libraries
-
-```
-# In Arduino IDE: Sketch > Include Library > Manage Libraries
-Search: "QuickPID" by Dlloydev — Install version 3.1.9 or later
-
-# Built-ins (already present, no action needed):
-# Servo.h, LiquidCrystal.h, avr/wdt.h
-```
-
----
-
-### CRITICAL: MediaPipe aarch64 Installation Warning
-
-**The problem:** mediapipe PyPI (as of 0.10.33, released March 2026) does NOT publish a
-generic `linux_aarch64` manylinux wheel. Available PyPI wheels are: Windows x86-64,
-Linux x86-64, macOS ARM64. Linux ARM64 (RPi4 Bookworm 64-bit) is absent.
-
-**However:** Community reports from 2024–2025 confirm that `pip install mediapipe` succeeds
-on Raspberry Pi OS Bookworm (Debian 12, 64-bit) with Python 3.11. The pip installer may
-pull a compatible wheel via a platform tag negotiation path not visible on the PyPI releases
-page.
-
-**Resolution path (in order):**
-
-1. **Try standard pip on Python 3.11 first.** Bookworm ships Python 3.11 alongside 3.13.
-   The current venv uses Python 3.13 which is NOT supported by mediapipe 0.10.x.
-   Create a parallel venv: `python3.11 -m venv venv_v2 --system-site-packages`
-
-2. **If pip fails on 3.11:** Use PINTO0309/mediapipe-bin community wheels for aarch64.
-   These track slightly behind official releases. Acceptable for this project.
-   URL: https://github.com/PINTO0309/mediapipe-bin
-
-3. **If neither works:** MediaPipe Tasks API (mp.tasks.vision.FaceDetector) requires a
-   .task model file, not the legacy mp.solutions.* API. Confirm model file path is set.
-
-**This is the #1 risk item for v2.0 Phase 1. Verify before implementing pi_brain.py.**
-
----
-
-### MediaPipe API Note — Use Tasks API, Not Legacy Solutions
-
-mediapipe 0.10.x deprecated the `mp.solutions.face_detection` API in favor of
-`mp.tasks.vision.FaceDetector`. The legacy API still works but will be removed.
-
-```python
-# CORRECT — Tasks API (mp 0.10.x)
-import mediapipe as mp
-from mediapipe.tasks import python as mp_python
-from mediapipe.tasks.python import vision as mp_vision
-
-options = mp_vision.FaceDetectorOptions(
-    base_options=mp_python.BaseOptions(model_asset_path='face_detection_short_range.tflite'),
-    min_detection_confidence=0.5
-)
-detector = mp_vision.FaceDetector.create_from_options(options)
-mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=bgr_frame)
-result = detector.detect(mp_image)
-# result.detections[i].bounding_box — normalized coordinates (origin_x, origin_y, width, height)
-
-# DEPRECATED — Legacy API (avoid in new code)
-# mp.solutions.face_detection.FaceDetection(...)
-```
-
-The bounding box is in normalized [0.0, 1.0] coordinates. Convert to pixels by
-multiplying by frame width/height. This simplifies error calculation vs. Caffe DNN
-(which returns absolute pixel coordinates after blob rescaling).
-
----
-
-### Serial Protocol Design
-
-USB Serial link: /dev/ttyACM0, 115200 baud, newline-terminated ASCII frames.
-
-**RPi4 → Arduino (command frames):**
-
-| Frame | Meaning | Fields |
-|-------|---------|--------|
-| `T,err_x,err_y,size\n` | TRACK — face detected | err_x/err_y: normalized [-1.0, 1.0], size: normalized [0.0, 1.0] |
-| `S\n` | SCAN — no face or lost | (none) |
-| `I\n` | IDLE — system stopped | (none) |
-| `H\n` | HEARTBEAT — keep watchdog alive | (none, sent when state unchanged) |
-
-**Arduino → RPi4 (status frames):**
-
-| Frame | Meaning |
-|-------|---------|
-| `OK,pan,tilt,state\n` | ACK with current angles and state |
-| `ERR,code\n` | Parse error or invalid command |
-
-**Why ASCII newline-framing:**
-- pyserial `readline()` on RPi blocks until `\n` — simplest reliable receive pattern
-- Arduino `Serial.readStringUntil('\n')` is built-in — no custom parser needed
-- Human-readable for debugging with minicom/screen during development
-
-**Watchdog timing:**
-At 100 Hz normal operation, Arduino receives a frame every 10 ms — watchdog (WDTO_2S)
-is pet every 10 ms, well within the 2s window. If RPi4 crashes or Python hangs, Arduino
-gets no frames for 2s and autonomously returns to SCAN mode.
-
-**pyserial usage pattern for pi_brain.py:**
-
-```python
-import serial
-ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1.0)
-time.sleep(2.0)  # Wait for Arduino reset after USB connect (Leonardo reboots on connect)
-
-# Send command
-ser.write(b'T,0.12,-0.08,0.35\n')
-
-# Read status (non-blocking check)
-if ser.in_waiting:
-    line = ser.readline().decode('ascii', errors='ignore').strip()
-```
-
-The 2-second sleep after opening serial is REQUIRED for Arduino Leonardo: the Leonardo
-resets when the serial port is opened (DTR signal). Without the sleep, the first write
-arrives before the firmware has initialized.
-
----
-
-### QuickPID Configuration for 100 Hz Dual-Axis Servo Control
-
-```cpp
-#include <QuickPID.h>
-
-float pan_input, pan_output, pan_setpoint = 0;
-float tilt_input, tilt_output, tilt_setpoint = 0;
-
-QuickPID pidPan(&pan_input, &pan_output, &pan_setpoint,
-                Kp, Ki, Kd, QuickPID::Action::direct);
-QuickPID pidTilt(&tilt_input, &tilt_output, &tilt_setpoint,
-                 Kp, Ki, Kd, QuickPID::Action::direct);
-
-void setup() {
-    pidPan.SetSampleTimeUs(10000);   // 100 Hz = 10,000 µs
-    pidTilt.SetSampleTimeUs(10000);
-    pidPan.SetOutputLimits(-OUTPUT_LIMIT, OUTPUT_LIMIT);
-    pidTilt.SetOutputLimits(-OUTPUT_LIMIT, OUTPUT_LIMIT);
-    pidPan.SetMode(QuickPID::Control::automatic);
-    pidTilt.SetMode(QuickPID::Control::automatic);
-}
-
-void loop() {
-    wdt_reset();  // Pet the watchdog every loop iteration
-    pidPan.Compute();
-    pidTilt.Compute();
-    // Apply output to servo angles
-}
-```
-
----
-
-### What NOT to Use in v2.0
-
-| Avoid | Why | Use Instead |
-|-------|-----|-------------|
-| mp.solutions.face_detection (legacy API) | Deprecated in mediapipe 0.10.x, will be removed | mp.tasks.vision.FaceDetector with .tflite model file |
-| numpy >= 2.0 | mediapipe 0.10.x hard dependency on numpy <2.0 — import fails | Pin numpy to >=1.24,<2.0 in requirements.txt |
-| PID_v1 Arduino library | Unmaintained since 2017, slower compute (128 µs), no TIMER mode | QuickPID 3.1.9 |
-| LiquidCrystal_I2C | Hardware wiring is 4-bit parallel (RS/E/D4-D7), no I2C backpack PCF8574 present | LiquidCrystal.h built-in |
-| ServoTimer4 | Only needed when analogWrite() on D9/D10 must coexist with Servo.h. v2.0 uses D9/D10 exclusively for servos — no conflict exists | Servo.h built-in |
-| gpiozero + pigpio in main path | Arduino Leonardo owns all servo PWM in v2.0. Keeping pigpiod on RPi4 wastes resources and adds daemon dependency for removed functionality | Remove from v2.0 main path; retain in legacy/ only |
-| Python 3.13 venv for mediapipe | mediapipe 0.10.x supports Python 3.9–3.12 only. Python 3.13 is NOT supported | Python 3.11 venv (available on Bookworm via python3.11) |
-
----
-
-### Version Compatibility (v2.0)
-
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| mediapipe 0.10.x | Python 3.9–3.12 only | Python 3.13 (default on this RPi) NOT supported. Use python3.11 venv. |
-| mediapipe 0.10.x | numpy >=1.24,<2.0 | Hard dependency — do not allow numpy 2.x upgrade |
-| mediapipe 0.10.x | OpenCV 4.8.x–4.11.x | Can coexist with opencv-python-headless in same venv |
-| pyserial 3.5 | Python 2.7, 3.x (all) | Universal wheel, no compatibility issues |
-| QuickPID 3.1.9 | Arduino IDE 1.8+ / 2.x | Standard library manager install |
-| Servo.h (built-in) | Arduino Leonardo (ATmega32U4) | D9=TIMER1A, D10=TIMER1B; Servo.h uses Timer1 — direct match |
-| avr/wdt.h | ATmega32U4 (Leonardo) | Add 3s delay before wdt_enable() to allow bootloader to accept uploads |
-
----
-
-### Sources (v2.0 supplement)
-
-- PyPI mediapipe 0.10.33 page (March 2026) — Python 3.9–3.12, no linux_aarch64 wheel confirmed
-- [RandomNerdTutorials: Install MediaPipe on Raspberry Pi](https://randomnerdtutorials.com/install-mediapipe-raspberry-pi/) — pip install works on Bookworm 64-bit (MEDIUM confidence, 2024)
-- [Google AI Edge: Face Detection Python](https://ai.google.dev/edge/mediapipe/solutions/vision/face_detector/python) — Tasks API, normalized bbox format (HIGH confidence)
-- [Google AI Edge: FaceDetector API reference](https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/FaceDetector) — FaceDetectorOptions, create_from_options (HIGH confidence)
-- [QuickPID GitHub (Dlloydev)](https://github.com/Dlloydev/QuickPID) — v3.1.9, SetSampleTimeUs, 51 µs compute vs PID_v1 128 µs (HIGH confidence)
-- [Arduino Forum: Servo on D9/D10 Leonardo](https://forum.arduino.cc/t/using-servo-on-or-not-on-d9-d10/1294540) — Timer1 mapping on Leonardo confirmed (HIGH confidence)
-- [avr-libc wdt.h reference](https://www.nongnu.org/avr-libc/user-manual/group__avr__watchdog.html) — WDTO_2S, 2s timeout, Leonardo bootloader 3s delay requirement (HIGH confidence)
-- [PyPI pyserial 3.5](https://pypi.org/project/pyserial/) — stable, universal wheel since 2020 (HIGH confidence)
-- [PINTO0309/mediapipe-bin](https://github.com/PINTO0309/mediapipe-bin) — fallback aarch64 community wheels (MEDIUM confidence, last resort)
-- Raspberry Pi Forums: mediapipe on Bookworm — Python 3.11 constraint documented (MEDIUM confidence)
-
----
-*v2.0 supplement added: 2026-03-30*
+*Stack research for: Arduino Uno R4 WiFi firmware migration — DataLogger Shield (DS1307 + SD)*
+*Researched: 2026-04-01*
