@@ -1,5 +1,5 @@
-// aries_controller.ino — Firmware ARIES-LITE v2.0
-// Architektura rozproszona: Arduino Leonardo (PID + HMI)
+// aries_controller.ino — Firmware ARIES-LITE v2.1
+// Architektura rozproszona: Arduino Uno R4 WiFi (Renesas RA4M1)
 // Fazy 19-23: parser serial, PID dual-axis, HMI, klasy OOP
 
 #include <QuickPID.h>       // PID z anti-windup (QuickPID 3.1.9)
@@ -17,9 +17,9 @@
 #define OUTPUT_LIMIT    5.0f      // +/-5 stopni/tick — D-02
 #define PID_INTERVAL_MS 10        // 100 Hz — D-03
 
-// --- Konfiguracja serw (D-05, D-10) ---
-#define PAN_PIN         9         // D9 = TIMER1A
-#define TILT_PIN        10        // D10 = TIMER1B
+// --- Konfiguracja serw (D-02, D-10) ---
+#define PAN_PIN         6         // D6 — serwo pan (per D-02)
+#define TILT_PIN        9         // D9 — serwo tilt (per D-02)
 #define PAN_MIN         (-60.0f)  // limit katowy pan
 #define PAN_MAX         (60.0f)
 #define TILT_MIN        (-30.0f)  // limit katowy tilt
@@ -41,17 +41,17 @@
 #define SCAN_AMP_PAN    70.0f    // stopnie — D-10
 #define SCAN_AMP_TILT   25.0f    // stopnie — D-10
 
-// --- HMI: LCD 1602 (D-04: piny 2,3,4,5,6,11) ---
-#define LCD_RS          2
-#define LCD_EN          3
-#define LCD_D4          4
-#define LCD_D5          5
-#define LCD_D6          6
-#define LCD_D7_PIN     11    // D7_PIN aby unikac konfliktu nazwy
+// --- HMI: LCD 1602 (D-01: piny A0,A1,D2-D5) ---
+#define LCD_RS          A0        // RS=A0 (per D-01)
+#define LCD_EN          A1        // E=A1 (per D-01)
+#define LCD_D4          2         // D4=D2 (per D-01)
+#define LCD_D5          3         // D5=D3 (per D-01)
+#define LCD_D6          4         // D6=D4 (per D-01)
+#define LCD_D7_PIN      5         // D7=D5 (per D-01)
 #define LCD_INTERVAL_MS 200  // 5 Hz odswiezanie (D-02, HMI-01)
 
 // --- HMI: Buzzer + Przycisk (D-05, D-07) ---
-#define BUZZER_PIN      8     // D8 — tone() uzywa Timer3 na Leonardo (D-06)
+#define BUZZER_PIN      8     // D8 — bez zmian (per D-03)
 #define PRZYCISK_PIN    7     // D7 — INPUT_PULLUP, abort SLEDZENIE (D-07)
 #define DEBOUNCE_MS     20    // debounce przycisku (D-08)
 
@@ -91,7 +91,7 @@ public:
 
     // Odswiezanie LCD co LCD_INTERVAL_MS — wiersz 0: tryb+katy, wiersz 1: bledy X/Y
     // setCursor + overwrite zamiast lcd.clear() — brak migotania (Pitfall 3)
-    // dtostrf() zamiast sprintf("%f") — AVR nie obsluguje %f (Pitfall 1)
+    // snprintf z int cast — ARM Renesas RA4M1 nie obsluguje AVR-only float konwersji (D-07)
     void lcd_krok(StanSystemu stan, float kat_pan, float kat_tilt,
                   int16_t blad_x, int16_t blad_y) {
         unsigned long teraz = millis();
@@ -107,8 +107,8 @@ public:
             default:           tryb_str = "BEZCZ"; break;
         }
         char pan_buf[5], tilt_buf[5];
-        dtostrf(kat_pan,  4, 0, pan_buf);   // np. " +12" lub " -60"
-        dtostrf(kat_tilt, 4, 0, tilt_buf);
+        snprintf(pan_buf,  sizeof(pan_buf),  "%4d", (int)kat_pan);   // np. "  12" lub " -60"
+        snprintf(tilt_buf, sizeof(tilt_buf), "%4d", (int)kat_tilt);
         char linia0[17];
         snprintf(linia0, sizeof(linia0), "%sP:%-4sT:%-4s", tryb_str, pan_buf, tilt_buf);
         _lcd.print(linia0);
@@ -161,7 +161,7 @@ private:
     // Bootscreen LCD przed inicjalizacja serw — uzytkownik widzi status (D-03)
     void lcd_bootscreen() {
         _lcd.setCursor(0, 0);
-        _lcd.print("ARIES-LITE v2.0");
+        _lcd.print("ARIES-LITE v2.1");
         _lcd.setCursor(0, 1);
         _lcd.print("Inicjalizacja...");
         delay(2000);
@@ -452,17 +452,25 @@ MaszynaStanow maszyna(serwa, hmi);
 void setup() {
     Serial.begin(115200);  // baudrate per PROTOCOL_SPEC.md
 
-    // Leonardo USB CDC — czekaj az host otworzy port, max 3 sekundy
-    // (bez timeoutu Leonardo zawiesza sie na while(!Serial))
+    // R4 WiFi: USB przez ESP32-S3 bridge — max 500ms wait
+    // (zachowac timeout — nie blokujacy, dziala na obu platformach)
     uint32_t start = millis();
-    while (!Serial && millis() - start < 3000) {
+    while (!Serial && millis() - start < 500) {
         delay(10);
     }
+
+    // Jawny pinMode dla pinow analogowych LCD (RS=A0, E=A1) — per D-11
+    // DAC domyslnie wylaczony na R4, ale explicit OUTPUT zapobiega nieoczekiwanemu zachowaniu
+    pinMode(A0, OUTPUT);
+    pinMode(A1, OUTPUT);
 
     // Inicjalizacja HMI: LCD bootscreen + piny buzzer/przycisk
     hmi.inicjalizuj();
 
-    // Inicjalizacja serw: attach + bezpieczny start + parametry PID
+    // Soft Start 500ms — stabilizacja napiecia zasilacza 6V PRZED ruchem serw (MIG-08, D-05)
+    delay(500);
+
+    // Inicjalizacja serw: attach + bezpieczny start (rampa 1000ms) + parametry PID
     // maszyna juz zainicjalizowana jako global z referencjami do serwa i hmi
     serwa.inicjalizuj();
 }
