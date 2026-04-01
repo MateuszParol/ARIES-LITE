@@ -1,17 +1,17 @@
 # PROJECT.md — ARIES-LITE
 
 > **Full Name**: Autonomous Real-time Intelligent Eye System — Lightweight Edition
-> **Status**: Active (v2.0 in progress)
-> **Current Version**: v2.0.0-dev
-> **Target Platform**: Raspberry Pi 4 Model B + Arduino Leonardo
+> **Status**: Active (v2.1 in progress)
+> **Current Version**: v2.1.0-dev
+> **Target Platform**: Raspberry Pi 4 Model B + Arduino Uno R4 WiFi
 
 ## Vision
 
-An autonomous real-time face tracking system built on a distributed architecture: Raspberry Pi 4 ("Mózg") handles computer vision (MediaPipe Face Detection) and high-level logic, while Arduino Leonardo ("Układ Wykonawczy") runs PID control at 100+ Hz for ultra-smooth servo motion, manages LCD/buzzer HMI, and provides hardware watchdog safety.
+An autonomous real-time face tracking system built on a distributed architecture: Raspberry Pi 4 ("Mózg") handles computer vision (MediaPipe Face Detection) and high-level logic, while Arduino Uno R4 WiFi ("Układ Wykonawczy") runs PID control at 100+ Hz for ultra-smooth servo motion, manages LCD/buzzer HMI, logs telemetry to SD card with RTC timestamps, and provides hardware watchdog safety.
 
 ## Problem Statement
 
-Running both vision and PID control on a single RPi4 limits servo update rate to ~30 Hz (Python loop) and makes the system fragile (single point of failure). By offloading PID + servo control to Arduino Leonardo via USB Serial, the RPi4 is freed to run heavier vision models (MediaPipe instead of HAAR/DNN) while Arduino delivers hardware-rate PID updates. The distributed architecture also adds physical HMI (LCD, buzzer, action button) and autonomous safety (watchdog returns to SCAN if Pi stops communicating).
+Running both vision and PID control on a single RPi4 limits servo update rate to ~30 Hz (Python loop) and makes the system fragile (single point of failure). By offloading PID + servo control to Arduino Uno R4 WiFi via USB Serial, the RPi4 is freed to run heavier vision models (MediaPipe instead of HAAR/DNN) while Arduino delivers hardware-rate PID updates. The distributed architecture also adds physical HMI (LCD, buzzer, action button), telemetry logging (SD card + RTC), and autonomous safety (watchdog returns to SCAN if Pi stops communicating).
 
 ## Current State
 
@@ -19,7 +19,7 @@ Running both vision and PID control on a single RPi4 limits servo update rate to
 
 **v1.9** partially started — AWB/Color Fix phase 14 in progress (continuous AWB approach).
 
-**v2.0** Phase 23 complete (code) — Integracja + Kalibracja: skrypt kalibracyjny kierunków serw (`scripts/kalibracja_serw.py`), logowanie latencji TX `[LAT]` w brain.py, Arduino firmware zrefaktoryzowany na klasy C++ (ServoPID, MaszynaStanow, HMI — 59% flash, 22% RAM), pełna polonizacja kodu RPi + Arduino (TRYB_BEZCZYNNOSC/SKANOWANIE/SLEDZENIE). Hardware UAT pending (Arduino Leonardo USB blocker — 3 testy czekają na nowy model). Phase 22: HMI LCD+buzzer+przycisk. Phase 21: wizja RPi MediaPipe. Phase 20: firmware Arduino PID + serwa. Phase 19: serial link. Phase 18: środowisko + protokół 8B LOCKED + legacy/.
+**v2.0** complete (code) — Architektura rozproszona zaimplementowana: firmware Arduino OOP (ServoPID, MaszynaStanow, HMI), brain RPi (MediaPipe + serial TX), protokół 8B, kalibracja serw, polonizacja. Hardware UAT odłożone — Arduino Leonardo USB blocker rozwiązany przez migrację na Uno R4 WiFi w v2.1.
 
 **v1.7.0** shipped — all critical hardware bugs fixed in test tracker:
 - Dual-axis PID tracking converges correctly (tilt sign fix, pan preserved)
@@ -48,47 +48,57 @@ Running both vision and PID control on a single RPi4 limits servo update rate to
 
 </details>
 
-## Current Milestone: v2.0 Architektura Rozproszona
+## Current Milestone: v2.1 Migracja na Uno R4 + DataLogger
 
-**Goal:** Calkowita przebudowa systemu na architekture rozproszona — Mozg (RPi4) + Uklad Wykonawczy (Arduino Leonardo) polaczone przez USB Serial.
+**Goal:** Port firmware na Arduino Uno R4 WiFi z nowa mapa pinow, integracja DataLogger Shield (RTC DS1307 + SD card logging CSV) i Soft Start — pelna kompatybilnosc z istniejacym protokolem binarnym 8B z RPi.
 
 **Target features:**
-- Firmware Arduino (`src/arduino/aries_controller.ino`): Serial parser, PID dual-axis (100+ Hz), LCD 1602 status, buzzer feedback, safe startup, watchdog (powrot do SCAN gdy Pi milczy)
-- Brain script Pi (`src/vision/pi_brain.py`): MediaPipe Face Detection, sticky tracking (najwieksza twarz), AWB fix dla IMX219, obliczanie bledu + wysylanie do Arduino
-- Protokol szeregowy: Pelna ramka — tryb (SCAN/TRACK/IDLE), blad X/Y, rozmiar twarzy, heartbeat
-- Przycisk akcji (D7): "Abort Track" — przywraca tryb SCAN gdy kamera sledzi niepozadany cel
-- Orientacja serw: Konfigurowalny kierunek (empiryczna kalibracja na hardware)
+- Port klas OOP (ServoPID, MaszynaStanow, HMI) na nowa mape pinow (LCD->A0/A1, serwa->D6/D9, buzzer->D8, przycisk->D7)
+- Usuniecie specyfik Leonardo (Caterina DTR=False, USB CDC) — Uno R4 uzywa standardowego UART
+- Soft Start 500ms w setup() przed ruchem serw
+- RTC DS1307 — odczyt czasu, wyswietlanie na LCD row 1
+- SD card logging CSV: timestamp, stan, pan, tilt, error_x, error_y, face_size, latency_ms
+- Rotacja plikow dziennych (log_YYYYMMDD.csv), logowanie co zmiane stanu + co 10-ta ramke TRACK
+- Rezerwacja pinow SPI (D10-D13) i I2C (A4/A5) dla shielda
 
 **Hardware:**
-- Arduino Leonardo: LCD 1602 (RS=12,E=11,D4=5,D5=4,D6=3,D7=2), Serwa MG-90S (PAN=D9,TILT=D10), Buzzer=D8, Przycisk=D7 (INPUT_PULLUP), zasilanie serw z zewnetrznego 6V
-- RPi4B: Kamera RPi v2 (IMX219), polaczenie USB Serial (/dev/ttyACM0, 115200 baud)
+- Arduino Uno R4 WiFi + DataLogger Shield V1.0 (RTC DS1307 + czytnik SD)
+- LCD 1602: RS=A0, E=A1, D4=D2, D5=D3, D6=D4, D7=D5
+- Serwa MG-90S: PAN=D6, TILT=D9, zasilanie z zewnetrznego 6V
+- Buzzer=D8, Przycisk=D7 (INPUT_PULLUP)
+- SD Card: D10 (CS), D11 (MOSI), D12 (MISO), D13 (SCK)
+- RTC DS1307 + ToF (przyszlosc): A4 (SDA), A5 (SCL)
+- RPi4B: Kamera RPi v2 (IMX219), USB Serial 115200 baud
 
 **Kontekst:**
-- Stary monolit zachowany w `legacy/` jako referencja
-- PID przeniesiony na Arduino dla plynnosci 100+ Hz
-- MediaPipe zamiast DNN — RPi odciazone przez Arduino, stac na ciezszy model wizji
-- Orientacja serw wymaga empirycznej weryfikacji na nowym montazu
+- Protokol binarny 8B bez zmian — RPi nie wymaga modyfikacji
+- Arduino Leonardo USB blocker rozwiazany przez zmiane plytki
+- M5Stack Atom S3R i czujnik ToF zarezerwowane na przyszle milestone'y
+- Testy na Uno R3 (8-bit) przed przejsciem na R4 (32-bit)
 
 ## What Could Come Next
 
 Potential areas for future milestones:
-1. **Security**: Basic auth for API endpoints (network-accessible system)
-2. **Operations**: Systemd service, startup scripts, monitoring
-3. **Testing**: Expand automated test coverage beyond Nyquist validation
-4. **Features**: Multi-face tracking priority, recording, face database
-5. **Performance**: PID tuning optimization, FPS improvements
+1. **M5Stack Atom S3R**: Asystent glosowy — integracja z systemem sledzenia
+2. **Czujnik ToF**: Pomiar odleglosci do obiektu (I2C, A4/A5 zarezerwowane)
+3. **Web UI**: Flask MJPEG stream + panel sterowania (port z legacy/)
+4. **Operations**: Systemd service, startup scripts, monitoring
+5. **Performance**: Adaptywny PID (gain scheduling wg rozmiaru twarzy), FPS improvements
 
 ## Technical Decisions (Locked)
 
 These architectural choices are validated and should not change:
-- Distributed architecture: RPi4 (vision) + Arduino Leonardo (PID + HMI)
-- USB Serial communication at 115200 baud (/dev/ttyACM0)
+- Distributed architecture: RPi4 (vision) + Arduino Uno R4 WiFi (PID + HMI + DataLogger)
+- USB Serial communication at 115200 baud
 - MediaPipe Face Detection on RPi4 (replaces HAAR/DNN)
 - PID control on Arduino (100+ Hz hardware-rate updates)
-- Arduino Servo library for MG-90S (PAN=D9, TILT=D10)
-- LCD 1602 4-bit mode for status display
-- Watchdog na Arduino — autonomiczny powrot do SCAN przy utracie komunikacji
+- Arduino Servo library for MG-90S (PAN=D6, TILT=D9)
+- LCD 1602 4-bit mode (RS=A0, E=A1, D4-D7=D2-D5)
+- DataLogger Shield: SD (SPI D10-D13) + RTC DS1307 (I2C A4/A5)
+- Protokol binarny 8B (0xAA + mode + error_x/y + face_size + XOR checksum)
+- Watchdog millis() na Arduino — autonomiczny powrot do SCAN przy utracie komunikacji
 - Polish-language comments and UI text
+- Pin map v2.1: LCD(A0,A1,D2-D5), Serwa(D6,D9), Buzzer(D8), Przycisk(D7), SD(D10-D13), I2C(A4,A5)
 
 ## Key Decisions
 
@@ -133,4 +143,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after milestone v1.9 start — Stabilizacja Ruchu i Obrazu*
+*Last updated: 2026-04-01 after milestone v2.1 start — Migracja na Uno R4 + DataLogger*
