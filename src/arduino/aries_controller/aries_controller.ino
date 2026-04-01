@@ -273,13 +273,13 @@ private:
     unsigned long _czas_ostatniego_pid;
     unsigned long _czas_startowy_skanu;
 
-    // Bezpieczny startup — rampa writeMicroseconds() 500→1500us w 1000ms
-    // Minimalne obciazenie zasilacza 6V, brak skoku pradu (D-04)
+    // Bezpieczny startup — lagodna rampa writeMicroseconds() 1400→1500us w 1000ms
+    // Start blisko centrum — brak szarpniecia serw (D-04)
     void _bezpieczny_start() {
-        const int US_MIN    = 500;    // minimalny impuls
+        const int US_MIN    = 1400;   // blisko centrum — lagodny start
         const int US_CENTER = 1500;   // centrum = 90 stopni
-        const int KROKI     = 50;     // 1000ms / 20ms = 50 krokow
-        const int OPOZNIENIE_MS = 20;
+        const int KROKI     = 20;     // 20 krokow
+        const int OPOZNIENIE_MS = 50; // wolne kroki
 
         for (int i = 0; i <= KROKI; i++) {
             int us = US_MIN + (int)((long)(US_CENTER - US_MIN) * i / KROKI);
