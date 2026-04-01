@@ -246,7 +246,11 @@ Plans:
   2. LCD Row 1 wyswietla aktualny czas HH:MM:SS i aktualizuje sie co 1s — rok wyswietlany to 2026
   3. Po 30-sekundowym odlaczeniu zasilania RTC dalej pokazuje poprawny czas — bateria CR1220 sprawna
   4. Przy braku baterii lub nieskonfigurowanym RTC system startuje normalnie z fallbackiem millis() — brak zawieszenia w setup()
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 25-01-PLAN.md — Instalacja RTClib + BusIO, I2C scanner sketch, weryfikacja 0x68 na hardware
+- [ ] 25-02-PLAN.md — Klasa ZegarRTC + modyfikacja setup/HMI + blokada startu + weryfikacja sprzetowa
 
 ### Phase 26: SD Card + DataLogger CSV
 **Goal**: Telemetria zapisuje sie na karte SD w formacie CSV z RTC timestamps, rotacja dobowa dziala, system startuje normalnie bez karty SD
@@ -298,6 +302,6 @@ Plans:
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
-| 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/? | Not started | - |
+| 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/2 | Not started | - |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
