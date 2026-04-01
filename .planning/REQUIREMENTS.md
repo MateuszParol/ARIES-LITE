@@ -82,30 +82,30 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIG-03 | — | Pending |
-| MIG-04 | — | Pending |
-| MIG-05 | — | Pending |
-| MIG-06 | — | Pending |
-| MIG-07 | — | Pending |
-| MIG-08 | — | Pending |
-| MIG-09 | — | Pending |
-| RTC-01 | — | Pending |
-| RTC-02 | — | Pending |
-| RTC-03 | — | Pending |
-| LOG-01 | — | Pending |
-| LOG-02 | — | Pending |
-| LOG-03 | — | Pending |
-| LOG-04 | — | Pending |
-| LOG-05 | — | Pending |
-| INT-06 | — | Pending |
-| INT-07 | — | Pending |
-| INT-08 | — | Pending |
+| MIG-03 | Phase 24 | Pending |
+| MIG-04 | Phase 24 | Pending |
+| MIG-05 | Phase 24 | Pending |
+| MIG-06 | Phase 24 | Pending |
+| MIG-07 | Phase 24 | Pending |
+| MIG-08 | Phase 24 | Pending |
+| MIG-09 | Phase 24 | Pending |
+| RTC-01 | Phase 25 | Pending |
+| RTC-02 | Phase 25 | Pending |
+| RTC-03 | Phase 25 | Pending |
+| INT-07 | Phase 25 | Pending |
+| LOG-01 | Phase 26 | Pending |
+| LOG-02 | Phase 26 | Pending |
+| LOG-03 | Phase 26 | Pending |
+| LOG-04 | Phase 26 | Pending |
+| LOG-05 | Phase 26 | Pending |
+| INT-06 | Phase 27 | Pending |
+| INT-08 | Phase 27 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18 (awaiting roadmap)
+- Mapped to phases: 18
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-01*
-*Last updated: 2026-04-01 after initial definition*
+*Last updated: 2026-04-01 — traceability filled after roadmap creation*

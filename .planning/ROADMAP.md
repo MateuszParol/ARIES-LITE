@@ -7,7 +7,8 @@
 - ✅ **v1.7 Debugging & Optimization** — Phases 6-8 (shipped 2026-03-29)
 - ✅ **v1.8 Critical Hardware Fix** — Phases 9-13 (shipped 2026-03-29)
 - 🚧 **v1.9 Stabilizacja Ruchu i Obrazu** — Phases 14-17 (in progress)
-- 📋 **v2.0 Architektura Rozproszona** — Phases 18-23 (planned)
+- ✅ **v2.0 Architektura Rozproszona** — Phases 18-23 (shipped 2026-03-31)
+- 📋 **v2.1 Migracja na Uno R4 + DataLogger** — Phases 24-27 (planned)
 
 ## Phases
 
@@ -67,6 +68,15 @@
 - [x] **Phase 21: Wizja RPi MediaPipe** - pi_brain.py: MediaPipe FaceDetector, sticky tracking, blad X/Y, AWB fix, TX do Arduino, graceful shutdown (completed 2026-03-31)
 - [x] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track (completed 2026-03-31)
 - [x] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie (completed 2026-03-31)
+
+### 📋 v2.1 Migracja na Uno R4 + DataLogger (Planned)
+
+**Milestone Goal:** Port firmware na Arduino Uno R4 WiFi z nowa mapa pinow, integracja DataLogger Shield (RTC DS1307 + SD card logging CSV) i Soft Start — pelna kompatybilnosc z istniejacym protokolem binarnym 8B z RPi.
+
+- [ ] **Phase 24: Migracja Pinow i Kompilacja Bazowa** - Nowa mapa pinow, usuniecie specyfik Leonardo, fix dtostrf, Servo 1.3.0, Soft Start 500ms — firmware kompiluje sie i dziala na Uno R4
+- [ ] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS, poprawna kolejnosc inicjalizacji Wire→RTC→SD
+- [ ] **Phase 26: SD Card + DataLogger CSV** - Zapis CSV z RTC timestamps, rotacja dobowa LYYMMDD.CSV, ring buffer, graceful degradation bez karty, benchmark latencji
+- [ ] **Phase 27: Pelna Integracja DataLogger z MaszynaStanow** - Klasa DataLogger zintegrowana ze zmianami stanow, end-to-end tracking z RPi i logowaniem telemetrii
 
 ## Phase Details
 
@@ -211,6 +221,51 @@ Plans:
 - [x] 23-01-PLAN.md — Skrypt kalibracyjny kierunkow serw + pomiar latencji E2E
 - [x] 23-02-PLAN.md — Refaktoryzacja Arduino OOP (ServoPID/MaszynaStanow/HMI) + polonizacja kodu
 
+### Phase 24: Migracja Pinow i Kompilacja Bazowa
+**Goal**: Firmware v2.0 kompiluje sie i dziala na Arduino Uno R4 WiFi z nowa mapa pinow, bez specyfik Leonardo, bez bledow kompilacji ARM
+**Depends on**: Phase 23 (v2.0 shipped)
+**Requirements**: MIG-03, MIG-04, MIG-05, MIG-06, MIG-07, MIG-08, MIG-09
+**Success Criteria** (what must be TRUE):
+  1. `Sketch → Verify/Compile` na target Uno R4 WiFi konczy sie zerem bledow — zadne dtostrf(), zadne Leonardo-specific makra
+  2. LCD wyswietla bootscreen, serwa plynnie docieraja do pozycji 90/90 przy starcie bez skoku pradu — Soft Start 500ms dziala na pinie D6/D9
+  3. pi_brain.py laczy sie z Uno R4 bez DTR workaround — Serial komunikuje sie normalnie przez /dev/ttyACM0
+  4. Serwo PAN (D6) i TILT (D9) poruszaja sie plynnie w tescie Sweep — brak jittera lub tykania wskazujacego na problem z timerem PWM
+  5. Kolejne 5 cykli zasilania nie powoduje zadnego restartu Arduino podczas ruchu serw
+**Plans**: TBD
+
+### Phase 25: RTC DS1307 Izolowana Integracja
+**Goal**: DS1307 dostarcza poprawny czas, LCD pokazuje HH:MM:SS aktualizowany co sekunde, inicjalizacja Wire→RTC→SD dziala w prawidlowej kolejnosci
+**Depends on**: Phase 24
+**Requirements**: RTC-01, RTC-02, RTC-03, INT-07
+**Success Criteria** (what must be TRUE):
+  1. I2C scanner wykrywa DS1307 pod adresem 0x68 — shield header poprawnie osadzony na Uno R4
+  2. LCD Row 1 wyswietla aktualny czas HH:MM:SS i aktualizuje sie co 1s — rok wyswietlany to 2026
+  3. Po 30-sekundowym odlaczeniu zasilania RTC dalej pokazuje poprawny czas — bateria CR1220 sprawna
+  4. Przy braku baterii lub nieskonfigurowanym RTC system startuje normalnie z fallbackiem millis() — brak zawieszenia w setup()
+**Plans**: TBD
+
+### Phase 26: SD Card + DataLogger CSV
+**Goal**: Telemetria zapisuje sie na karte SD w formacie CSV z RTC timestamps, rotacja dobowa dziala, system startuje normalnie bez karty SD
+**Depends on**: Phase 25
+**Requirements**: LOG-01, LOG-02, LOG-03, LOG-04, LOG-05
+**Success Criteria** (what must be TRUE):
+  1. Po 60-sekundowej sesji TRACKING karta SD zawiera plik LYYMMDD.CSV z naglowkiem kolumn i wierszami: timestamp, stan, pan, tilt, error_x, error_y, face_size, latency_ms
+  2. Nastepnego dnia (lub po recznej zmianie daty RTC) tworzony jest nowy plik z nowa nazwa LYYMMDD.CSV — stary plik nie jest nadpisywany
+  3. Start bez karty SD: Serial wypisuje "SD fail", PID dziala bez przerw, brak zawieszenia w setup() — sd_dostepne=false aktywny
+  4. Benchmark micros() wokol file.print() pokazuje typowe < 1000 us — wynik zapisany w komentarzu w kodzie lub logu Serial
+**Plans**: TBD
+
+### Phase 27: Pelna Integracja DataLogger z MaszynaStanow
+**Goal**: Kazda zmiana stanu SCAN/TRACK/IDLE jest automatycznie logowana z RTC timestamp, ciagla telemetria dziala podczas TRACKING, system end-to-end z RPi i DataLogger jest funkcjonalny
+**Depends on**: Phase 26
+**Requirements**: INT-06, INT-08
+**Success Criteria** (what must be TRUE):
+  1. Reczne zakrycie i odkrycie twarzy przed kamera powoduje wpisy SCAN→TRACK i TRACK→SCAN w pliku CSV — korelacja z obserwowanym zachowaniem serw
+  2. Podczas sesji TRACKING CSV zawiera wiersze co ~10 klatek (~3/s przy 30 Hz RPi input) — ciagla telemetria pozycji serw widoczna
+  3. Zadna zmiana stanu MaszynaStanow nie powoduje zauwalnego zawieszenia ruchu serw — PID 100 Hz nie jest przerywany przez zapis SD
+  4. Pelna sesja RPi + Arduino z DataLogger: uruchomienie, sledzenie twarzy, zatrzymanie — caly CSV exportowalny i czytelny na PC
+**Plans**: TBD
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -238,3 +293,7 @@ Plans:
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
+| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 0/? | Not started | - |
+| 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/? | Not started | - |
+| 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
+| 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
