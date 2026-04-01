@@ -234,7 +234,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 24-01-PLAN.md — Migracja firmware: piny, dtostrf→snprintf, Soft Start, CDC wait, wersja v2.1 + Python DTR fix
+- [x] 24-01-PLAN.md — Migracja firmware: piny, dtostrf→snprintf, Soft Start, CDC wait, wersja v2.1 + Python DTR fix
 - [ ] 24-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (LCD, serwa, serial, stabilnosc)
 
 ### Phase 25: RTC DS1307 Izolowana Integracja
@@ -297,7 +297,7 @@ Plans:
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 0/2 | Not started | - |
+| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 1/2 | In Progress|  |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/? | Not started | - |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |

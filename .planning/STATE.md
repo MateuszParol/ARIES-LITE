@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: Roadmap ready — awaiting plan-phase 24
-stopped_at: Phase 24 context gathered
-last_updated: "2026-04-01T16:17:51.066Z"
-last_activity: 2026-04-01 — Roadmap v2.1 created (4 phases, 18 requirements mapped)
+status: executing
+stopped_at: Completed 24-01-PLAN.md
+last_updated: "2026-04-01T16:56:28.772Z"
+last_activity: 2026-04-01
 progress:
-  total_phases: 14
-  completed_phases: 6
-  total_plans: 13
-  completed_plans: 12
+  total_phases: 16
+  completed_phases: 14
+  total_plans: 23
+  completed_plans: 21
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Uno R4 WiFi (PID + HMI + DataLogger) polaczone USB Serial
-**Current focus:** v2.1 Phase 24 — Migracja Pinow i Kompilacja Bazowa
+**Current focus:** Phase 24 — migracja-pinow-i-kompilacja-bazowa
 
 ## Current Position
 
-Phase: 24 (Not started)
-Plan: —
-Status: Roadmap ready — awaiting plan-phase 24
-Last activity: 2026-04-01 — Roadmap v2.1 created (4 phases, 18 requirements mapped)
+Phase: 24 (migracja-pinow-i-kompilacja-bazowa) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-01
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -66,6 +66,9 @@ Progress: [░░░░░░░░░░] 0%
 - [v2.1]: dtostrf() zastapione snprintf() — ARM Renesas RA4M1 nie ma dtostrf
 - [v2.1]: Keep-file-open + flush-every-50-rows — nie close() w petli PID
 - [v2.1]: Fuzja Soft Start (MIG-08) z Faza 24 — jeden krok kompilacji + hardware verify bez nowych peryferiow
+- [Phase 24-migracja-pinow-i-kompilacja-bazowa]: snprintf z int cast zamiast dtostrf — ARM Renesas RA4M1 nie ma dtostrf
+- [Phase 24-migracja-pinow-i-kompilacja-bazowa]: delay(500) Soft Start po hmi.inicjalizuj() ale przed serwa.inicjalizuj() — stabilizacja zasilacza 6V
+- [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Serial CDC wait 500ms zamiast 3000ms — R4 uzywa ESP32-S3 bridge nie natywnego USB CDC
 
 ### Blockers/Concerns
 
@@ -80,6 +83,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-01T16:17:50.947Z
-Stopped at: Phase 24 context gathered
-Resume file: .planning/phases/24-migracja-pinow-i-kompilacja-bazowa/24-CONTEXT.md
+Last session: 2026-04-01T16:56:28.746Z
+Stopped at: Completed 24-01-PLAN.md
+Resume file: None

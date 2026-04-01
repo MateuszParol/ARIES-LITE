@@ -9,13 +9,13 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 
 ### Migracja (MIG)
 
-- [ ] **MIG-03**: Firmware kompiluje sie pod Arduino Uno R4 WiFi (ArduinoCore-renesas >=1.4.1) bez bledow
-- [ ] **MIG-04**: Nowa mapa pinow: LCD(RS=A0,E=A1,D4=D2,D5=D3,D6=D4,D7=D5), Serwa(PAN=D6,TILT=D9), Buzzer=D8, Przycisk=D7
-- [ ] **MIG-05**: Servo library >=1.3.0 — brak jittera na serwach MG-90S przy PID 100Hz
-- [ ] **MIG-06**: dtostrf() zastapione snprintf() — kompatybilnosc ARM Renesas RA4M1
-- [ ] **MIG-07**: Usuniete specyfiki Leonardo (Caterina DTR=False, USB CDC workaroundy)
-- [ ] **MIG-08**: Soft Start 500ms w setup() — stabilizacja napiecia przed ruchem serw
-- [ ] **MIG-09**: QuickPID kompiluje sie i dziala poprawnie na 32-bit Renesas RA4M1
+- [x] **MIG-03**: Firmware kompiluje sie pod Arduino Uno R4 WiFi (ArduinoCore-renesas >=1.4.1) bez bledow
+- [x] **MIG-04**: Nowa mapa pinow: LCD(RS=A0,E=A1,D4=D2,D5=D3,D6=D4,D7=D5), Serwa(PAN=D6,TILT=D9), Buzzer=D8, Przycisk=D7
+- [x] **MIG-05**: Servo library >=1.3.0 — brak jittera na serwach MG-90S przy PID 100Hz
+- [x] **MIG-06**: dtostrf() zastapione snprintf() — kompatybilnosc ARM Renesas RA4M1
+- [x] **MIG-07**: Usuniete specyfiki Leonardo (Caterina DTR=False, USB CDC workaroundy)
+- [x] **MIG-08**: Soft Start 500ms w setup() — stabilizacja napiecia przed ruchem serw
+- [x] **MIG-09**: QuickPID kompiluje sie i dziala poprawnie na 32-bit Renesas RA4M1
 
 ### RTC (RTC)
 
@@ -82,13 +82,13 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MIG-03 | Phase 24 | Pending |
-| MIG-04 | Phase 24 | Pending |
-| MIG-05 | Phase 24 | Pending |
-| MIG-06 | Phase 24 | Pending |
-| MIG-07 | Phase 24 | Pending |
-| MIG-08 | Phase 24 | Pending |
-| MIG-09 | Phase 24 | Pending |
+| MIG-03 | Phase 24 | Complete |
+| MIG-04 | Phase 24 | Complete |
+| MIG-05 | Phase 24 | Complete |
+| MIG-06 | Phase 24 | Complete |
+| MIG-07 | Phase 24 | Complete |
+| MIG-08 | Phase 24 | Complete |
+| MIG-09 | Phase 24 | Complete |
 | RTC-01 | Phase 25 | Pending |
 | RTC-02 | Phase 25 | Pending |
 | RTC-03 | Phase 25 | Pending |
