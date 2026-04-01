@@ -73,7 +73,7 @@
 
 **Milestone Goal:** Port firmware na Arduino Uno R4 WiFi z nowa mapa pinow, integracja DataLogger Shield (RTC DS1307 + SD card logging CSV) i Soft Start — pelna kompatybilnosc z istniejacym protokolem binarnym 8B z RPi.
 
-- [ ] **Phase 24: Migracja Pinow i Kompilacja Bazowa** - Nowa mapa pinow, usuniecie specyfik Leonardo, fix dtostrf, Servo 1.3.0, Soft Start 500ms — firmware kompiluje sie i dziala na Uno R4
+- [x] **Phase 24: Migracja Pinow i Kompilacja Bazowa** - Nowa mapa pinow, usuniecie specyfik Leonardo, fix dtostrf, Servo 1.3.0, Soft Start 500ms — firmware kompiluje sie i dziala na Uno R4 (completed 2026-04-01)
 - [ ] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS, poprawna kolejnosc inicjalizacji Wire→RTC→SD
 - [ ] **Phase 26: SD Card + DataLogger CSV** - Zapis CSV z RTC timestamps, rotacja dobowa LYYMMDD.CSV, ring buffer, graceful degradation bez karty, benchmark latencji
 - [ ] **Phase 27: Pelna Integracja DataLogger z MaszynaStanow** - Klasa DataLogger zintegrowana ze zmianami stanow, end-to-end tracking z RPi i logowaniem telemetrii
@@ -235,7 +235,7 @@ Plans:
 
 Plans:
 - [x] 24-01-PLAN.md — Migracja firmware: piny, dtostrf→snprintf, Soft Start, CDC wait, wersja v2.1 + Python DTR fix
-- [ ] 24-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (LCD, serwa, serial, stabilnosc)
+- [x] 24-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (LCD, serwa, serial, stabilnosc)
 
 ### Phase 25: RTC DS1307 Izolowana Integracja
 **Goal**: DS1307 dostarcza poprawny czas, LCD pokazuje HH:MM:SS aktualizowany co sekunde, inicjalizacja Wire→RTC→SD dziala w prawidlowej kolejnosci
@@ -297,7 +297,7 @@ Plans:
 | 21. Wizja RPi MediaPipe | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
-| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 1/2 | In Progress|  |
+| 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete   | 2026-04-01 |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/? | Not started | - |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |

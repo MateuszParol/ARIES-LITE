@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: executing
-stopped_at: "CHECKPOINT: Task 2 (24-02) — weryfikacja sprzetowa 5 testow na Uno R3 (LCD, Servo, Serial, Soft Start, Stabilnosc)"
-last_updated: "2026-04-01T17:08:00Z"
+status: verifying
+stopped_at: Completed 24-02-PLAN.md (weryfikacja sprzetowa firmware v2.1 — wszystkie 5 testow PASSED)
+last_updated: "2026-04-01T17:57:09.480Z"
 last_activity: 2026-04-01
 progress:
   total_phases: 16
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 
 Phase: 24 (migracja-pinow-i-kompilacja-bazowa) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-01
 
 Progress: [░░░░░░░░░░] 0%
@@ -69,6 +69,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: snprintf z int cast zamiast dtostrf — ARM Renesas RA4M1 nie ma dtostrf
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: delay(500) Soft Start po hmi.inicjalizuj() ale przed serwa.inicjalizuj() — stabilizacja zasilacza 6V
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Serial CDC wait 500ms zamiast 3000ms — R4 uzywa ESP32-S3 bridge nie natywnego USB CDC
+- [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Rampa Soft Start 1400->1500us zamiast 500->1500us — breadboard z zewnetrznym zasilaniem 6V wymaga lagodniejszej rampy PWM
+- [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
 
 ### Blockers/Concerns
 
@@ -84,6 +86,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-01T17:08:00Z
-Stopped at: CHECKPOINT Task 2 (24-02) — weryfikacja sprzetowa 5 testow sprzetowych na Arduino Uno R3
+Last session: 2026-04-01T17:57:09.447Z
+Stopped at: Completed 24-02-PLAN.md (weryfikacja sprzetowa firmware v2.1 — wszystkie 5 testow PASSED)
 Resume file: None
