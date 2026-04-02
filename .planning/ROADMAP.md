@@ -262,7 +262,11 @@ Plans:
   2. Nastepnego dnia (lub po recznej zmianie daty RTC) tworzony jest nowy plik z nowa nazwa LYYMMDD.CSV — stary plik nie jest nadpisywany
   3. Start bez karty SD: Serial wypisuje "SD fail", PID dziala bez przerw, brak zawieszenia w setup() — sd_dostepne=false aktywny
   4. Benchmark micros() wokol file.print() pokazuje typowe < 1000 us — wynik zapisany w komentarzu w kodzie lub logu Serial
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 26-01-PLAN.md — DataLogger class + SD init + HMI warning + benchmark + loop integration
+- [ ] 26-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (CSV, degradation, benchmark)
 
 ### Phase 27: Pelna Integracja DataLogger z MaszynaStanow
 **Goal**: Kazda zmiana stanu SCAN/TRACK/IDLE jest automatycznie logowana z RTC timestamp, ciagla telemetria dziala podczas TRACKING, system end-to-end z RPi i DataLogger jest funkcjonalny
@@ -305,7 +309,7 @@ Plans:
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete    | 2026-04-02 |
-| 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
+| 26. SD Card + DataLogger CSV | v2.1 | 0/2 | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
 
 ### Phase 28: Flash firmware na Uno R4 WiFi
