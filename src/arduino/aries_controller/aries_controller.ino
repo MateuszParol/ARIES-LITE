@@ -2,12 +2,16 @@
 // Architektura rozproszona: Arduino Uno R4 WiFi (Renesas RA4M1)
 // Fazy 19-23: parser serial, PID dual-axis, HMI, klasy OOP
 // Faza 25: integracja RTC DS1307 — ZegarRTC, Wire->RTC kolejnosc, bootscreen z czasem
+// Faza 26: DataLogger CSV na karcie SD — rotacja dobowa, ring buffer 50 wpisow, benchmark
 
 #include <Wire.h>            // I2C master — magistrala dla DS1307 (A4/A5)
 #include <RTClib.h>          // Adafruit RTClib 2.1.4 — DS1307 (D-16)
+#include <SD.h>              // Zapis CSV na karte SD via SPI (D10-D13)
 #include <QuickPID.h>       // PID z anti-windup (QuickPID 3.1.9)
 #include <Servo.h>           // sterowanie serwami MG-90S
 #include <LiquidCrystal.h>   // LCD 1602 w trybie 4-bit
+
+#define SD_CS_PIN       10  // Chip Select karty SD na DataLogger Shield V1.0
 
 // --- Stale protokolu ---
 #define FRAME_SIZE    8       // Stala dlugosc ramki 8 bajtow per PROTOCOL_SPEC.md
@@ -177,6 +181,18 @@ public:
             delay(250);
         }
         delay(1000);  // Lacznie ~1.75s na ekranie FAIL — czas na przeczytanie
+    }
+
+    // Ostrzezenie SD — karta SD niedostepna (HYBRID: ostrzezenie + kontynuacja)
+    // LCD: "SD: FAIL" przez ~1.5s + krotki alarm buzzer
+    void sd_ostrzezenie() {
+        _lcd.clear();
+        _lcd.setCursor(0, 0);
+        _lcd.print("SD: FAIL        ");
+        _lcd.setCursor(0, 1);
+        _lcd.print("Brak karty SD   ");
+        tone(BUZZER_PIN, 1500, 200);  // 1.5kHz, 200ms — krotszy niz RTC fail
+        delay(1500);
     }
 
 private:
@@ -520,12 +536,134 @@ private:
 };
 
 // ============================================================
+// class DataLogger — Zapis telemetrii CSV na karte SD z RTC timestamps (Faza 26)
+// Rotacja dobowa LYYMMDD.CSV (FAT 8.3), ring buffer 50 wpisow, graceful degradation.
+// Zalezy od ZegarRTC (referencja) — Wire+RTC+SD kolejnosc inicjalizacji (INT-07).
+// ============================================================
+class DataLogger {
+public:
+    // Konstruktor z referencja do ZegarRTC — logger nie inicjalizuje Wire/RTC samodzielnie
+    DataLogger(ZegarRTC& zegar) :
+        _zegar(zegar), _sd_ok(false),
+        _licznik_klatek(0), _wpisy_od_flush(0), _ostatni_dzien(0) {}
+
+    // Inicjalizacja SD — wywolac PO Wire.begin() i zegar.inicjalizuj() (INT-07)
+    // Bez RTC logging wymagalby millis() timestamps — mniej uzyteczne (Claude's Discretion)
+    // Benchmark LOG-05: micros() wokol pierwszego file.print() — wynik na Serial
+    bool inicjalizuj() {
+        if (!SD.begin(SD_CS_PIN)) {
+            Serial.println(F("SD fail"));
+            _sd_ok = false;
+            return false;
+        }
+        // Bez poprawnego RTC timestamps sa bezuzyteczne — wylacz logowanie
+        if (!_zegar.czy_dostepny()) {
+            Serial.println(F("[SD] Brak RTC — logowanie wymagajace timestamps wylaczone."));
+            _sd_ok = false;
+            return false;
+        }
+        _sd_ok = true;
+        _otworz_plik_dnia();
+
+        // Benchmark latencji zapisu (LOG-05) — micros() wokol file.print()
+        unsigned long t0 = micros();
+        _plik.print(F("TEST,0,0,0,0,0,0,0\n"));
+        unsigned long t1 = micros();
+        char bench_buf[32];
+        snprintf(bench_buf, sizeof(bench_buf), "[BENCH] SD write: %lu us", (unsigned long)(t1 - t0));
+        Serial.println(bench_buf);
+        _plik.flush();  // Upewniamy sie, ze benchmark i naglowek sa zapisane
+
+        return true;
+    }
+
+    // Krok logowania — wywolywac z loop() po HMI tick
+    // Loguje TYLKO w stanie SLEDZENIE (D-08), co 10 klatek (D-06, LOG-01)
+    void krok(StanSystemu stan, float pan, float tilt,
+              int16_t bx, int16_t by, uint8_t fs, uint16_t latency_ms) {
+        if (!_sd_ok) return;
+        if (stan != SLEDZENIE) {
+            _licznik_klatek = 0;  // Reset licznika przy wyjsciu z SLEDZENIE
+            return;
+        }
+        if (++_licznik_klatek < 10) return;  // Throttle — co 10 klatek
+        _licznik_klatek = 0;
+
+        _sprawdz_rotacje();
+        _zapisz_csv(stan, pan, tilt, bx, by, fs, latency_ms);
+    }
+
+    // Getter dostepnosci SD — uzywane przez HMI lub diagnostyke
+    bool czy_dostepne() const {
+        return _sd_ok;
+    }
+
+private:
+    ZegarRTC& _zegar;
+    File _plik;
+    bool _sd_ok;
+    uint8_t _licznik_klatek;
+    uint8_t _wpisy_od_flush;
+    uint8_t _ostatni_dzien;
+
+    // Otworz (lub stworz) plik dnia LYYMMDD.CSV (D-11: FAT 8.3)
+    // Jesli plik nowy (size==0): zapisz naglowek CSV (D-05)
+    void _otworz_plik_dnia() {
+        if (!_zegar.czy_dostepny()) return;
+        DateTime teraz = _zegar.odczytaj_czas();
+        char nazwa[13];
+        snprintf(nazwa, sizeof(nazwa), "L%02d%02d%02d.CSV",
+                 (int)(teraz.year() % 100), (int)teraz.month(), (int)teraz.day());
+        if (_plik) {
+            _plik.flush();
+            _plik.close();
+        }
+        _plik = SD.open(nazwa, FILE_WRITE);
+        if (_plik && _plik.size() == 0) {
+            // Nowy plik — zapisz naglowek per D-02/D-05
+            _plik.println(F("timestamp,stan,pan,tilt,error_x,error_y,face_size,latency_ms"));
+            _plik.flush();
+        }
+        _ostatni_dzien = teraz.day();
+    }
+
+    // Zapisz wiersz CSV do otwartego pliku (D-01, D-03, D-04)
+    // snprintf z %d i int cast — ARM Renesas RA4M1, bez float formatting (D-03)
+    // Flush co 50 wpisow — ring buffer per D-07/LOG-03
+    void _zapisz_csv(StanSystemu stan, float pan, float tilt,
+                     int16_t bx, int16_t by, uint8_t fs, uint16_t latency_ms) {
+        if (!_sd_ok || !_plik) return;
+        DateTime teraz = _zegar.odczytaj_czas();
+        char linia[64];
+        snprintf(linia, sizeof(linia), "%lu,%d,%d,%d,%d,%d,%d,%d",
+                 (unsigned long)teraz.unixtime(),
+                 (int)stan, (int)pan, (int)tilt,
+                 (int)bx, (int)by, (int)fs, (int)latency_ms);
+        _plik.println(linia);
+        if (++_wpisy_od_flush >= 50) {
+            _plik.flush();
+            _wpisy_od_flush = 0;
+        }
+    }
+
+    // Sprawdz rotacje dobowa — jesli dzien sie zmienil, otworz nowy plik (LOG-02)
+    void _sprawdz_rotacje() {
+        if (!_zegar.czy_dostepny()) return;
+        DateTime teraz = _zegar.odczytaj_czas();
+        if (teraz.day() != _ostatni_dzien) {
+            _otworz_plik_dnia();
+        }
+    }
+};
+
+// ============================================================
 // Globalne instancje — kolejnosc wazna (ZegarRTC i ServoPID i HMI przed MaszynaStanow)
 // ============================================================
 ZegarRTC zegar;
 ServoPID serwa;
 HMI hmi;
 MaszynaStanow maszyna(serwa, hmi);
+DataLogger logger(zegar);
 
 // ============================================================
 // setup() — inicjalizacja sprzetu
@@ -570,6 +708,15 @@ void setup() {
         Serial.println(teraz.second());
     }
 
+    // Inicjalizacja SD — po RTC, przed serwami (INT-07 kolejnosc: Wire->RTC->SD)
+    if (!logger.inicjalizuj()) {
+        Serial.println(F("[SD] OSTRZEZENIE: Karta SD niedostepna!"));
+        Serial.println(F("[SD] System kontynuuje bez logowania telemetrii."));
+        hmi.sd_ostrzezenie();  // LCD "SD: FAIL" + buzzer, potem wraca
+    } else {
+        Serial.println(F("[SD] Karta SD zainicjalizowana pomyslnie."));
+    }
+
     // Soft Start 500ms — stabilizacja napiecia zasilacza 6V PRZED ruchem serw (MIG-08, D-05)
     delay(500);
 
@@ -603,4 +750,9 @@ void loop() {
     if (hmi.przycisk_krok(maszyna.stan())) {
         maszyna.wymus_skanowanie();  // Abort SLEDZENIE → SKANOWANIE
     }
+
+    // --- Logowanie telemetrii (LOG-01, co 10 klatek w SLEDZENIE) ---
+    logger.krok(maszyna.stan(), serwa.kat_pan, serwa.kat_tilt,
+                serwa.ostatni_blad_x, serwa.ostatni_blad_y,
+                0, 0);  // face_size i latency_ms — placeholder do Phase 27
 }
