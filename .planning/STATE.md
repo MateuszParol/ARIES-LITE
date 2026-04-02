@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: verifying
-stopped_at: Phase 25 context gathered
-last_updated: "2026-04-01T18:24:39.386Z"
+stopped_at: Phase 28 context gathered
+last_updated: "2026-04-02T15:39:06.928Z"
 last_activity: 2026-04-01
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 15
-  total_plans: 23
+  total_plans: 25
   completed_plans: 22
   percent: 0
 ---
@@ -36,7 +36,8 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 24 | Migracja Pinow i Kompilacja Bazowa | MIG-03,04,05,06,07,08,09 | Not started |
+| 24 | Migracja Pinow i Kompilacja Bazowa | MIG-03,04,05,06,07,08,09 | Complete |
+| 28 | Flash firmware na Uno R4 WiFi | MIG-10 | Not started |
 | 25 | RTC DS1307 Izolowana Integracja | RTC-01,02,03 + INT-07 | Not started |
 | 26 | SD Card + DataLogger CSV | LOG-01,02,03,04,05 | Not started |
 | 27 | Pelna Integracja DataLogger z MaszynaStanow | INT-06, INT-08 | Not started |
@@ -80,12 +81,17 @@ Progress: [░░░░░░░░░░] 0%
 - Active buzzer na D8: jesli aktywny (nie pasywny) moze przekroczyc 8mA limit Uno R4 — sprawdzic typ przed Faza 24
 - CHECKPOINT 24-02 Task 2: Weryfikacja sprzetowa 5 testow na Uno R3 — uzytkownik musi potwierdzic LCD, Servo, Serial, Soft Start, Stabilnosc
 
+### Roadmap Evolution
+
+- Phase 28 added: Flash firmware na Uno R4 WiFi — wgranie i weryfikacja sprzetowa na docelowym hardware
+- Phase 28 przesunięta przed Phase 25 — kolejność wykonania: 24→28→25→26→27 (swieze R4 wymaga firmware natychmiast)
+
 ### Pending Todos
 
 - Zweryfikowac typ buzzera (aktywny vs pasywny) przed uruchomieniem Fazy 24
 
 ## Session Continuity
 
-Last session: 2026-04-01T18:24:39.327Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-rtc-ds1307-izolowana-integracja/25-CONTEXT.md
+Last session: 2026-04-02T15:39:06.871Z
+Stopped at: Phase 28 context gathered
+Resume file: .planning/phases/28-kompletny-szkic-arduino-ino/28-CONTEXT.md
