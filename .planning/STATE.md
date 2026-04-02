@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: executing
-stopped_at: "Checkpoint 25-01 Task 2: flash i weryfikacja 0x68 na fizycznym hardware"
-last_updated: "2026-04-02T16:53:18.207Z"
+status: verifying
+stopped_at: Completed 25-01-PLAN.md — DS1307 0x68 verified, plan 25-01 complete
+last_updated: "2026-04-02T17:01:38.414Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 18
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 
 Phase: 25 (rtc-ds1307-izolowana-integracja) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-02
 
 Progress: [░░░░░░░░░░] 0%
@@ -76,6 +76,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 28-kompletny-szkic-arduino-ino]: Testy T4-T6 DEFERRED — mediapipe wymaga Python 3.12, picamera2 wymaga Python 3.13, konflikt ABI uniemozliwia E2E testing na ARM64/aarch64
 - [Phase 25-rtc-ds1307-izolowana-integracja]: Wire.begin() BEZ argumentu — master mode, nie slave (per D-02/RESEARCH.md Pitfall 5)
 - [Phase 25-rtc-ds1307-izolowana-integracja]: RTClib 2.1.4 (Adafruit) zamiast DS1307RTC (PaulStoffregen) — przetestowane na Renesas RA4M1 (per D-16)
+- [Phase Phase 25-rtc-ds1307-izolowana-integracja]: loop() skan co 5s zamiast jednorazowego setup() — Uno R4 WiFi ESP32-S3 bridge nie wysyla DTR reset do RA4M1
 
 ### Blockers/Concerns
 
@@ -96,6 +97,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-02T16:53:18.184Z
-Stopped at: Checkpoint 25-01 Task 2: flash i weryfikacja 0x68 na fizycznym hardware
+Last session: 2026-04-02T17:01:38.384Z
+Stopped at: Completed 25-01-PLAN.md — DS1307 0x68 verified, plan 25-01 complete
 Resume file: None

@@ -22,6 +22,7 @@ tech-stack:
   patterns:
     - Wire.begin() bez argumentu = master mode (Wire.begin(addr) = slave, Pitfall 5)
     - I2C scan loop Wire.beginTransmission(addr) + endTransmission() == 0
+    - loop() powtarzajacy skan co 5s — kompensacja braku DTR reset na ESP32-S3 bridge R4 WiFi
 
 key-files:
   created:
@@ -32,10 +33,12 @@ key-decisions:
   - "Wire.begin() BEZ argumentu — master mode, nie slave (per D-02/RESEARCH.md Pitfall 5)"
   - "I2C scanner jako PIERWSZY krok — weryfikacja fizyczna przed kodem RTClib (per D-02)"
   - "RTClib 2.1.4 (Adafruit) zamiast DS1307RTC (PaulStoffregen) — przetestowane na Renesas RA4M1 (per D-16)"
+  - "loop() skan co 5s zamiast jednorazowego setup() — Uno R4 WiFi ESP32-S3 bridge nie wysyla DTR reset do RA4M1"
 
 patterns-established:
   - "Pattern I2C scan: Wire.beginTransmission(addr) + endTransmission() zwraca 0 gdy urzadzenie odpowiada"
   - "Serial CDC wait: while (!Serial && millis() - start < 500) — 500ms timeout dla R4 WiFi ESP32-S3 bridge"
+  - "Pattern R4 WiFi diagnostics: zawsze uzywaj loop() skanowania — setup() tylko raz, gubione gdy monitor nie otwarty"
 
 requirements-completed: [RTC-01, INT-07]
 
@@ -46,14 +49,14 @@ completed: 2026-04-02
 
 # Phase 25 Plan 01: RTC DS1307 I2C Scanner — Summary
 
-**RTClib 2.1.4 + BusIO zainstalowane, diagnostyczny I2C scanner sketch skompilowany na arduino:renesas_uno:unor4wifi (22% flash), gotowy do weryfikacji 0x68 na fizycznym DataLogger Shield**
+**RTClib 2.1.4 + BusIO zainstalowane, I2C scanner sketch flashed na Uno R4 WiFi — DS1307 potwierdzony pod 0x68 na DataLogger Shield (2 kolejne skany z loop())**
 
 ## Performance
 
-- **Duration:** ~2 min
+- **Duration:** 2 sesje (Task 1 auto ~2min, Task 2 weryfikacja hardware przez uzytkownika)
 - **Started:** 2026-04-02T16:50:25Z
-- **Completed:** 2026-04-02T16:52:08Z
-- **Tasks:** 1 of 2 (Task 2 = checkpoint:human-verify, wymaga fizycznego hardware)
+- **Completed:** 2026-04-02
+- **Tasks:** 2 of 2 (COMPLETE)
 - **Files modified:** 1
 
 ## Accomplishments
@@ -61,12 +64,15 @@ completed: 2026-04-02
 - Diagnostyczny sketch i2c_scanner.ino stworzony — skanuje adresy 0x01-0x7F, format hex, blad jezeli brak urzadzen
 - Kompilacja zero bledow na docelowym fqbn arduino:renesas_uno:unor4wifi (58076 B / 22% flash)
 - Wire.begin() bez argumentu (master mode) — zgodnie z Pitfall 5 z RESEARCH.md
+- DS1307 potwierdzony pod adresem 0x68 — 2 kolejne skany loop() daly spojny wynik "I2C znaleziony: 0x68"
+- Wykryto i naprawiono problem DTR reset na R4 WiFi: sketch zaktualizowany o loop() skan co 5s
 
 ## Task Commits
 
 1. **Task 1: Instalacja RTClib + BusIO i stworzenie I2C scanner sketch** - `ecfa085` (feat)
+2. **Task 2: loop() skan dla R4 WiFi ESP32-S3 bridge — weryfikacja 0x68 PASS** - `7f7acb8` (fix)
 
-**Plan metadata:** (do uzupelnienia po Task 2)
+**Plan metadata:** `6f93593` (docs)
 
 ## Files Created/Modified
 - `src/arduino/i2c_scanner/i2c_scanner.ino` — diagnostyczny I2C scanner, Wire.h, scan 0x01-0x7F, output hex, oczekiwany 0x68
@@ -77,23 +83,34 @@ completed: 2026-04-02
 - I2C scan jako pierwszy krok przed RTClib — weryfikacja fizyczna per D-02
 
 ## Deviations from Plan
-None — plan wykonany dokladnie wg specyfikacji.
+
+### Auto-fixed Issues
+
+**1. [Rule 1 - Bug] Dodano powtarzajacy skan w loop() dla kompensacji braku DTR reset na R4 WiFi**
+- **Found during:** Task 2 (weryfikacja hardware przez uzytkownika)
+- **Issue:** Oryginalny sketch mial `void loop() {}` — Uno R4 WiFi nie resetuje RA4M1 przy podlaczeniu Serial Monitora (ESP32-S3 bridge nie wysyla DTR jak Leonardo), wynik setup() byl gubiony przed otwarciem monitora
+- **Fix:** Dodano loop() ze skanem co 5s — uzytkownik mogl odczytac wynik 0x68 w kolejnych iteracjach
+- **Files modified:** `src/arduino/i2c_scanner/i2c_scanner.ino`
+- **Verification:** 2 kolejne skany potwierdzily `I2C znaleziony: 0x68, Znalezione: 1`
+- **Committed in:** `7f7acb8` (fix(25-01))
+
+---
+
+**Total deviations:** 1 auto-fixed (Rule 1 — zachowanie setup-only nie dzialalo na R4 WiFi)
+**Impact on plan:** Wymagana poprawka — bez loop() weryfikacja 0x68 bylaby niemozliwa na R4 WiFi. Brak scope creep.
 
 ## Issues Encountered
-Brak — biblioteki zainstalowane bez problemow, kompilacja przeszla za pierwszym razem.
+
+Uno R4 WiFi ESP32-S3 bridge nie wysyla sygnalu DTR reset do procesora RA4M1 przy podlaczeniu Serial Monitora — inaczej niz Leonardo/klasyczne Arduino. Oznacza to, ze setup() wykonuje sie przed otwarciem monitora i wynik jest tracony. Rozwiazanie: skan w loop() co 5s. Uwaga istotna dla wszystkich kolejnych szkicow diagnostycznych na tej platformie.
 
 ## User Setup Required
-**Task 2 wymaga fizycznej weryfikacji hardware:**
-1. Podlacz Arduino Uno R4 WiFi z DataLogger Shield przez USB
-2. Flash: `arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:renesas_uno:unor4wifi src/arduino/i2c_scanner/i2c_scanner.ino`
-3. Serial Monitor: `arduino-cli monitor -p /dev/ttyACM0 --config baudrate=115200`
-4. Oczekiwany wynik: "I2C znaleziony: 0x68"
-5. Odpowiedz "0x68 OK" aby odblokować Phase 25 Plan 02
+Task 2 zweryfikowany przez uzytkownika z wynikiem PASS — 0x68 potwierdzony.
 
 ## Next Phase Readiness
-- Biblioteki RTClib 2.1.4 gotowe do uzycia w firmware (Phase 25-02)
-- I2C scanner gotowy do flashowania na fizycznym Arduino
-- Po potwierdzeniu 0x68: gotowe do integracji klasy ZegarRTC w aries_controller.ino (Phase 25-02)
+- Fizyczne polaczenie I2C DS1307@0x68 potwierdzone — warunek wstepny dla plan 25-02 (integracja RTClib w firmware)
+- RTClib 2.1.4 i BusIO zainstalowane i gotowe do `#include <RTClib.h>`
+- Wzorzec loop() skan stosowac we wszystkich przyszlych szkicach diagnostycznych na R4 WiFi
+- Brak blokujacych problemow — plan 25-02 moze byc wykonany natychmiast
 
 ## Known Stubs
 None — sketch jest kompletny i diagnostyczny, nie ma placheholderow.
