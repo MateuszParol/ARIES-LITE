@@ -8,7 +8,7 @@
 - ✅ **v1.8 Critical Hardware Fix** — Phases 9-13 (shipped 2026-03-29)
 - 🚧 **v1.9 Stabilizacja Ruchu i Obrazu** — Phases 14-17 (in progress)
 - ✅ **v2.0 Architektura Rozproszona** — Phases 18-23 (shipped 2026-03-31)
-- 📋 **v2.1 Migracja na Uno R4 + DataLogger** — Phases 24-27 (planned)
+- 📋 **v2.1 Migracja na Uno R4 + DataLogger** — Phases 24-28 (planned)
 
 ## Phases
 
@@ -74,6 +74,7 @@
 **Milestone Goal:** Port firmware na Arduino Uno R4 WiFi z nowa mapa pinow, integracja DataLogger Shield (RTC DS1307 + SD card logging CSV) i Soft Start — pelna kompatybilnosc z istniejacym protokolem binarnym 8B z RPi.
 
 - [x] **Phase 24: Migracja Pinow i Kompilacja Bazowa** - Nowa mapa pinow, usuniecie specyfik Leonardo, fix dtostrf, Servo 1.3.0, Soft Start 500ms — firmware kompiluje sie i dziala na Uno R4 (completed 2026-04-01)
+- [ ] **Phase 28: Flash firmware na Uno R4 WiFi** - Wgranie istniejacego firmware v2.1 na swieze R4, weryfikacja sprzetowa LCD/serwa/serial/buzzer/przycisk na docelowym hardware
 - [ ] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS na bootscreen, poprawna kolejnosc inicjalizacji Wire->RTC
 - [ ] **Phase 26: SD Card + DataLogger CSV** - Zapis CSV z RTC timestamps, rotacja dobowa LYYMMDD.CSV, ring buffer, graceful degradation bez karty, benchmark latencji
 - [ ] **Phase 27: Pelna Integracja DataLogger z MaszynaStanow** - Klasa DataLogger zintegrowana ze zmianami stanow, end-to-end tracking z RPi i logowaniem telemetrii
@@ -239,7 +240,7 @@ Plans:
 
 ### Phase 25: RTC DS1307 Izolowana Integracja
 **Goal**: DS1307 dostarcza poprawny czas, LCD bootscreen pokazuje statyczny snapshot HH:MM:SS, inicjalizacja Wire->RTC dziala w prawidlowej kolejnosci
-**Depends on**: Phase 24
+**Depends on**: Phase 28
 **Requirements**: RTC-01, RTC-02, RTC-03, INT-07
 **Success Criteria** (what must be TRUE):
   1. I2C scanner wykrywa DS1307 pod adresem 0x68 — shield header poprawnie osadzony na Uno R4
@@ -302,6 +303,25 @@ Plans:
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
+| 28. Flash firmware na Uno R4 WiFi | v2.1 | 0/2 | Not started | - |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/2 | Not started | - |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
+
+### Phase 28: Flash firmware na Uno R4 WiFi
+
+**Goal:** Wgranie istniejacego firmware v2.1 (z Phase 24) na swieze Arduino Uno R4 WiFi i pelna weryfikacja sprzetowa — LCD, serwa, serial z RPi, buzzer, przycisk dzialaja na docelowym hardware (nie proxy R3)
+**Requirements**: MIG-10
+**Depends on:** Phase 24
+**Success Criteria** (what must be TRUE):
+  1. Firmware kompiluje sie i flashuje na Uno R4 WiFi bez bledow
+  2. LCD bootscreen wyswietla nazwe systemu i wersje v2.1
+  3. Serwa PAN (D6) i TILT (D9) wykonuja Soft Start i plynny skan sinusoidalny
+  4. pi_brain.py na RPi laczy sie przez /dev/ttyACM0 — ramki binarne parsowane poprawnie, tracking twarzy dziala end-to-end
+  5. Buzzer (D8) emituje ton przy zmianie stanu, przycisk (D7) przerywa TRACK→SCAN
+  6. 5 kolejnych cykli zasilania bez restartu Arduino podczas ruchu serw
+**Plans:** 2 plans
+
+Plans:
+- [ ] 28-01-PLAN.md — Kompilacja + flash firmware v2.1 na R4 WiFi + weryfikacja pasywna (LCD, serwa, buzzer)
+- [ ] 28-02-PLAN.md — Weryfikacja interaktywna (przycisk D7, E2E tracking z RPi, 5x power cycle)
