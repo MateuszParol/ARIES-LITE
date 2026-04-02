@@ -34,4 +34,19 @@ void setup() {
     Serial.println("Skan zakonczony.");
 }
 
-void loop() {}
+void loop() {
+    delay(5000);  // Powtorz skan co 5s — aby mozna bylo odczytac przez monitor
+    Serial.println("--- Powtorny skan ---");
+    uint8_t znalezione = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+        Wire.beginTransmission(addr);
+        if (Wire.endTransmission() == 0) {
+            Serial.print("I2C znaleziony: 0x");
+            if (addr < 16) Serial.print("0");
+            Serial.println(addr, HEX);
+            znalezione++;
+        }
+    }
+    Serial.print("Znalezione: ");
+    Serial.println(znalezione);
+}
