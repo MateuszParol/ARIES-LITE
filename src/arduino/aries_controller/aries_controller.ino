@@ -1,7 +1,10 @@
 // aries_controller.ino — Firmware ARIES-LITE v2.1
 // Architektura rozproszona: Arduino Uno R4 WiFi (Renesas RA4M1)
 // Fazy 19-23: parser serial, PID dual-axis, HMI, klasy OOP
+// Faza 25: integracja RTC DS1307 — ZegarRTC, Wire->RTC kolejnosc, bootscreen z czasem
 
+#include <Wire.h>            // I2C master — magistrala dla DS1307 (A4/A5)
+#include <RTClib.h>          // Adafruit RTClib 2.1.4 — DS1307 (D-16)
 #include <QuickPID.h>       // PID z anti-windup (QuickPID 3.1.9)
 #include <Servo.h>           // sterowanie serwami MG-90S
 #include <LiquidCrystal.h>   // LCD 1602 w trybie 4-bit
@@ -146,6 +149,36 @@ public:
         tone(BUZZER_PIN, 1000, 100);  // 1kHz, 100ms
     }
 
+    // Aktualizacja bootscreen z czasem RTC (D-04)
+    // Wywolywana po udanej inicjalizacji ZegarRTC
+    void bootscreen_z_czasem(DateTime t) {
+        char buf[17];
+        snprintf(buf, sizeof(buf), "v2.1  %02d:%02d:%02d",
+                 t.hour(), t.minute(), t.second());
+        _lcd.setCursor(0, 0);
+        _lcd.print(buf);
+        _lcd.setCursor(0, 1);
+        _lcd.print("RTC OK          ");
+        delay(1500);  // Czas na przeczytanie — lacznie z bootscreen ~2s
+    }
+
+    // Ostrzezenie RTC — RTC niedostepny (HYBRID: ostrzezenie + kontynuacja)
+    // LCD: "RTC: FAIL" przez ~2s + krotki alarm buzzer
+    // System kontynuuje startup normalnie po zakonczeniu tej metody
+    void rtc_ostrzezenie() {
+        _lcd.clear();
+        _lcd.setCursor(0, 0);
+        _lcd.print("RTC: FAIL       ");
+        _lcd.setCursor(0, 1);
+        _lcd.print("Brak zegara RTC ");
+        // Krotki alarm buzzer — 3x beep (nie ciagly ton!)
+        for (uint8_t i = 0; i < 3; i++) {
+            tone(BUZZER_PIN, 2000, 150);  // 2kHz, 150ms
+            delay(250);
+        }
+        delay(1000);  // Lacznie ~1.75s na ekranie FAIL — czas na przeczytanie
+    }
+
 private:
     LiquidCrystal _lcd;
     unsigned long _czas_ostatniego_lcd;
@@ -164,7 +197,7 @@ private:
         _lcd.print("ARIES-LITE v2.1");
         _lcd.setCursor(0, 1);
         _lcd.print("Inicjalizacja...");
-        delay(2000);
+        delay(500);  // skrocone z 2000ms — reszta czasu na ekranie z czasem RTC
     }
 };
 
@@ -440,8 +473,56 @@ private:
 };
 
 // ============================================================
-// Globalne instancje — kolejnosc wazna (ServoPID i HMI przed MaszynaStanow)
+// class ZegarRTC — Obsluga zegara DS1307 via I2C (D-10)
+// Adapter RTClib z polskim interfejsem.
+// Wire.begin() MUSI byc wywolane PRZED inicjalizuj() (D-15).
 // ============================================================
+class ZegarRTC {
+public:
+    ZegarRTC() : _dostepny(false) {}
+
+    // Inicjalizacja DS1307 — Wire.begin() musi byc wczesniej (D-15)
+    // Zwraca false jesli RTC nie odpowiada LUB rok < 2025 (D-07)
+    // Przy pierwszym uruchomieniu (oscylator nie biegnie) ustawia czas kompilacji
+    bool inicjalizuj() {
+        if (!_rtc.begin()) {
+            _dostepny = false;
+            return false;
+        }
+        // Ustaw czas kompilacji TYLKO gdy oscylator nie biegnie (swiezutka bateria)
+        // Pitfall 4: NIE bezwarunkowo — nadpisaloby czas przy kazdym resecie
+        if (!_rtc.isrunning()) {
+            _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+        }
+        DateTime teraz = _rtc.now();
+        if (teraz.year() < 2025) {
+            // Czas niepoprawny — bateria rozladowana lub DS1307 niezainicjowany
+            _dostepny = false;
+            return false;
+        }
+        _dostepny = true;
+        return true;
+    }
+
+    // Odczyt aktualnego czasu z DS1307 (~0.3ms I2C)
+    DateTime odczytaj_czas() {
+        return _rtc.now();
+    }
+
+    // Czy RTC zainicjalizowany i czas poprawny
+    bool czy_dostepny() const {
+        return _dostepny;
+    }
+
+private:
+    RTC_DS1307 _rtc;
+    bool _dostepny;
+};
+
+// ============================================================
+// Globalne instancje — kolejnosc wazna (ZegarRTC i ServoPID i HMI przed MaszynaStanow)
+// ============================================================
+ZegarRTC zegar;
 ServoPID serwa;
 HMI hmi;
 MaszynaStanow maszyna(serwa, hmi);
@@ -466,6 +547,28 @@ void setup() {
 
     // Inicjalizacja HMI: LCD bootscreen + piny buzzer/przycisk
     hmi.inicjalizuj();
+
+    // I2C + RTC po bootscreen (D-14: kolejnosc Wire -> RTC)
+    Wire.begin();  // D-15: Wire PRZED rtc.begin()
+    if (!zegar.inicjalizuj()) {
+        // HYBRID: ostrzezenie + kontynuacja — system startuje BEZ RTC
+        Serial.println("[RTC] OSTRZEZENIE: RTC niedostepny lub czas niepoprawny!");
+        Serial.println("[RTC] System kontynuuje bez timestampow RTC.");
+        hmi.rtc_ostrzezenie();  // LCD "RTC: FAIL" + 3x beep, potem wraca
+    } else {
+        // RTC OK — wyswietl czas na bootscreen (D-04)
+        DateTime teraz = zegar.odczytaj_czas();
+        hmi.bootscreen_z_czasem(teraz);
+
+        // Serial debug — timestamp RTC (RTC-03: interfejs gotowy dla Phase 26)
+        Serial.print("[RTC] ");
+        Serial.print(teraz.year()); Serial.print('-');
+        Serial.print(teraz.month()); Serial.print('-');
+        Serial.print(teraz.day()); Serial.print(' ');
+        Serial.print(teraz.hour()); Serial.print(':');
+        Serial.print(teraz.minute()); Serial.print(':');
+        Serial.println(teraz.second());
+    }
 
     // Soft Start 500ms — stabilizacja napiecia zasilacza 6V PRZED ruchem serw (MIG-08, D-05)
     delay(500);
