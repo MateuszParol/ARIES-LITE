@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: executing
-stopped_at: Phase 28 context gathered
-last_updated: "2026-04-02T16:08:14.344Z"
-last_activity: 2026-04-02 -- Phase 28 execution started
+stopped_at: Completed 28-01-PLAN.md (Task 2 DEFERRED — brak zasilacza 6V)
+last_updated: "2026-04-02T16:21:16.564Z"
+last_activity: 2026-04-02
 progress:
   total_phases: 18
   completed_phases: 15
   total_plans: 27
-  completed_plans: 22
+  completed_plans: 23
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 ## Current Position
 
 Phase: 28 (kompletny-szkic-arduino-ino) — EXECUTING
-Plan: 1 of 2
-Status: Executing Phase 28
-Last activity: 2026-04-02 -- Phase 28 execution started
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-04-02
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -72,6 +72,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Serial CDC wait 500ms zamiast 3000ms — R4 uzywa ESP32-S3 bridge nie natywnego USB CDC
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Rampa Soft Start 1400->1500us zamiast 500->1500us — breadboard z zewnetrznym zasilaniem 6V wymaga lagodniejszej rampy PWM
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
+- [Phase 28-kompletny-szkic-arduino-ino]: Testy sprzetowe T1-T3 odroczone — brak zewnetrznego zasilacza 6V do serw MG-90S podczas sesji
 
 ### Blockers/Concerns
 
@@ -92,6 +93,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-02T15:39:06.871Z
-Stopped at: Phase 28 context gathered
-Resume file: .planning/phases/28-kompletny-szkic-arduino-ino/28-CONTEXT.md
+Last session: 2026-04-02T16:21:11.608Z
+Stopped at: Completed 28-01-PLAN.md (Task 2 DEFERRED — brak zasilacza 6V)
+Resume file: None

@@ -303,7 +303,7 @@ Plans:
 | 22. HMI LCD + Buzzer + Przycisk | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
-| 28. Flash firmware na Uno R4 WiFi | v2.1 | 0/2 | Not started | - |
+| 28. Flash firmware na Uno R4 WiFi | v2.1 | 1/2 | In Progress|  |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/2 | Not started | - |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
@@ -320,8 +320,8 @@ Plans:
   4. pi_brain.py na RPi laczy sie przez /dev/ttyACM0 — ramki binarne parsowane poprawnie, tracking twarzy dziala end-to-end
   5. Buzzer (D8) emituje ton przy zmianie stanu, przycisk (D7) przerywa TRACK→SCAN
   6. 5 kolejnych cykli zasilania bez restartu Arduino podczas ruchu serw
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 28-01-PLAN.md — Kompilacja + flash firmware v2.1 na R4 WiFi + weryfikacja pasywna (LCD, serwa, buzzer)
+- [x] 28-01-PLAN.md — Kompilacja + flash firmware v2.1 na R4 WiFi + weryfikacja pasywna (LCD, serwa, buzzer)
 - [ ] 28-02-PLAN.md — Weryfikacja interaktywna (przycisk D7, E2E tracking z RPi, 5x power cycle)
