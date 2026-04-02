@@ -1,121 +1,112 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-29
+**Analysis Date:** 2026-03-30
 
 ## Languages
 
 **Primary:**
-- Python 3.13.5 - All backend logic, vision pipeline, hardware control, web server
+- Python 3.13.5 - All application code, configuration, entry points
 
 **Secondary:**
-- JavaScript (ES6+, vanilla) - Frontend UI in `web/templates/index.html`, Fetch API for REST calls
-- HTML5/CSS3 - Single-page mobile-first UI with CSS custom properties
+- HTML/CSS/JavaScript - Single-page web UI (`web/templates/index.html`) with inline CSS and vanilla JS (no framework)
 
 ## Runtime
 
 **Environment:**
-- CPython 3.13.5 on Raspberry Pi 4 (ARM64, Raspberry Pi OS / Debian-based, kernel 6.12)
-- pigpio daemon required at OS level (`sudo pigpiod`) for hardware PWM
+- CPython 3.13.5 on Raspberry Pi 4 (Linux aarch64, kernel 6.12.75+rpt-rpi-v8)
+- Requires `--system-site-packages` venv for `picamera2` access
 
 **Package Manager:**
-- pip (standard)
-- Lockfile: Not present (only `requirements.txt` with pinned versions)
-
-**Virtual Environment:**
-- Standard venv: `python3 -m venv venv --system-site-packages`
-- `--system-site-packages` required for Picamera2 access in test tracker mode
+- pip (via requirements.txt)
+- Lockfile: missing (no pip-tools, no poetry.lock)
 
 ## Frameworks
 
 **Core:**
-- Flask 3.0.0 - Web server, REST API, MJPEG streaming (`web/server.py`)
-- Werkzeug 3.0.0 - WSGI layer under Flask, `secure_filename` for uploads
+- Flask 3.0.0 - Web server for MJPEG stream + REST API (`web/server.py`)
+- Werkzeug 3.0.0 - WSGI server (bundled with Flask, also used for `secure_filename`)
 
 **Vision/ML:**
-- OpenCV 4.8.1.78 (`opencv-python-headless`, `opencv-contrib-python-headless`) - HAAR cascade detection, CSRT tracking, frame encoding, HUD rendering
-- face_recognition 1.3.0 - dlib-based face encoding and comparison for target verification (`src/vision.py`)
-- dlib 19.24.2 - Underlying ML library powering face_recognition (HOG-based face encoding)
+- OpenCV 4.8.1.78 (`opencv-python-headless` + `opencv-contrib-python-headless`) - HAAR cascade, CSRT tracker, DNN face detection, image encoding
+- face_recognition 1.3.0 - dlib-backed face encoding/comparison (main app only)
+- dlib 19.24.2 - Underlying HOG + CNN face models (pulled in by face_recognition)
 
 **Control:**
-- simple-pid >=2.0.1 - PID controller for dual-axis servo tracking (`src/tracker.py`, `src/modes/test_tracker.py`)
+- simple-pid >=2.0.1 - PID controller for pan/tilt servo loop (`src/tracker.py`, `src/modes/test_tracker.py`)
 
 **Hardware:**
-- gpiozero 2.0 - High-level servo abstraction via `AngularServo` (`src/hardware.py`)
-- pigpio 1.78 - Hardware PWM interface via `PiGPIOFactory` (`src/hardware.py`)
-- Picamera2 (system package, not in requirements.txt) - Native RPi camera backend used in test tracker mode (`src/modes/test_tracker.py`)
+- gpiozero 2.0 - `AngularServo` abstraction for PWM servo control (`src/hardware.py`)
+- pigpio 1.78 - Hardware-level PWM backend via `PiGPIOFactory` (requires `sudo pigpiod` daemon)
+
+**Testing:**
+- No test framework configured (no pytest, no unittest runner)
 
 **Build/Dev:**
-- No build tools, no linters, no formatters configured
-- No test framework
-- Git for version control
+- No build tooling (no Makefile, no tox, no pre-commit)
 
 ## Key Dependencies
 
-**Critical (requirements.txt - 10 packages):**
+**Critical (core functionality breaks without these):**
+- `opencv-contrib-python-headless` 4.8.1.78 - The `contrib` variant is required for `cv2.TrackerCSRT_create()` (CSRT tracker not in base opencv)
+- `face_recognition` 1.3.0 - Identity verification in main app; wraps dlib. Compiling dlib from source on RPi4 takes 30+ minutes
+- `numpy` 1.26.0 - Array operations for all vision code
+- `simple-pid` >=2.0.1 - Both entry points depend on this for servo PID control
+- `gpiozero` 2.0 + `pigpio` 1.78 - Servo control (graceful mock fallback when unavailable)
 
-| Package | Version | Role |
-|---------|---------|------|
-| `flask` | 3.0.0 | Web server, MJPEG streaming, REST API |
-| `werkzeug` | 3.0.0 | WSGI utilities (explicit pin, Flask dependency) |
-| `opencv-python-headless` | 4.8.1.78 | Core image processing, HAAR cascade, frame encoding |
-| `opencv-contrib-python-headless` | 4.8.1.78 | CSRT/KCF tracker algorithms (contrib module) |
-| `face_recognition` | 1.3.0 | dlib face encoding and comparison |
-| `dlib` | 19.24.2 | ML backbone for face_recognition |
-| `gpiozero` | 2.0 | Servo control abstraction |
-| `pigpio` | 1.78 | Hardware PWM daemon client |
-| `numpy` | 1.26.0 | Array operations for CV pipeline |
-| `simple-pid` | >=2.0.1 | PID controller implementation |
+**System packages (not in requirements.txt, must be apt-installed):**
+- `python3-picamera2` - Camera backend for test tracker (`src/modes/test_tracker.py`); imported via system-site-packages
+- `pigpiod` daemon - Must run before application start (`sudo pigpiod`)
+- `libcamera` stack - Required by picamera2 on RPi
 
-**System-level (not in requirements.txt):**
-- `picamera2` - Installed via `sudo apt install python3-picamera2`, accessed through `--system-site-packages` venv
-
-**Infrastructure (stdlib):**
-- `threading` - Multi-threaded architecture (4 daemon threads in main mode)
-- `signal` - Graceful shutdown via SIGINT/SIGTERM handlers
-- `logging` - All logging via Python logging module
+**DNN Model Files (not pip-installable):**
+- `models/deploy.prototxt` - Caffe model architecture for res10_300x300 SSD face detector
+- `models/res10_300x300_ssd_iter_140000.caffemodel` - Pretrained weights (~10MB)
 
 ## Configuration
 
 **Environment:**
-- No `.env` files; no environment variable configuration
-- All configuration is hardcoded constants in `src/config.py`
-- Key constants: PID gains (Kp=0.05, Ki=0.001, Kd=0.005), servo limits (pan +/-60, tilt +/-30), camera 640x480@30fps
-- Face recognition tolerance (0.55) is hardcoded in `src/vision.py` line 116, NOT in `src/config.py`
+- No `.env` files present
+- No environment variables used; all configuration is in `src/config.py` (Python constants)
+- Face recognition tolerance (0.55) is hardcoded in `src/vision.py` line 116, not in config
 
 **Build:**
-- No build configuration files (no pyproject.toml, setup.py, setup.cfg)
-- Direct `pip install -r requirements.txt` for dependency installation
+- No build config files
+- No Dockerfile or container configuration
+- Application version tracked in `VERSION` file (current: 1.4.0)
+
+**Key Config Constants (`src/config.py`):**
+- PID gains: `PID_PAN_P=0.05`, `PID_PAN_I=0.001`, `PID_PAN_D=0.005` (same for tilt)
+- Servo limits: pan +/-60 degrees, tilt +/-30 degrees
+- Camera: index 0, 640x480 @ 30 FPS (main app); 320x240 YUV420 (test tracker, hardcoded in `src/modes/test_tracker.py`)
+- GPIO pins: pan=12, tilt=13 (hardcoded in `src/hardware.py` line 16)
 
 ## Platform Requirements
 
 **Development (non-RPi):**
-- Python 3.13+
-- Hardware module falls back to mock mode when pigpio/gpiozero unavailable (`PIGPIO_AVAILABLE` flag in `src/hardware.py`)
-- Camera module uses OpenCV VideoCapture (works with USB webcams on desktop)
-- Only `main.py` works on desktop; `run_test_tracker.py` requires Picamera2 (RPi-only, exits with `sys.exit(1)` on import failure)
+- Python 3.11+ (uses modern typing features)
+- `pip install -r requirements.txt` (dlib compilation requires cmake + C++ compiler)
+- Main app (`main.py`) runs in mock servo mode; test tracker (`run_test_tracker.py`) exits without picamera2
 
 **Production (Raspberry Pi 4):**
-- Raspberry Pi 4 Model B (4GB RAM recommended)
-- Raspberry Pi OS (Debian-based, ARM64)
-- pigpio daemon: `sudo pigpiod`
-- Camera: Pi Camera HD v2 or compatible CSI camera
-- Servos: 2x MG-90S on GPIO pins 12 (pan) and 13 (tilt)
-- Separate 5V/6V servo power supply (prevents RPi brownout)
-- Flask development server (werkzeug) used as production server - no gunicorn/nginx
-- No containerization (no Docker), no CI/CD pipeline
+- Raspberry Pi OS (64-bit recommended for dlib performance)
+- `sudo apt install python3-picamera2` (for test tracker)
+- `sudo pigpiod` running before launch
+- Separate 5V/6V power supply for MG-90S servos (USB power causes brownouts)
+- Camera module connected (IMX219 or compatible CSI camera)
 
-## Two Entry Points and Their Stack Differences
+## Two Distinct Runtime Profiles
 
-| Aspect | `main.py` (Full System) | `run_test_tracker.py` (Test Mode) |
-|--------|------------------------|-----------------------------------|
-| Camera | OpenCV `VideoCapture` (`src/camera.py`) | Picamera2 YUV420 lores stream (`src/modes/test_tracker.py`) |
-| Detection | HAAR + CSRT tracker + async dlib (`src/vision.py`) | HAAR + streak filter (3 consecutive), no dlib (`src/modes/test_tracker.py`) |
-| Scanning | Linear raster sweep left-right (`src/tracker.py`) | Sinusoidal oscillation at 0.1 Hz (`src/modes/test_tracker.py`) |
-| UI | Flask web UI at port 5000 (`web/server.py`) | Local `cv2.imshow` window or headless fallback |
-| Resolution | 640x480 (`src/config.py`) | 320x240 (module constant in `src/modes/test_tracker.py`) |
-| Threading | 4 threads (main/Flask, logic, camera, vision) | 2 threads (main loop, camera daemon) |
-| States | SAFE_START -> SCANNING -> TRACKING -> IDLE | SCANNING -> TRACKING -> TARGET_LOST -> SCANNING |
+**Main App (`main.py`):**
+- Flask + OpenCV VideoCapture + HAAR + CSRT + dlib (async) + gpiozero
+- Full web UI at `http://0.0.0.0:5000`
+- 4 threads: main (Flask), logic, camera, vision
+
+**Test Tracker (`run_test_tracker.py`):**
+- Picamera2 + OpenCV DNN (res10_300x300 Caffe) + simple-pid + gpiozero
+- No Flask, no dlib, no web UI
+- cv2.imshow HUD (headless fallback available)
+- 2 threads: main (loop), camera daemon
 
 ---
 
-*Stack analysis: 2026-03-29*
+*Stack analysis: 2026-03-30*

@@ -40,7 +40,32 @@
       "Bash(cat /home/parolisko/ARIES-LITE/.planning/phases/10-detection-fix/*-VERIFICATION.md)",
       "Bash(git -C /home/parolisko/ARIES-LITE log --oneline)",
       "Bash(git -C /home/parolisko/ARIES-LITE show a5fa317 --stat)",
-      "Bash(git -C /home/parolisko/ARIES-LITE diff a5fa317~1 a5fa317 -- src/modes/test_tracker.py)"
+      "Bash(git -C /home/parolisko/ARIES-LITE diff a5fa317~1 a5fa317 -- src/modes/test_tracker.py)",
+      "WebFetch(domain:simple-pid.readthedocs.io)",
+      "Skill(gsd:new-milestone)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:developers.google.com)",
+      "WebFetch(domain:todbot.com)",
+      "WebFetch(domain:www.instructables.com)",
+      "Bash(/home/parolisko/ARIES-LITE/.planning/research/STACK.md:*)",
+      "Bash(cat /home/parolisko/ARIES-LITE/.planning/phases/18-srodowisko-protokol-migracja/*-VERIFICATION.md)",
+      "Bash(ls /dev/ttyACM* /dev/ttyUSB*)",
+      "Bash(lsusb)",
+      "Bash(ls /dev/ttyACM*)",
+      "Bash(arduino-cli version:*)",
+      "Bash(arduino-cli board:*)",
+      "Bash(arduino-cli sketch:*)",
+      "Bash(arduino-cli compile:*)",
+      "Bash(find / -name ArduinoISP.ino -path */examples/*)",
+      "Bash(arduino-cli upload:*)",
+      "Bash(arduino-cli burn-bootloader:*)",
+      "Bash(avrdude -c stk500v1 -p atmega32u4 -P /dev/ttyACM0 -b 19200 -v)",
+      "Bash(/home/parolisko/.arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude -c stk500v1 -p atmega32u4 -P /dev/ttyACM0 -b 19200 -v)",
+      "Bash(/home/parolisko/.arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude -c stk500v1 -p atmega32u4 -P /dev/ttyACM0 -b 19200 -B 32 -v)",
+      "Bash(/home/parolisko/.arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude -c stk500v1 -p atmega32u4 -P /dev/ttyACM0 -b 19200 -B 8 -v)",
+      "Bash(/home/parolisko/.arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude -c stk500v1 -p atmega32u4 -P /dev/ttyACM0 -b 19200 -F -v)",
+      "Bash(/home/parolisko/.arduino15/packages/arduino/tools/avrdude/8.0.0-arduino1/bin/avrdude -c stk500v1 -p atmega328p -P /dev/ttyACM0 -b 19200 -v)"
     ]
   }
 }
