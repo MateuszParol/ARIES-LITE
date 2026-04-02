@@ -20,8 +20,8 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 ### RTC (RTC)
 
 - [x] **RTC-01**: RTC DS1307 odczytuje poprawny czas po inicjalizacji Wire->RTC->SD
-- [ ] **RTC-02**: LCD bootscreen wyswietla jednorazowy snapshot czasu RTC (HH:MM:SS) przy starcie — Phase 25 scope: bootscreen only, aktualizacja co 1s odlozona (lcd_krok BEZ ZMIAN per D-05)
-- [ ] **RTC-03**: Timestamp z RTC uzywany w nazwach plikow CSV i wpisach logow
+- [x] **RTC-02**: LCD bootscreen wyswietla jednorazowy snapshot czasu RTC (HH:MM:SS) przy starcie — Phase 25 scope: bootscreen only, aktualizacja co 1s odlozona (lcd_krok BEZ ZMIAN per D-05)
+- [x] **RTC-03**: Timestamp z RTC uzywany w nazwach plikow CSV i wpisach logow
 
 ### Logowanie (LOG)
 
@@ -90,8 +90,8 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 | MIG-08 | Phase 24 | Complete |
 | MIG-09 | Phase 24 | Complete |
 | RTC-01 | Phase 25 | Complete |
-| RTC-02 | Phase 25 | Pending |
-| RTC-03 | Phase 25 | Pending |
+| RTC-02 | Phase 25 | Complete |
+| RTC-03 | Phase 25 | Complete |
 | INT-07 | Phase 25 | Complete |
 | LOG-01 | Phase 26 | Pending |
 | LOG-02 | Phase 26 | Pending |

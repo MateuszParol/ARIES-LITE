@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: verifying
-stopped_at: Completed 25-01-PLAN.md — DS1307 0x68 verified, plan 25-01 complete
-last_updated: "2026-04-02T17:01:38.414Z"
+stopped_at: "Completed 25-02-PLAN.md — ZegarRTC zintegrowany, LCD bootscreen z HH:MM:SS zweryfikowany sprzetowo, Phase 25 complete"
+last_updated: "2026-04-02T17:11:28.247Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 18
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 27
-  completed_plans: 25
+  completed_plans: 26
   percent: 0
 ---
 
@@ -77,6 +77,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 25-rtc-ds1307-izolowana-integracja]: Wire.begin() BEZ argumentu — master mode, nie slave (per D-02/RESEARCH.md Pitfall 5)
 - [Phase 25-rtc-ds1307-izolowana-integracja]: RTClib 2.1.4 (Adafruit) zamiast DS1307RTC (PaulStoffregen) — przetestowane na Renesas RA4M1 (per D-16)
 - [Phase Phase 25-rtc-ds1307-izolowana-integracja]: loop() skan co 5s zamiast jednorazowego setup() — Uno R4 WiFi ESP32-S3 bridge nie wysyla DTR reset do RA4M1
+- [Phase 25]: ZegarRTC jako adapter RTClib z polskim interfejsem — oddziela logike RTC od kodu glownego
+- [Phase 25]: HYBRID mode: ostrzezenie buzzer + LCD FAIL zamiast blokady — system startuje zawsze bez RTC
+- [Phase 25]: Weryfikacja sprzetowa R4 WiFi bez Serial Monitor — ESP32-S3 bridge nie resetuje RA4M1 przy otwarciu portu szeregowego
 
 ### Blockers/Concerns
 
@@ -97,6 +100,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-02T17:01:38.384Z
-Stopped at: Completed 25-01-PLAN.md — DS1307 0x68 verified, plan 25-01 complete
+Last session: 2026-04-02T17:11:28.207Z
+Stopped at: Completed 25-02-PLAN.md — ZegarRTC zintegrowany, LCD bootscreen z HH:MM:SS zweryfikowany sprzetowo, Phase 25 complete
 Resume file: None

@@ -75,7 +75,7 @@
 
 - [x] **Phase 24: Migracja Pinow i Kompilacja Bazowa** - Nowa mapa pinow, usuniecie specyfik Leonardo, fix dtostrf, Servo 1.3.0, Soft Start 500ms — firmware kompiluje sie i dziala na Uno R4 (completed 2026-04-01)
 - [x] **Phase 28: Flash firmware na Uno R4 WiFi** - Wgranie istniejacego firmware v2.1 na swieze R4, weryfikacja sprzetowa LCD/serwa/serial/buzzer/przycisk na docelowym hardware (completed 2026-04-02)
-- [ ] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS na bootscreen, poprawna kolejnosc inicjalizacji Wire->RTC
+- [x] **Phase 25: RTC DS1307 Izolowana Integracja** - DS1307 odczytuje czas, LCD pokazuje HH:MM:SS na bootscreen, poprawna kolejnosc inicjalizacji Wire->RTC (completed 2026-04-02)
 - [ ] **Phase 26: SD Card + DataLogger CSV** - Zapis CSV z RTC timestamps, rotacja dobowa LYYMMDD.CSV, ring buffer, graceful degradation bez karty, benchmark latencji
 - [ ] **Phase 27: Pelna Integracja DataLogger z MaszynaStanow** - Klasa DataLogger zintegrowana ze zmianami stanow, end-to-end tracking z RPi i logowaniem telemetrii
 
@@ -251,7 +251,7 @@ Plans:
 
 Plans:
 - [x] 25-01-PLAN.md — Instalacja RTClib + BusIO, I2C scanner sketch, weryfikacja 0x68 na hardware
-- [ ] 25-02-PLAN.md — Klasa ZegarRTC + modyfikacja setup/HMI + ostrzezenie RTC + weryfikacja sprzetowa
+- [x] 25-02-PLAN.md — Klasa ZegarRTC + modyfikacja setup/HMI + ostrzezenie RTC + weryfikacja sprzetowa
 
 ### Phase 26: SD Card + DataLogger CSV
 **Goal**: Telemetria zapisuje sie na karte SD w formacie CSV z RTC timestamps, rotacja dobowa dziala, system startuje normalnie bez karty SD
@@ -304,7 +304,7 @@ Plans:
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
-| 25. RTC DS1307 Izolowana Integracja | v2.1 | 1/2 | In Progress|  |
+| 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete   | 2026-04-02 |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
 
@@ -320,7 +320,7 @@ Plans:
   4. pi_brain.py na RPi laczy sie przez /dev/ttyACM0 — ramki binarne parsowane poprawnie, tracking twarzy dziala end-to-end
   5. Buzzer (D8) emituje ton przy zmianie stanu, przycisk (D7) przerywa TRACK→SCAN
   6. 5 kolejnych cykli zasilania bez restartu Arduino podczas ruchu serw
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 28-01-PLAN.md — Kompilacja + flash firmware v2.1 na R4 WiFi + weryfikacja pasywna (LCD, serwa, buzzer)
