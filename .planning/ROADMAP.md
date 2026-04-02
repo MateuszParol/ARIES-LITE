@@ -250,7 +250,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 25-01-PLAN.md — Instalacja RTClib + BusIO, I2C scanner sketch, weryfikacja 0x68 na hardware
+- [x] 25-01-PLAN.md — Instalacja RTClib + BusIO, I2C scanner sketch, weryfikacja 0x68 na hardware
 - [ ] 25-02-PLAN.md — Klasa ZegarRTC + modyfikacja setup/HMI + ostrzezenie RTC + weryfikacja sprzetowa
 
 ### Phase 26: SD Card + DataLogger CSV
@@ -304,7 +304,7 @@ Plans:
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
-| 25. RTC DS1307 Izolowana Integracja | v2.1 | 0/2 | Not started | - |
+| 25. RTC DS1307 Izolowana Integracja | v2.1 | 1/2 | In Progress|  |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
 
@@ -320,7 +320,7 @@ Plans:
   4. pi_brain.py na RPi laczy sie przez /dev/ttyACM0 — ramki binarne parsowane poprawnie, tracking twarzy dziala end-to-end
   5. Buzzer (D8) emituje ton przy zmianie stanu, przycisk (D7) przerywa TRACK→SCAN
   6. 5 kolejnych cykli zasilania bez restartu Arduino podczas ruchu serw
-**Plans:** 2/2 plans complete
+**Plans:** 1/2 plans executed
 
 Plans:
 - [x] 28-01-PLAN.md — Kompilacja + flash firmware v2.1 na R4 WiFi + weryfikacja pasywna (LCD, serwa, buzzer)

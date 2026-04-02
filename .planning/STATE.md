@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: verifying
-stopped_at: Phase 25 context updated for R4 WiFi
-last_updated: "2026-04-02T16:41:51.865Z"
+status: executing
+stopped_at: "Checkpoint 25-01 Task 2: flash i weryfikacja 0x68 na fizycznym hardware"
+last_updated: "2026-04-02T16:53:18.207Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 18
   completed_phases: 16
   total_plans: 27
-  completed_plans: 24
+  completed_plans: 25
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Uno R4 WiFi (PID + HMI + DataLogger) polaczone USB Serial
-**Current focus:** Phase 28 — kompletny-szkic-arduino-ino
+**Current focus:** Phase 25 — rtc-ds1307-izolowana-integracja
 
 ## Current Position
 
-Phase: 28 (kompletny-szkic-arduino-ino) — EXECUTING
+Phase: 25 (rtc-ds1307-izolowana-integracja) — EXECUTING
 Plan: 2 of 2
-Status: Phase complete — ready for verification
+Status: Ready to execute
 Last activity: 2026-04-02
 
 Progress: [░░░░░░░░░░] 0%
@@ -74,6 +74,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
 - [Phase 28-kompletny-szkic-arduino-ino]: Testy sprzetowe T1-T3 odroczone — brak zewnetrznego zasilacza 6V do serw MG-90S podczas sesji
 - [Phase 28-kompletny-szkic-arduino-ino]: Testy T4-T6 DEFERRED — mediapipe wymaga Python 3.12, picamera2 wymaga Python 3.13, konflikt ABI uniemozliwia E2E testing na ARM64/aarch64
+- [Phase 25-rtc-ds1307-izolowana-integracja]: Wire.begin() BEZ argumentu — master mode, nie slave (per D-02/RESEARCH.md Pitfall 5)
+- [Phase 25-rtc-ds1307-izolowana-integracja]: RTClib 2.1.4 (Adafruit) zamiast DS1307RTC (PaulStoffregen) — przetestowane na Renesas RA4M1 (per D-16)
 
 ### Blockers/Concerns
 
@@ -94,6 +96,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-02T16:41:51.808Z
-Stopped at: Phase 25 context updated for R4 WiFi
-Resume file: .planning/phases/25-rtc-ds1307-izolowana-integracja/25-CONTEXT.md
+Last session: 2026-04-02T16:53:18.184Z
+Stopped at: Checkpoint 25-01 Task 2: flash i weryfikacja 0x68 na fizycznym hardware
+Resume file: None

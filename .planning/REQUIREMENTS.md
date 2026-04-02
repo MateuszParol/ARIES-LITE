@@ -19,7 +19,7 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 
 ### RTC (RTC)
 
-- [ ] **RTC-01**: RTC DS1307 odczytuje poprawny czas po inicjalizacji Wire->RTC->SD
+- [x] **RTC-01**: RTC DS1307 odczytuje poprawny czas po inicjalizacji Wire->RTC->SD
 - [ ] **RTC-02**: LCD bootscreen wyswietla jednorazowy snapshot czasu RTC (HH:MM:SS) przy starcie — Phase 25 scope: bootscreen only, aktualizacja co 1s odlozona (lcd_krok BEZ ZMIAN per D-05)
 - [ ] **RTC-03**: Timestamp z RTC uzywany w nazwach plikow CSV i wpisach logow
 
@@ -34,7 +34,7 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 ### Integracja (INT)
 
 - [ ] **INT-06**: Klasa DataLogger (OOP) zintegrowana z MaszynaStanow — logowanie zmian stanow
-- [ ] **INT-07**: Poprawna kolejnosc inicjalizacji w setup(): Wire.begin() -> rtc.begin() -> SD.begin()
+- [x] **INT-07**: Poprawna kolejnosc inicjalizacji w setup(): Wire.begin() -> rtc.begin() -> SD.begin()
 - [ ] **INT-08**: End-to-end: firmware z DataLogger dziala na Uno R4 z pelnym trackingiem RPi
 
 ## v2.2 Requirements (Deferred)
@@ -89,10 +89,10 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 | MIG-07 | Phase 24 | Complete |
 | MIG-08 | Phase 24 | Complete |
 | MIG-09 | Phase 24 | Complete |
-| RTC-01 | Phase 25 | Pending |
+| RTC-01 | Phase 25 | Complete |
 | RTC-02 | Phase 25 | Pending |
 | RTC-03 | Phase 25 | Pending |
-| INT-07 | Phase 25 | Pending |
+| INT-07 | Phase 25 | Complete |
 | LOG-01 | Phase 26 | Pending |
 | LOG-02 | Phase 26 | Pending |
 | LOG-03 | Phase 26 | Pending |
