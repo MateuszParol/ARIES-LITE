@@ -304,7 +304,7 @@ Plans:
 | 23. Integracja + Kalibracja | v2.0 | 2/2 | Complete    | 2026-03-31 |
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
-| 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete   | 2026-04-02 |
+| 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete    | 2026-04-02 |
 | 26. SD Card + DataLogger CSV | v2.1 | 0/? | Not started | - |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
 
