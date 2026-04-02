@@ -265,7 +265,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 26-01-PLAN.md — DataLogger class + SD init + HMI warning + benchmark + loop integration
+- [x] 26-01-PLAN.md — DataLogger class + SD init + HMI warning + benchmark + loop integration
 - [ ] 26-02-PLAN.md — Flash na Uno R4 WiFi + weryfikacja sprzetowa (CSV, degradation, benchmark)
 
 ### Phase 27: Pelna Integracja DataLogger z MaszynaStanow
@@ -309,7 +309,7 @@ Plans:
 | 24. Migracja Pinow i Kompilacja Bazowa | v2.1 | 2/2 | Complete    | 2026-04-01 |
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete    | 2026-04-02 |
-| 26. SD Card + DataLogger CSV | v2.1 | 0/2 | Not started | - |
+| 26. SD Card + DataLogger CSV | v2.1 | 1/2 | In Progress|  |
 | 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
 
 ### Phase 28: Flash firmware na Uno R4 WiFi
@@ -324,7 +324,7 @@ Plans:
   4. pi_brain.py na RPi laczy sie przez /dev/ttyACM0 — ramki binarne parsowane poprawnie, tracking twarzy dziala end-to-end
   5. Buzzer (D8) emituje ton przy zmianie stanu, przycisk (D7) przerywa TRACK→SCAN
   6. 5 kolejnych cykli zasilania bez restartu Arduino podczas ruchu serw
-**Plans:** 2/2 plans complete
+**Plans:** 1/2 plans executed
 
 Plans:
 - [x] 28-01-PLAN.md — Kompilacja + flash firmware v2.1 na R4 WiFi + weryfikacja pasywna (LCD, serwa, buzzer)

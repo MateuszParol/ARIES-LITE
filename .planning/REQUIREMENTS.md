@@ -25,11 +25,11 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 
 ### Logowanie (LOG)
 
-- [ ] **LOG-01**: Zapis CSV na karte SD: timestamp, stan, pan, tilt, error_x, error_y, face_size, latency_ms
-- [ ] **LOG-02**: Daily file rotation — nowy plik LYYMMDD.CSV co dzien (FAT 8.3)
-- [ ] **LOG-03**: Ring buffer w RAM (flush co ~50 wpisow) — ochrona petli PID 100Hz
-- [ ] **LOG-04**: Graceful degradation — system dziala normalnie bez karty SD (logowanie wylaczone)
-- [ ] **LOG-05**: Empiryczny benchmark latencji zapisu SD na Uno R4 przed integracja z PID
+- [x] **LOG-01**: Zapis CSV na karte SD: timestamp, stan, pan, tilt, error_x, error_y, face_size, latency_ms
+- [x] **LOG-02**: Daily file rotation — nowy plik LYYMMDD.CSV co dzien (FAT 8.3)
+- [x] **LOG-03**: Ring buffer w RAM (flush co ~50 wpisow) — ochrona petli PID 100Hz
+- [x] **LOG-04**: Graceful degradation — system dziala normalnie bez karty SD (logowanie wylaczone)
+- [x] **LOG-05**: Empiryczny benchmark latencji zapisu SD na Uno R4 przed integracja z PID
 
 ### Integracja (INT)
 
@@ -93,11 +93,11 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 | RTC-02 | Phase 25 | Complete |
 | RTC-03 | Phase 25 | Complete |
 | INT-07 | Phase 25 | Complete |
-| LOG-01 | Phase 26 | Pending |
-| LOG-02 | Phase 26 | Pending |
-| LOG-03 | Phase 26 | Pending |
-| LOG-04 | Phase 26 | Pending |
-| LOG-05 | Phase 26 | Pending |
+| LOG-01 | Phase 26 | Complete |
+| LOG-02 | Phase 26 | Complete |
+| LOG-03 | Phase 26 | Complete |
+| LOG-04 | Phase 26 | Complete |
+| LOG-05 | Phase 26 | Complete |
 | INT-06 | Phase 27 | Pending |
 | INT-08 | Phase 27 | Pending |
 
