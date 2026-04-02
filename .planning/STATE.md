@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: executing
-stopped_at: Completed 28-01-PLAN.md (Task 2 DEFERRED — brak zasilacza 6V)
-last_updated: "2026-04-02T16:21:16.564Z"
+status: verifying
+stopped_at: Completed 28-02-PLAN.md DEFERRED — environment blocker (mediapipe/picamera2 ABI conflict)
+last_updated: "2026-04-02T16:34:10.331Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 18
-  completed_phases: 15
+  completed_phases: 16
   total_plans: 27
-  completed_plans: 23
+  completed_plans: 24
   percent: 0
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-04-01)
 
 Phase: 28 (kompletny-szkic-arduino-ino) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-04-02
 
 Progress: [░░░░░░░░░░] 0%
@@ -73,6 +73,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Rampa Soft Start 1400->1500us zamiast 500->1500us — breadboard z zewnetrznym zasilaniem 6V wymaga lagodniejszej rampy PWM
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
 - [Phase 28-kompletny-szkic-arduino-ino]: Testy sprzetowe T1-T3 odroczone — brak zewnetrznego zasilacza 6V do serw MG-90S podczas sesji
+- [Phase 28-kompletny-szkic-arduino-ino]: Testy T4-T6 DEFERRED — mediapipe wymaga Python 3.12, picamera2 wymaga Python 3.13, konflikt ABI uniemozliwia E2E testing na ARM64/aarch64
 
 ### Blockers/Concerns
 
@@ -93,6 +94,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-02T16:21:11.608Z
-Stopped at: Completed 28-01-PLAN.md (Task 2 DEFERRED — brak zasilacza 6V)
+Last session: 2026-04-02T16:34:10.294Z
+Stopped at: Completed 28-02-PLAN.md DEFERRED — environment blocker (mediapipe/picamera2 ABI conflict)
 Resume file: None
