@@ -101,10 +101,10 @@ Plans:
   1. Po wejsciu w TRACKING serwa nie docieraja do limitow katowych w ciagu pierwszych 2 sekund
   2. Twarz zostaje wycentrowana w obu osiach w ciagu 1-3 sekund od wejscia w TRACKING — widoczna konwergencja PID
   3. Brak ciaglych ostrzezen CLAMP w logach terminala po wejsciu w TRACKING
-**Plans**: 2 plans
+**Plans**: 1 plan
 
 Plans:
-- [ ] 15-01: pid_pan.reset() + pid_tilt.reset() na wejscie TRACKING + PID_OUTPUT_LIMIT 10.0 → 3.0
+- [ ] 15-01-PLAN.md — OUTPUT_LIMIT 5.0f → 3.0f + weryfikacja sprzetowa PID tracking na Uno R4 WiFi
 
 ### Phase 16: Tilt Scan Fix
 **Goal**: Skanowanie pokrywa obie osie — kamera przemieszcza sie w pionie i poziomie podczas stanu SCANNING
