@@ -6,7 +6,7 @@
 - ✅ **v1.6 Test Tracker** — Phases 4-5 (shipped 2026-03-26)
 - ✅ **v1.7 Debugging & Optimization** — Phases 6-8 (shipped 2026-03-29)
 - ✅ **v1.8 Critical Hardware Fix** — Phases 9-13 (shipped 2026-03-29)
-- 🚧 **v1.9 Stabilizacja Ruchu i Obrazu** — Phases 14-17 (in progress)
+- 🚧 **v2.1.1 Stabilizacja Hardware R4** — Phases 14-17 (in progress)
 - ✅ **v2.0 Architektura Rozproszona** — Phases 18-23 (shipped 2026-03-31)
 - 📋 **v2.1 Migracja na Uno R4 + DataLogger** — Phases 24-28 (planned)
 
@@ -49,14 +49,14 @@
 
 </details>
 
-### 🚧 v1.9 Stabilizacja Ruchu i Obrazu (In Progress)
+### 🚧 v2.1.1 Stabilizacja Hardware R4 (In Progress)
 
-**Milestone Goal:** System skanuje plynnie w obu osiach, kamera oddaje prawidlowe kolory, a tracking nie powoduje ucieczki serw.
+**Milestone Goal:** Serwa sledzace twarz poprawnie (negative feedback), tilt skan dziala na R4 WiFi, kamera bez fioletowej poswiaty — pelny E2E tracking stabilny na docelowym hardware.
 
-- [ ] **Phase 14: AWB/Color Fix** - Naprawa zielonej poswiaty: flaga cvtColor i fallback ColourGains
-- [ ] **Phase 15: PID Tracking Fix** - Reset PID przy wejsciu w TRACKING + redukcja output limit
-- [ ] **Phase 16: Tilt Scan Fix** - Sinusoida tilt w _skanuj() — Lissajous 2D z phase-offset continuity
-- [ ] **Phase 17: Scan Smoothness** - DNN_SKIP_EVERY wzrost + opcjonalne EMA wygladzanie serw
+- [ ] **Phase 14: PID Sign Fix** - Kalibracja PAN_INVERT/TILT_INVERT na Uno R4 WiFi — eliminacja positive feedback (serwa uciekaja od obiektu)
+- [ ] **Phase 15: Tilt Servo Fix** - Diagnostyka PWM pin D9 na Renesas RA4M1, ewentualna zmiana pinu lub init order — tilt skan nie dziala
+- [ ] **Phase 16: Camera Color Fix** - Naprawa fioletowej poswiaty: weryfikacja AWB_FALLBACK_GAINS, cvtColor flag YUV420/NV12, ColourGains tuple order
+- [ ] **Phase 17: E2E Tracking Validation** - Pelna weryfikacja sprzetowa po fixach 14-16: skan Lissajous 2D, tracking negative feedback, kolory naturalne
 
 ### 📋 v2.0 Architektura Rozproszona (Planned)
 
@@ -81,56 +81,52 @@
 
 ## Phase Details
 
-### Phase 14: AWB/Color Fix
-**Goal**: Kamera oddaje prawidlowe kolory od pierwszej klatki — brak zielonej poswiaty niezaleznie od sceny
-**Depends on**: Phase 13 (v1.8 shipped)
-**Requirements**: COL-01, COL-02, COL-03
+### Phase 14: PID Sign Fix
+**Goal**: Serwa sledzace twarz poruszaja sie W KIERUNKU twarzy (negative feedback) — brak ucieczki do limitow katowych
+**Depends on**: Phase 28 (firmware zaflashowany na R4 WiFi)
+**Requirements**: —
 **Success Criteria** (what must be TRUE):
-  1. Obraz kamerowy nie ma zielonej poswiaty — skora wyglada naturalnie od pierwszej klatki po starcie
-  2. Poruszanie kamera przed roznymi tlami nie zmienia dominujacego odcienia barwnego (kanal G nie jest staly)
-  3. Log AWB warm-up pokazuje ColourGains z R > 1.4 i B > 1.4 — wartosci realistyczne dla IMX219
-**Plans**: 1 plan
+  1. Twarz po prawej stronie kadru — serwo pan obraca kamere w prawo (w strone twarzy)
+  2. Twarz ponizej srodka kadru — serwo tilt pochyla kamere w dol (w strone twarzy)
+  3. Serwa nie docieraja do limitow katowych w ciagu pierwszych 2 sekund SLEDZENIE
+  4. Twarz zostaje wycentrowana w obu osiach w ciagu 1-3 sekund — widoczna konwergencja PID
+**Plans**: 2 plans
 
 Plans:
-- [ ] 14-01-PLAN.md — COLOR_YUV420p2BGR → COLOR_YUV420p2RGB + AWB_FALLBACK_GAINS (2.2, 1.8) + weryfikacja wizualna
+- [ ] 14-01-PLAN.md — Aktualizacja skryptu kalibracyjnego dla R4 WiFi + weryfikacja kompilacji firmware
+- [ ] 14-02-PLAN.md — Empiryczna kalibracja PAN_INVERT/TILT_INVERT + korekta firmware + weryfikacja negative feedback
 
-### Phase 15: PID Tracking Fix
-**Goal**: Przejscie w stan TRACKING nie powoduje natychmiastowej ucieczki serw do limitow
+### Phase 15: Tilt Servo Fix
+**Goal**: Serwo tilt (pin D9) fizycznie oscyluje podczas SKANOWANIE na Arduino Uno R4 WiFi
 **Depends on**: Phase 14
-**Requirements**: TRK-01, TRK-02, TRK-03
+**Requirements**: —
 **Success Criteria** (what must be TRUE):
-  1. Po wejsciu w TRACKING serwa nie docieraja do limitow katowych w ciagu pierwszych 2 sekund
-  2. Twarz zostaje wycentrowana w obu osiach w ciagu 1-3 sekund od wejscia w TRACKING — widoczna konwergencja PID
-  3. Brak ciaglych ostrzezen CLAMP w logach terminala po wejsciu w TRACKING
-**Plans**: 2 plans
+  1. Serwo tilt fizycznie porusza sie gora-dol podczas stanu SKANOWANIE
+  2. Skan tworzy wzorzec Lissajous 2D — kamera pokrywa pole widzenia w obu osiach
+  3. Po power cycle tilt dziala od pierwszego cyklu (nie wymaga restartu)
+**Plans**: 0 plans
 
-Plans:
-- [ ] 15-01: pid_pan.reset() + pid_tilt.reset() na wejscie TRACKING + PID_OUTPUT_LIMIT 10.0 → 3.0
-
-### Phase 16: Tilt Scan Fix
-**Goal**: Skanowanie pokrywa obie osie — kamera przemieszcza sie w pionie i poziomie podczas stanu SCANNING
-**Depends on**: Phase 15
-**Requirements**: SCN-01, SCN-02, SCN-03
+### Phase 16: Camera Color Fix
+**Goal**: Obraz z kamery RPi4 ma naturalne kolory — brak fioletowej poswiaty
+**Depends on**: Phase 14
+**Requirements**: —
 **Success Criteria** (what must be TRUE):
-  1. Wartosc Tilt na HUD zmienia sie podczas stanu SCANNING — serwo tilt fizycznie oscyluje
-  2. Sciezka skanowania tworzy wzorzec Lissajous — kamera pokrywa pole widzenia w obu osiach
-  3. Powrot do stanu SCANNING po TARGET_LOST nie powoduje skoku serwa tilt — plynna kontynuacja z aktualnej pozycji
-**Plans**: 2 plans
+  1. Skora twarzy ma naturalny cielisty odcien — brak fioletowego/rozowego zabarwienia
+  2. Biale obiekty wygladaja bialo/szaro — nie fioletowo
+  3. Log ColourGains pokazuje realistyczne wartosci (R i B w zakresie 1.2-3.0)
+  4. Kolory poprawne zarowno z AWB metadata jak i z fallback gains
+**Plans**: 0 plans
 
-Plans:
-- [ ] 16-01: SCAN_AMPLITUDE_TILT=15.0 + SCAN_FREQUENCY_TILT=0.07 w _skanuj() + phase-offset dla tilt
-
-### Phase 17: Scan Smoothness
-**Goal**: Ruch serw podczas skanowania jest plynny bez widocznych szarpan powodowanych przez DNN inference
-**Depends on**: Phase 16
-**Requirements**: SMT-01, SMT-02
+### Phase 17: E2E Tracking Validation
+**Goal**: Pelna weryfikacja sprzetowa systemu po fixach 14-16 — skan + tracking + kolory dzialaja razem
+**Depends on**: Phase 14, Phase 15, Phase 16
+**Requirements**: —
 **Success Criteria** (what must be TRUE):
-  1. Skanowanie wizualnie wyglada na plynne — brak wyraznych szarpan widocznych golym okiem
-  2. Petla sterowania wykonuje wywolania set_angles() w regularnych odstepach — FPS nie spada ponizej 10 podczas skanowania
-**Plans**: 2 plans
-
-Plans:
-- [ ] 17-01: DNN_SKIP_EVERY 5 → 10 + empiryczna weryfikacja plynnosci na RPi4 (opcjonalnie EMA jesli niewystarczajace)
+  1. Skan Lissajous 2D (pan + tilt) plynny na R4 WiFi
+  2. Tracking twarzy E2E: pi_brain.py wykrywa twarz, serwa sledzą poprawnie (negative feedback)
+  3. Obraz kamerowy bez poswiaty — kolory naturalne podczas trackingu
+  4. 3x power cycle stabilny — kazdy cykl: skan + tracking dzialaja poprawnie
+**Plans**: 0 plans
 
 ### Phase 18: Srodowisko + Protokol + Migracja
 **Goal**: Srodowisko deweloperskie gotowe na obu wezlach, protokol binarny w pelni zspecyfikowany i zablokowany, stary monolit przeniesiony do legacy/
@@ -300,7 +296,7 @@ Plans:
 | 11. AWB Fix | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 12. PID Validation | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 13. DNN Detector | v1.8 | 1/1 | Complete | 2026-03-29 |
-| 14. AWB/Color Fix | v1.9 | 0/1 | Not started | - |
+| 14. PID Sign Fix | v2.1.1 | 0/2 | Not started | - |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
