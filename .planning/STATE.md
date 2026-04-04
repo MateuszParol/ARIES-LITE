@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.1.1
-milestone_name: Stabilizacja Hardware R4
-status: executing
-stopped_at: Phase 14 context gathered
-last_updated: "2026-04-04T10:16:49.388Z"
-last_activity: 2026-04-04
+milestone: v1.9
+milestone_name: Stabilizacja Ruchu i Obrazu
+status: verifying
+stopped_at: Completed 14-pid-sign-fix-01-PLAN.md
+last_updated: "2026-04-04T10:39:38.370Z"
+last_activity: 2026-04-01
 progress:
-  total_phases: 15
-  completed_phases: 10
-  total_plans: 22
-  completed_plans: 21
+  total_phases: 18
+  completed_phases: 15
+  total_plans: 25
+  completed_plans: 23
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Uno R4 WiFi (PID + HMI + DataLogger) polaczone USB Serial
-**Current focus:** Phase 27 — pelna-integracja-datalogger-z-maszynastanow
+**Current focus:** Phase 24 — migracja-pinow-i-kompilacja-bazowa
 
 ## Current Position
 
-Phase: 27 (pelna-integracja-datalogger-z-maszynastanow) — EXECUTING
-Plan: 2 of 2
-Status: Ready to execute
-Last activity: 2026-04-04
+Phase: 24
+Plan: Not started
+Status: Phase complete — ready for verification
+Last activity: 2026-04-01
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -36,8 +36,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Name | Requirements | Status |
 |-------|------|--------------|--------|
-| 24 | Migracja Pinow i Kompilacja Bazowa | MIG-03,04,05,06,07,08,09 | Complete |
-| 28 | Flash firmware na Uno R4 WiFi | MIG-10 | Not started |
+| 24 | Migracja Pinow i Kompilacja Bazowa | MIG-03,04,05,06,07,08,09 | Not started |
 | 25 | RTC DS1307 Izolowana Integracja | RTC-01,02,03 + INT-07 | Not started |
 | 26 | SD Card + DataLogger CSV | LOG-01,02,03,04,05 | Not started |
 | 27 | Pelna Integracja DataLogger z MaszynaStanow | INT-06, INT-08 | Not started |
@@ -72,18 +71,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Serial CDC wait 500ms zamiast 3000ms — R4 uzywa ESP32-S3 bridge nie natywnego USB CDC
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Rampa Soft Start 1400->1500us zamiast 500->1500us — breadboard z zewnetrznym zasilaniem 6V wymaga lagodniejszej rampy PWM
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
-- [Phase 28-kompletny-szkic-arduino-ino]: Testy sprzetowe T1-T3 odroczone — brak zewnetrznego zasilacza 6V do serw MG-90S podczas sesji
-- [Phase 28-kompletny-szkic-arduino-ino]: Testy T4-T6 DEFERRED — mediapipe wymaga Python 3.12, picamera2 wymaga Python 3.13, konflikt ABI uniemozliwia E2E testing na ARM64/aarch64
-- [Phase 25-rtc-ds1307-izolowana-integracja]: Wire.begin() BEZ argumentu — master mode, nie slave (per D-02/RESEARCH.md Pitfall 5)
-- [Phase 25-rtc-ds1307-izolowana-integracja]: RTClib 2.1.4 (Adafruit) zamiast DS1307RTC (PaulStoffregen) — przetestowane na Renesas RA4M1 (per D-16)
-- [Phase Phase 25-rtc-ds1307-izolowana-integracja]: loop() skan co 5s zamiast jednorazowego setup() — Uno R4 WiFi ESP32-S3 bridge nie wysyla DTR reset do RA4M1
-- [Phase 25]: ZegarRTC jako adapter RTClib z polskim interfejsem — oddziela logike RTC od kodu glownego
-- [Phase 25]: HYBRID mode: ostrzezenie buzzer + LCD FAIL zamiast blokady — system startuje zawsze bez RTC
-- [Phase 25]: Weryfikacja sprzetowa R4 WiFi bez Serial Monitor — ESP32-S3 bridge nie resetuje RA4M1 przy otwarciu portu szeregowego
-- [Phase 26-sd-card-datalogger-csv]: SD library installed via arduino-cli (was missing) — Rule 3 auto-fix. Without RTC, logging disabled entirely (millis() timestamps less useful). face_size and latency_ms are 0 placeholders until Phase 27 MaszynaStanow integration.
-- [Phase 27-pelna-integracja-datalogger-z-maszynastanow]: Reorder klas w .ino (ZegarRTC/DataLogger przed MaszynaStanow) zamiast forward declaration — C++ wymaga pelnej definicji klasy w miejscu wywolania metody
-- [Phase 27-pelna-integracja-datalogger-z-maszynastanow]: loguj_zmiane_stanu() uzywa formatu CSV timestamp,stan,pan,tilt,0,0,0,0 — ten sam format co krok() dla prostego parsingu pandas
-- [Phase 27-pelna-integracja-datalogger-z-maszynastanow]: latency_ms = millis() - maszyna.czas_ostatniej_ramki() — mierzy swiezosc danych z RPi w momencie logger.krok()
+- [Phase 14-pid-sign-fix]: OPOZNIENIE_BOOT 4.0s -> 5.0s dla R4 WiFi: CDC enumeration + DataLogger/RTC init wymaga wiecej czasu niz legacy Leonardo
+- [Phase 14-pid-sign-fix]: PAN_INVERT=+1 i TILT_INVERT=-1 — punkt wyjscia kalibracji empirycznej Plan 02
 
 ### Blockers/Concerns
 
@@ -93,17 +82,12 @@ Progress: [░░░░░░░░░░] 0%
 - Active buzzer na D8: jesli aktywny (nie pasywny) moze przekroczyc 8mA limit Uno R4 — sprawdzic typ przed Faza 24
 - CHECKPOINT 24-02 Task 2: Weryfikacja sprzetowa 5 testow na Uno R3 — uzytkownik musi potwierdzic LCD, Servo, Serial, Soft Start, Stabilnosc
 
-### Roadmap Evolution
-
-- Phase 28 added: Flash firmware na Uno R4 WiFi — wgranie i weryfikacja sprzetowa na docelowym hardware
-- Phase 28 przesunięta przed Phase 25 — kolejność wykonania: 24→28→25→26→27 (swieze R4 wymaga firmware natychmiast)
-
 ### Pending Todos
 
 - Zweryfikowac typ buzzera (aktywny vs pasywny) przed uruchomieniem Fazy 24
 
 ## Session Continuity
 
-Last session: 2026-04-04T10:16:49.346Z
-Stopped at: Phase 14 context gathered
-Resume file: .planning/phases/14-pid-sign-fix/14-CONTEXT.md
+Last session: 2026-04-04T10:39:38.344Z
+Stopped at: Completed 14-pid-sign-fix-01-PLAN.md
+Resume file: None
