@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: verifying
-stopped_at: Phase 25 context gathered
-last_updated: "2026-04-01T18:24:39.386Z"
+stopped_at: Completed 14-pid-sign-fix-01-PLAN.md
+last_updated: "2026-04-04T10:39:38.370Z"
 last_activity: 2026-04-01
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 15
-  total_plans: 23
-  completed_plans: 22
+  total_plans: 25
+  completed_plans: 23
   percent: 0
 ---
 
@@ -71,6 +71,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Serial CDC wait 500ms zamiast 3000ms — R4 uzywa ESP32-S3 bridge nie natywnego USB CDC
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Rampa Soft Start 1400->1500us zamiast 500->1500us — breadboard z zewnetrznym zasilaniem 6V wymaga lagodniejszej rampy PWM
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
+- [Phase 14-pid-sign-fix]: OPOZNIENIE_BOOT 4.0s -> 5.0s dla R4 WiFi: CDC enumeration + DataLogger/RTC init wymaga wiecej czasu niz legacy Leonardo
+- [Phase 14-pid-sign-fix]: PAN_INVERT=+1 i TILT_INVERT=-1 — punkt wyjscia kalibracji empirycznej Plan 02
 
 ### Blockers/Concerns
 
@@ -86,6 +88,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-01T18:24:39.327Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-rtc-ds1307-izolowana-integracja/25-CONTEXT.md
+Last session: 2026-04-04T10:39:38.344Z
+Stopped at: Completed 14-pid-sign-fix-01-PLAN.md
+Resume file: None
