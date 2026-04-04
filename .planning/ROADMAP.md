@@ -53,7 +53,7 @@
 
 **Milestone Goal:** System skanuje plynnie w obu osiach, kamera oddaje prawidlowe kolory, a tracking nie powoduje ucieczki serw.
 
-- [ ] **Phase 14: AWB/Color Fix** - Naprawa zielonej poswiaty: flaga cvtColor i fallback ColourGains
+- [x] **Phase 14: AWB/Color Fix** - Naprawa zielonej poswiaty: flaga cvtColor i fallback ColourGains (completed 2026-04-04)
 - [ ] **Phase 15: PID Tracking Fix** - Reset PID przy wejsciu w TRACKING + redukcja output limit
 - [ ] **Phase 16: Tilt Scan Fix** - Sinusoida tilt w _skanuj() — Lissajous 2D z phase-offset continuity
 - [ ] **Phase 17: Scan Smoothness** - DNN_SKIP_EVERY wzrost + opcjonalne EMA wygladzanie serw
@@ -91,7 +91,7 @@
 **Plans**: 1 plan
 
 Plans:
-- [ ] 14-01-PLAN.md — COLOR_YUV420p2BGR → COLOR_YUV420p2RGB + AWB_FALLBACK_GAINS (2.2, 1.8) + weryfikacja wizualna
+- [x] 14-01-PLAN.md — COLOR_YUV420p2BGR → COLOR_YUV420p2RGB + AWB_FALLBACK_GAINS (2.2, 1.8) + weryfikacja wizualna
 
 ### Phase 15: PID Tracking Fix
 **Goal**: Przejscie w stan TRACKING nie powoduje natychmiastowej ucieczki serw do limitow
@@ -291,7 +291,7 @@ Plans:
 | 11. AWB Fix | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 12. PID Validation | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 13. DNN Detector | v1.8 | 1/1 | Complete | 2026-03-29 |
-| 14. AWB/Color Fix | v1.9 | 0/1 | Planned    |  |
+| 14. AWB/Color Fix | v1.9 | 2/2 | Complete   | 2026-04-04 |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |

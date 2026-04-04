@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: verifying
-stopped_at: Completed 14-pid-sign-fix-01-PLAN.md
-last_updated: "2026-04-04T10:39:38.370Z"
+stopped_at: 14-02 Task 3 checkpoint — awaiting TILT verification
+last_updated: "2026-04-04T10:53:31.008Z"
 last_activity: 2026-04-01
 progress:
-  total_phases: 18
-  completed_phases: 15
-  total_plans: 25
-  completed_plans: 23
+  total_phases: 23
+  completed_phases: 19
+  total_plans: 32
+  completed_plans: 31
   percent: 0
 ---
 
@@ -73,6 +73,7 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
 - [Phase 14-pid-sign-fix]: OPOZNIENIE_BOOT 4.0s -> 5.0s dla R4 WiFi: CDC enumeration + DataLogger/RTC init wymaga wiecej czasu niz legacy Leonardo
 - [Phase 14-pid-sign-fix]: PAN_INVERT=+1 i TILT_INVERT=-1 — punkt wyjscia kalibracji empirycznej Plan 02
+- [Phase 14-pid-sign-fix]: TILT_INVERT zmieniony z (-1) na (+1) — kalibracja empiryczna R4 WiFi v2.1.1 (Kroki 3,4 FAIL)
 
 ### Blockers/Concerns
 
@@ -88,6 +89,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-04T10:39:38.344Z
-Stopped at: Completed 14-pid-sign-fix-01-PLAN.md
+Last session: 2026-04-04T10:53:22.757Z
+Stopped at: 14-02 Task 3 checkpoint — awaiting TILT verification
 Resume file: None
