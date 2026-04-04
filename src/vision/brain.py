@@ -1,9 +1,13 @@
-"""Glowny modul sterowania MozgRPi dla ARIES-LITE v2.0.
+"""Glowny modul sterowania MozgRPi dla ARIES-LITE v2.1.
 
 Dostarcza MozgRPi — synchroniczna petla sterowania: kamera -> detekcja
--> obliczenie bledu X/Y -> wyslanie ramki binarnej 8B do Arduino.
+-> StabilizatorStanow (histereza SKANOWANIE/SLEDZENIE) -> obliczenie bledu X/Y
+-> wyslanie ramki binarnej 8B do Arduino.
 Osobny watek daemon WatekHeartbeat zapewnia heartbeat co 200ms
 niezaleznie od FPS detekcji (per protokol D-07).
+
+StabilizatorStanow zapobiega migotaniu trybu TX — przejscie SLEDZENIE->SKANOWANIE
+wymaga 12 kolejnych klatek bez detekcji (LOST_THRESHOLD).
 """
 
 import logging
@@ -17,6 +21,7 @@ import numpy as np
 from .camera import KameraRPi
 from .detector import WykrywaczTwarzy
 from .serial_interface import SerialInterface
+from .stabilizator import StabilizatorStanow
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,7 @@ HEARTBEAT_POLL: float = 0.050       # 50ms poll w watku heartbeat
 TRYB_BEZCZYNNOSC: int = 0           # Tryb spoczynkowy
 TRYB_SKANOWANIE: int = 1            # Tryb skanowania (Arduino skanuje autonomicznie)
 TRYB_SLEDZENIE: int = 2             # Tryb sledzenia twarzy
+HUD_SCALE: int = 2  # mnoznik rozdzielczosci imshow: 320*2=640, 240*2=480 (D-06)
 
 
 class WatekHeartbeat(threading.Thread):
@@ -95,6 +101,7 @@ class MozgRPi:
         self._czas_ostatniej_tx: List[float] = [0.0]  # mutowalny ref dla heartbeat
         self._heartbeat: Optional[WatekHeartbeat] = None
         self._zatrzymano: bool = False  # guard przeciw podwojnemu wywolaniu zatrzymaj()
+        self._stabilizator = StabilizatorStanow()  # histereza SKANOWANIE/SLEDZENIE (D-08)
 
         # Licznik klatek SCAN — do ograniczenia czestotliwosci logowania latencji
         self._licznik_scan_log: int = 0
@@ -162,44 +169,42 @@ class MozgRPi:
                 # Sticky selection — wybierz najlepsza twarz z histereza 20%
                 bbox = self._detektor.wybierz_twarz(twarze)
 
-                # Oblicz blad i wyslij ramke do Arduino
-                if bbox is not None:
-                    error_x, error_y, face_size = self._oblicz_error(bbox, klatka.shape)
+                # Aktualizuj stabilizator — histereza stanow (D-04: prog 12 klatek)
+                stan = self._stabilizator.aktualizuj(bbox_wykryty=(bbox is not None))
+
+                # Ustal tryb TX na podstawie stabilizatora
+                if stan == StabilizatorStanow.TRYB_SLEDZENIE and bbox is not None:
+                    tryb_int = TRYB_SLEDZENIE
                     tryb = "SLEDZENIE"
-                    try:
-                        czas_przed_tx = time.monotonic_ns() // 1_000_000
-                        self._serial.send_frame(
-                            mode=TRYB_SLEDZENIE,
-                            error_x=error_x,
-                            error_y=error_y,
-                            face_size=face_size,
-                        )
-                        czas_po_tx = time.monotonic_ns() // 1_000_000
+                    error_x, error_y, face_size = self._oblicz_error(bbox, klatka.shape)
+                else:
+                    tryb_int = TRYB_SKANOWANIE
+                    tryb = "SKANOWANIE"
+                    error_x, error_y, face_size = 0, 0, 0
+
+                # Wyslij ramke TX do Arduino
+                try:
+                    czas_przed_tx = time.monotonic_ns() // 1_000_000
+                    self._serial.send_frame(
+                        mode=tryb_int,
+                        error_x=error_x,
+                        error_y=error_y,
+                        face_size=face_size,
+                    )
+                    czas_po_tx = time.monotonic_ns() // 1_000_000
+                    self._czas_ostatniej_tx[0] = time.time()
+
+                    if tryb_int == TRYB_SLEDZENIE:
                         logger.info(
                             f"[LAT] TX SLEDZENIE: {czas_po_tx - czas_przed_tx}ms "
                             f"err_x={error_x} err_y={error_y} ts={czas_po_tx}"
                         )
-                        self._czas_ostatniej_tx[0] = time.time()
-                    except Exception as e:
-                        logger.error(f"TX (SLEDZENIE) blad: {e}")
-                else:
-                    # Brak twarzy — per D-07: wyslij SKANOWANIE, Arduino skanuje autonomicznie
-                    error_x, error_y, face_size = 0, 0, 0
-                    tryb = "SKANOWANIE"
-                    try:
-                        self._serial.send_frame(
-                            mode=TRYB_SKANOWANIE,
-                            error_x=0,
-                            error_y=0,
-                            face_size=0,
-                        )
-                        self._czas_ostatniej_tx[0] = time.time()
+                    else:
                         self._licznik_scan_log += 1
                         if self._licznik_scan_log % 50 == 0:
-                            czas_po_tx = time.monotonic_ns() // 1_000_000
                             logger.info(f"[LAT] TX SKANOWANIE: heartbeat ok ts={czas_po_tx}")
-                    except Exception as e:
-                        logger.error(f"TX (SKANOWANIE) blad: {e}")
+                except Exception as e:
+                    logger.error(f"TX ({tryb}) blad: {e}")
 
                 # HUD — rysuj na klatce i wyswietl (z headless fallback)
                 self._rysuj_hud(klatka, bbox, error_x, error_y, tryb)
@@ -314,11 +319,16 @@ class MozgRPi:
         # Wyswietl klatke (headless fallback gdy brak wyswietlacza)
         if not self._headless:
             try:
-                cv2.imshow("ARIES-LITE pi_brain", klatka)
+                klatka_hud = cv2.resize(
+                    klatka,
+                    (klatka.shape[1] * HUD_SCALE, klatka.shape[0] * HUD_SCALE),
+                    interpolation=cv2.INTER_NEAREST,
+                )
+                cv2.imshow("ARIES-LITE pi_brain", klatka_hud)
                 cv2.waitKey(1)
             except cv2.error:
                 self._headless = True
-                logger.info("Headless mode — brak wyswietlacza, cv2.imshow wyaczony")
+                logger.info("Headless mode — brak wyswietlacza, cv2.imshow wylaczony")
 
     def zatrzymaj(self) -> None:
         """Zatrzymuje system — thread-safe, guard przeciw podwojnemu wywolaniu.
