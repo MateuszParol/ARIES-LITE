@@ -55,6 +55,7 @@
 
 - [x] **Phase 14: AWB/Color Fix** - Naprawa zielonej poswiaty: flaga cvtColor i fallback ColourGains (completed 2026-04-04)
 - [ ] **Phase 15: PID Tracking Fix** - Reset PID przy wejsciu w TRACKING + redukcja output limit
+- [ ] **Phase 15.1: Stabilizacja Petli Detekcji** - DNN skip-frames + histereza stanow SKANOWANIE/SLEDZENIE + resize okna imshow (INSERTED)
 - [ ] **Phase 16: Tilt Scan Fix** - Sinusoida tilt w _skanuj() — Lissajous 2D z phase-offset continuity
 - [ ] **Phase 17: Scan Smoothness** - DNN_SKIP_EVERY wzrost + opcjonalne EMA wygladzanie serw
 
@@ -105,6 +106,16 @@ Plans:
 
 Plans:
 - [ ] 15-01-PLAN.md — OUTPUT_LIMIT 5.0f → 3.0f + weryfikacja sprzetowa PID tracking na Uno R4 WiFi
+
+### Phase 15.1: Stabilizacja Petli Detekcji
+**Goal**: Petla detekcji DNN dziala stabilnie — skip-frames zmniejsza obciazenie CPU, histereza stanow zapobiega migotaniu SKANOWANIE/SLEDZENIE, okno imshow ma rozsadny rozmiar
+**Depends on**: Phase 15
+**Requirements**: TBD
+**Success Criteria** (what must be TRUE):
+  1. DNN inference nie wykonuje sie co klatke — skip-frames redukuje wywolania DNN do co N-tej klatki (konfigurowalne)
+  2. Przejscia stanow SKANOWANIE↔SLEDZENIE nie migocza — histereza wymaga M kolejnych klatek z/bez detekcji przed zmiana stanu
+  3. Okno imshow ma rozsadny rozmiar dopasowany do wyswietlacza — brak ogromnego okna na calym ekranie
+**Plans**: TBD
 
 ### Phase 16: Tilt Scan Fix
 **Goal**: Skanowanie pokrywa obie osie — kamera przemieszcza sie w pionie i poziomie podczas stanu SCANNING
