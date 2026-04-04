@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.9
-milestone_name: Stabilizacja Ruchu i Obrazu
+milestone: v2.1.1
+milestone_name: Stabilizacja Hardware R4
 status: executing
-stopped_at: "Checkpoint 27-02 Task 2: Weryfikacja E2E — sesja trackingu z RPi + analiza CSV"
-last_updated: "2026-04-04T07:55:15.827Z"
+stopped_at: Phase 14 context gathered
+last_updated: "2026-04-04T10:16:49.388Z"
 last_activity: 2026-04-04
 progress:
-  total_phases: 20
-  completed_phases: 17
-  total_plans: 31
-  completed_plans: 28
+  total_phases: 15
+  completed_phases: 10
+  total_plans: 22
+  completed_plans: 21
   percent: 0
 ---
 
@@ -104,6 +104,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-04T07:55:15.754Z
-Stopped at: Checkpoint 27-02 Task 2: Weryfikacja E2E — sesja trackingu z RPi + analiza CSV
-Resume file: None
+Last session: 2026-04-04T10:16:49.346Z
+Stopped at: Phase 14 context gathered
+Resume file: .planning/phases/14-pid-sign-fix/14-CONTEXT.md
