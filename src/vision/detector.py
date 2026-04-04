@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 MODEL_PATH: str = "models/blaze_face_short_range.tflite"
 MIN_CONFIDENCE: float = 0.5
 STICKY_PROG: float = 0.20  # 20% histereza — wymagany wzrost area do przeskoku celu (D-06)
+DNN_SKIP_EVERY: int = 5  # co N-ta klatka pelny DNN forward pass (D-02, konfigurowalne)
 
 
 class WykrywaczTwarzy:
@@ -63,12 +64,20 @@ class WykrywaczTwarzy:
         # Stan sledzenia przyklejonego (sticky tracking)
         self._sticky_bbox: Optional[Tuple[int, int, int, int]] = None
 
+        # Skip-frames: licznik klatek i ostatni wynik DNN (hold-last miedzy passami)
+        self._klatka_licznik: int = 0
+        self._ostatnie_twarze: List[Tuple[int, int, int, int]] = []
+
         logger.info(f"MediaPipe FaceDetector zaladowany: {model_path}")
 
     def wykryj(
         self, klatka_bgr: np.ndarray, timestamp_ms: int
     ) -> List[Tuple[int, int, int, int]]:
         """Wykrywa twarze w klatce BGR. Zwraca liste bbox (x, y, w, h) w pikselach.
+
+        Wykonuje pelny DNN forward pass co DNN_SKIP_EVERY klatek. Miedzy nimi
+        zwraca ostatni wynik (hold-last bbox) — Arduino widzi ciagly ruch serwami
+        bez zamrozenia na klatkach skip (per D-01, D-02).
 
         Konwertuje BGR→RGB (MediaPipe wymaga RGB), wywoluje detect_for_video()
         i mapuje wyniki na liste pikselowych wspolrzednych bounding box.
@@ -82,6 +91,10 @@ class WykrywaczTwarzy:
             Lista krotek (x, y, w, h) w pikselach dla kazdej wykrytej twarzy.
             Pusta lista gdy brak detekcji lub wystapit blad.
         """
+        self._klatka_licznik += 1
+        if self._klatka_licznik % DNN_SKIP_EVERY != 0:
+            return self._ostatnie_twarze  # hold last — zwroc poprzedni wynik
+
         try:
             # Konwersja BGR → RGB — MediaPipe wymaga RGB (Pitfall 2)
             klatka_rgb = cv2.cvtColor(klatka_bgr, cv2.COLOR_BGR2RGB)
@@ -99,10 +112,12 @@ class WykrywaczTwarzy:
                 # origin_x/y, width, height — wspolrzedne pikselowe (Tasks API)
                 twarze.append((bb.origin_x, bb.origin_y, bb.width, bb.height))
 
+            self._ostatnie_twarze = twarze
             return twarze
 
         except Exception as e:
             logger.error(f"Blad detekcji MediaPipe: {e}")
+            self._ostatnie_twarze = []
             return []
 
     def wybierz_twarz(
