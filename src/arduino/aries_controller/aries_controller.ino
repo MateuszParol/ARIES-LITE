@@ -3,6 +3,7 @@
 // Fazy 19-23: parser serial, PID dual-axis, HMI, klasy OOP
 // Faza 25: integracja RTC DS1307 — ZegarRTC, Wire->RTC kolejnosc, bootscreen z czasem
 // Faza 26: DataLogger CSV na karcie SD — rotacja dobowa, ring buffer 50 wpisow, benchmark
+// Faza 27: integracja DataLogger z MaszynaStanow — logowanie zmian stanow, face_size, latency_ms, komenda 'D'
 
 #include <Wire.h>            // I2C master — magistrala dla DS1307 (A4/A5)
 #include <RTClib.h>          // Adafruit RTClib 2.1.4 — DS1307 (D-16)
@@ -358,15 +359,230 @@ private:
 };
 
 // ============================================================
+// class ZegarRTC — Obsluga zegara DS1307 via I2C (D-10)
+// Adapter RTClib z polskim interfejsem.
+// Wire.begin() MUSI byc wywolane PRZED inicjalizuj() (D-15).
+// ============================================================
+class ZegarRTC {
+public:
+    ZegarRTC() : _dostepny(false) {}
+
+    // Inicjalizacja DS1307 — Wire.begin() musi byc wczesniej (D-15)
+    // Zwraca false jesli RTC nie odpowiada LUB rok < 2025 (D-07)
+    // Przy pierwszym uruchomieniu (oscylator nie biegnie) ustawia czas kompilacji
+    bool inicjalizuj() {
+        if (!_rtc.begin()) {
+            _dostepny = false;
+            return false;
+        }
+        // Ustaw czas kompilacji TYLKO gdy oscylator nie biegnie (swiezutka bateria)
+        // Pitfall 4: NIE bezwarunkowo — nadpisaloby czas przy kazdym resecie
+        if (!_rtc.isrunning()) {
+            _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+        }
+        DateTime teraz = _rtc.now();
+        if (teraz.year() < 2025) {
+            // Czas niepoprawny — bateria rozladowana lub DS1307 niezainicjowany
+            _dostepny = false;
+            return false;
+        }
+        _dostepny = true;
+        return true;
+    }
+
+    // Odczyt aktualnego czasu z DS1307 (~0.3ms I2C)
+    DateTime odczytaj_czas() {
+        return _rtc.now();
+    }
+
+    // Czy RTC zainicjalizowany i czas poprawny
+    bool czy_dostepny() const {
+        return _dostepny;
+    }
+
+private:
+    RTC_DS1307 _rtc;
+    bool _dostepny;
+};
+
+// ============================================================
+// class DataLogger — Zapis telemetrii CSV na karte SD z RTC timestamps (Faza 26)
+// Rotacja dobowa LYYMMDD.CSV (FAT 8.3), ring buffer 50 wpisow, graceful degradation.
+// Zalezy od ZegarRTC (referencja) — Wire+RTC+SD kolejnosc inicjalizacji (INT-07).
+// ============================================================
+class DataLogger {
+public:
+    // Konstruktor z referencja do ZegarRTC — logger nie inicjalizuje Wire/RTC samodzielnie
+    DataLogger(ZegarRTC& zegar) :
+        _zegar(zegar), _sd_ok(false),
+        _licznik_klatek(0), _wpisy_od_flush(0), _ostatni_dzien(0),
+        _idx_diagnostyczny(0) {
+        memset(_bufor_diagnostyczny, 0, sizeof(_bufor_diagnostyczny));
+    }
+
+    // Inicjalizacja SD — wywolac PO Wire.begin() i zegar.inicjalizuj() (INT-07)
+    // Bez RTC logging wymagalby millis() timestamps — mniej uzyteczne (Claude's Discretion)
+    // Benchmark LOG-05: micros() wokol pierwszego file.print() — wynik na Serial
+    bool inicjalizuj() {
+        if (!SD.begin(SD_CS_PIN)) {
+            Serial.println(F("SD fail"));
+            _sd_ok = false;
+            return false;
+        }
+        // Bez poprawnego RTC timestamps sa bezuzyteczne — wylacz logowanie
+        if (!_zegar.czy_dostepny()) {
+            Serial.println(F("[SD] Brak RTC — logowanie wymagajace timestamps wylaczone."));
+            _sd_ok = false;
+            return false;
+        }
+        _sd_ok = true;
+        _otworz_plik_dnia();
+
+        // Benchmark latencji zapisu (LOG-05) — micros() wokol file.print()
+        unsigned long t0 = micros();
+        _plik.print(F("TEST,0,0,0,0,0,0,0\n"));
+        unsigned long t1 = micros();
+        char bench_buf[32];
+        snprintf(bench_buf, sizeof(bench_buf), "[BENCH] SD write: %lu us", (unsigned long)(t1 - t0));
+        Serial.println(bench_buf);
+        _plik.flush();  // Upewniamy sie, ze benchmark i naglowek sa zapisane
+
+        return true;
+    }
+
+    // Krok logowania — wywolywac z loop() po HMI tick
+    // Loguje TYLKO w stanie SLEDZENIE (D-08), co 10 klatek (D-06, LOG-01)
+    void krok(StanSystemu stan, float pan, float tilt,
+              int16_t bx, int16_t by, uint8_t fs, uint16_t latency_ms) {
+        if (!_sd_ok) return;
+        if (stan != SLEDZENIE) {
+            _licznik_klatek = 0;  // Reset licznika przy wyjsciu z SLEDZENIE
+            return;
+        }
+        if (++_licznik_klatek < 10) return;  // Throttle — co 10 klatek
+        _licznik_klatek = 0;
+
+        _sprawdz_rotacje();
+        _zapisz_csv(stan, pan, tilt, bx, by, fs, latency_ms);
+    }
+
+    // Getter dostepnosci SD — uzywane przez HMI lub diagnostyke
+    bool czy_dostepne() const {
+        return _sd_ok;
+    }
+
+    // Logowanie zmiany stanu — wywolywane z MaszynaStanow::_przejdz_do()
+    // Natychmiastowy flush — zdarzenie krytyczne, rzadkie (nie degraduje PID)
+    // Ten sam format CSV co _zapisz_csv() per D-05 — prosty parsing pandas
+    void loguj_zmiane_stanu(StanSystemu stary, StanSystemu nowy,
+                            float pan, float tilt) {
+        if (!_sd_ok || !_plik) return;
+        _sprawdz_rotacje();
+        DateTime teraz = _zegar.odczytaj_czas();
+        char linia[64];
+        snprintf(linia, sizeof(linia), "%lu,%d,%d,%d,0,0,0,0",
+                 (unsigned long)teraz.unixtime(),
+                 (int)nowy, (int)pan, (int)tilt);
+        _plik.println(linia);
+        _plik.flush();          // natychmiastowy flush — zdarzenie krytyczne
+        _wpisy_od_flush = 0;    // reset licznika bufora
+        // Kopiuj do bufora diagnostycznego
+        strncpy(_bufor_diagnostyczny[_idx_diagnostyczny % 10], linia, 63);
+        _bufor_diagnostyczny[_idx_diagnostyczny % 10][63] = '\0';
+        _idx_diagnostyczny++;
+        (void)stary;  // unikamy warning unused — stary stan moze byc uzyteczny pozniej
+    }
+
+    // Zrzut 10 ostatnich wpisow na Serial — diagnostyka bez wyjmowania karty SD (D-06)
+    void zrzuc_ostatnie() {
+        Serial.println(F("[DUMP] Ostatnie 10 wpisow DataLogger:"));
+        for (uint8_t i = 0; i < 10; i++) {
+            uint8_t idx = (_idx_diagnostyczny + i) % 10;
+            if (_bufor_diagnostyczny[idx][0] != '\0') {
+                Serial.println(_bufor_diagnostyczny[idx]);
+            }
+        }
+        Serial.println(F("[DUMP] Koniec."));
+    }
+
+private:
+    ZegarRTC& _zegar;
+    File _plik;
+    bool _sd_ok;
+    uint8_t _licznik_klatek;
+    uint8_t _wpisy_od_flush;
+    uint8_t _ostatni_dzien;
+    char _bufor_diagnostyczny[10][64];  // krazacy bufor 10 ostatnich wpisow (640B RAM)
+    uint8_t _idx_diagnostyczny;         // wskaznik zapisu do bufora krazacego
+
+    // Otworz (lub stworz) plik dnia LYYMMDD.CSV (D-11: FAT 8.3)
+    // Jesli plik nowy (size==0): zapisz naglowek CSV (D-05)
+    void _otworz_plik_dnia() {
+        if (!_zegar.czy_dostepny()) return;
+        DateTime teraz = _zegar.odczytaj_czas();
+        char nazwa[13];
+        snprintf(nazwa, sizeof(nazwa), "L%02d%02d%02d.CSV",
+                 (int)(teraz.year() % 100), (int)teraz.month(), (int)teraz.day());
+        if (_plik) {
+            _plik.flush();
+            _plik.close();
+        }
+        _plik = SD.open(nazwa, FILE_WRITE);
+        if (_plik && _plik.size() == 0) {
+            // Nowy plik — zapisz naglowek per D-02/D-05
+            _plik.println(F("timestamp,stan,pan,tilt,error_x,error_y,face_size,latency_ms"));
+            _plik.flush();
+        }
+        _ostatni_dzien = teraz.day();
+    }
+
+    // Zapisz wiersz CSV do otwartego pliku (D-01, D-03, D-04)
+    // snprintf z %d i int cast — ARM Renesas RA4M1, bez float formatting (D-03)
+    // Flush co 50 wpisow — ring buffer per D-07/LOG-03
+    void _zapisz_csv(StanSystemu stan, float pan, float tilt,
+                     int16_t bx, int16_t by, uint8_t fs, uint16_t latency_ms) {
+        if (!_sd_ok || !_plik) return;
+        DateTime teraz = _zegar.odczytaj_czas();
+        char linia[64];
+        snprintf(linia, sizeof(linia), "%lu,%d,%d,%d,%d,%d,%d,%d",
+                 (unsigned long)teraz.unixtime(),
+                 (int)stan, (int)pan, (int)tilt,
+                 (int)bx, (int)by, (int)fs, (int)latency_ms);
+        _plik.println(linia);
+        // Kopiuj do bufora diagnostycznego
+        strncpy(_bufor_diagnostyczny[_idx_diagnostyczny % 10], linia, 63);
+        _bufor_diagnostyczny[_idx_diagnostyczny % 10][63] = '\0';
+        _idx_diagnostyczny++;
+        if (++_wpisy_od_flush >= 50) {
+            _plik.flush();
+            _wpisy_od_flush = 0;
+        }
+    }
+
+    // Sprawdz rotacje dobowa — jesli dzien sie zmienil, otworz nowy plik (LOG-02)
+    void _sprawdz_rotacje() {
+        if (!_zegar.czy_dostepny()) return;
+        DateTime teraz = _zegar.odczytaj_czas();
+        if (teraz.day() != _ostatni_dzien) {
+            _otworz_plik_dnia();
+        }
+    }
+};
+
+// ============================================================
 // class MaszynaStanow — Parser ramek i przejscia miedzy stanami
-// Zalezy od ServoPID i HMI (referencje).
+// Zalezy od ServoPID, HMI i DataLogger (referencje).
 // ============================================================
 class MaszynaStanow {
 public:
+    // Publiczne pole face_size — wypelniane z bajtu 6 ramki 8B (INT-06)
+    uint8_t ostatni_face_size;
+
     // Konstruktor przyjmuje referencje do istniejacych instancji globalnych
-    MaszynaStanow(ServoPID& serwa, HMI& hmi) :
-        _serwa(serwa), _hmi(hmi),
+    MaszynaStanow(ServoPID& serwa, HMI& hmi, DataLogger& logger) :
+        _serwa(serwa), _hmi(hmi), _logger(logger),
         _stan_systemu(BEZCZYNNOSC),
+        ostatni_face_size(0),
         _ramka_idx(0), _stan_parsera(CZEKAJ_START),
         _czas_ostatniej_ramki(0) {}
 
@@ -446,6 +662,7 @@ public:
 private:
     ServoPID& _serwa;
     HMI& _hmi;
+    DataLogger& _logger;  // Referencja do loggera — INT-06: logowanie zmian stanow
     StanSystemu _stan_systemu;
     uint8_t _ramka_buf[FRAME_SIZE];
     uint8_t _ramka_idx;
@@ -458,7 +675,7 @@ private:
         uint8_t tryb   = _ramka_buf[1];
         int16_t blad_x = (int16_t)(_ramka_buf[2] | (_ramka_buf[3] << 8));
         int16_t blad_y = (int16_t)(_ramka_buf[4] | (_ramka_buf[5] << 8));
-        // _ramka_buf[6] = face_size — zarezerwowane
+        ostatni_face_size = _ramka_buf[6];  // Ekstrakcja face_size z bajtu 6 ramki 8B (INT-06)
 
         _czas_ostatniej_ramki = millis();  // reset watchdog (D-07, Pitfall 5)
 
@@ -474,9 +691,12 @@ private:
         }
     }
 
-    // Przejscie do nowego stanu z resetem PID i scan timer
+    // Przejscie do nowego stanu z resetem PID i scan timer oraz logowaniem (INT-06)
     void _przejdz_do(StanSystemu nowy) {
+        if (nowy == _stan_systemu) return;  // Guard — nie loguj ponownie tego samego stanu (Pitfall 2)
+        StanSystemu stary = _stan_systemu;
         _stan_systemu = nowy;
+        _logger.loguj_zmiane_stanu(stary, nowy, _serwa.kat_pan, _serwa.kat_tilt);  // INT-06: logowanie zmiany stanu
         if (nowy == SKANOWANIE) {
             _serwa.resetuj_czas_skanu();  // reset czasu skanu
             _serwa.pid_reset();           // reset integratora PID
@@ -489,181 +709,13 @@ private:
 };
 
 // ============================================================
-// class ZegarRTC — Obsluga zegara DS1307 via I2C (D-10)
-// Adapter RTClib z polskim interfejsem.
-// Wire.begin() MUSI byc wywolane PRZED inicjalizuj() (D-15).
-// ============================================================
-class ZegarRTC {
-public:
-    ZegarRTC() : _dostepny(false) {}
-
-    // Inicjalizacja DS1307 — Wire.begin() musi byc wczesniej (D-15)
-    // Zwraca false jesli RTC nie odpowiada LUB rok < 2025 (D-07)
-    // Przy pierwszym uruchomieniu (oscylator nie biegnie) ustawia czas kompilacji
-    bool inicjalizuj() {
-        if (!_rtc.begin()) {
-            _dostepny = false;
-            return false;
-        }
-        // Ustaw czas kompilacji TYLKO gdy oscylator nie biegnie (swiezutka bateria)
-        // Pitfall 4: NIE bezwarunkowo — nadpisaloby czas przy kazdym resecie
-        if (!_rtc.isrunning()) {
-            _rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-        }
-        DateTime teraz = _rtc.now();
-        if (teraz.year() < 2025) {
-            // Czas niepoprawny — bateria rozladowana lub DS1307 niezainicjowany
-            _dostepny = false;
-            return false;
-        }
-        _dostepny = true;
-        return true;
-    }
-
-    // Odczyt aktualnego czasu z DS1307 (~0.3ms I2C)
-    DateTime odczytaj_czas() {
-        return _rtc.now();
-    }
-
-    // Czy RTC zainicjalizowany i czas poprawny
-    bool czy_dostepny() const {
-        return _dostepny;
-    }
-
-private:
-    RTC_DS1307 _rtc;
-    bool _dostepny;
-};
-
-// ============================================================
-// class DataLogger — Zapis telemetrii CSV na karte SD z RTC timestamps (Faza 26)
-// Rotacja dobowa LYYMMDD.CSV (FAT 8.3), ring buffer 50 wpisow, graceful degradation.
-// Zalezy od ZegarRTC (referencja) — Wire+RTC+SD kolejnosc inicjalizacji (INT-07).
-// ============================================================
-class DataLogger {
-public:
-    // Konstruktor z referencja do ZegarRTC — logger nie inicjalizuje Wire/RTC samodzielnie
-    DataLogger(ZegarRTC& zegar) :
-        _zegar(zegar), _sd_ok(false),
-        _licznik_klatek(0), _wpisy_od_flush(0), _ostatni_dzien(0) {}
-
-    // Inicjalizacja SD — wywolac PO Wire.begin() i zegar.inicjalizuj() (INT-07)
-    // Bez RTC logging wymagalby millis() timestamps — mniej uzyteczne (Claude's Discretion)
-    // Benchmark LOG-05: micros() wokol pierwszego file.print() — wynik na Serial
-    bool inicjalizuj() {
-        if (!SD.begin(SD_CS_PIN)) {
-            Serial.println(F("SD fail"));
-            _sd_ok = false;
-            return false;
-        }
-        // Bez poprawnego RTC timestamps sa bezuzyteczne — wylacz logowanie
-        if (!_zegar.czy_dostepny()) {
-            Serial.println(F("[SD] Brak RTC — logowanie wymagajace timestamps wylaczone."));
-            _sd_ok = false;
-            return false;
-        }
-        _sd_ok = true;
-        _otworz_plik_dnia();
-
-        // Benchmark latencji zapisu (LOG-05) — micros() wokol file.print()
-        unsigned long t0 = micros();
-        _plik.print(F("TEST,0,0,0,0,0,0,0\n"));
-        unsigned long t1 = micros();
-        char bench_buf[32];
-        snprintf(bench_buf, sizeof(bench_buf), "[BENCH] SD write: %lu us", (unsigned long)(t1 - t0));
-        Serial.println(bench_buf);
-        _plik.flush();  // Upewniamy sie, ze benchmark i naglowek sa zapisane
-
-        return true;
-    }
-
-    // Krok logowania — wywolywac z loop() po HMI tick
-    // Loguje TYLKO w stanie SLEDZENIE (D-08), co 10 klatek (D-06, LOG-01)
-    void krok(StanSystemu stan, float pan, float tilt,
-              int16_t bx, int16_t by, uint8_t fs, uint16_t latency_ms) {
-        if (!_sd_ok) return;
-        if (stan != SLEDZENIE) {
-            _licznik_klatek = 0;  // Reset licznika przy wyjsciu z SLEDZENIE
-            return;
-        }
-        if (++_licznik_klatek < 10) return;  // Throttle — co 10 klatek
-        _licznik_klatek = 0;
-
-        _sprawdz_rotacje();
-        _zapisz_csv(stan, pan, tilt, bx, by, fs, latency_ms);
-    }
-
-    // Getter dostepnosci SD — uzywane przez HMI lub diagnostyke
-    bool czy_dostepne() const {
-        return _sd_ok;
-    }
-
-private:
-    ZegarRTC& _zegar;
-    File _plik;
-    bool _sd_ok;
-    uint8_t _licznik_klatek;
-    uint8_t _wpisy_od_flush;
-    uint8_t _ostatni_dzien;
-
-    // Otworz (lub stworz) plik dnia LYYMMDD.CSV (D-11: FAT 8.3)
-    // Jesli plik nowy (size==0): zapisz naglowek CSV (D-05)
-    void _otworz_plik_dnia() {
-        if (!_zegar.czy_dostepny()) return;
-        DateTime teraz = _zegar.odczytaj_czas();
-        char nazwa[13];
-        snprintf(nazwa, sizeof(nazwa), "L%02d%02d%02d.CSV",
-                 (int)(teraz.year() % 100), (int)teraz.month(), (int)teraz.day());
-        if (_plik) {
-            _plik.flush();
-            _plik.close();
-        }
-        _plik = SD.open(nazwa, FILE_WRITE);
-        if (_plik && _plik.size() == 0) {
-            // Nowy plik — zapisz naglowek per D-02/D-05
-            _plik.println(F("timestamp,stan,pan,tilt,error_x,error_y,face_size,latency_ms"));
-            _plik.flush();
-        }
-        _ostatni_dzien = teraz.day();
-    }
-
-    // Zapisz wiersz CSV do otwartego pliku (D-01, D-03, D-04)
-    // snprintf z %d i int cast — ARM Renesas RA4M1, bez float formatting (D-03)
-    // Flush co 50 wpisow — ring buffer per D-07/LOG-03
-    void _zapisz_csv(StanSystemu stan, float pan, float tilt,
-                     int16_t bx, int16_t by, uint8_t fs, uint16_t latency_ms) {
-        if (!_sd_ok || !_plik) return;
-        DateTime teraz = _zegar.odczytaj_czas();
-        char linia[64];
-        snprintf(linia, sizeof(linia), "%lu,%d,%d,%d,%d,%d,%d,%d",
-                 (unsigned long)teraz.unixtime(),
-                 (int)stan, (int)pan, (int)tilt,
-                 (int)bx, (int)by, (int)fs, (int)latency_ms);
-        _plik.println(linia);
-        if (++_wpisy_od_flush >= 50) {
-            _plik.flush();
-            _wpisy_od_flush = 0;
-        }
-    }
-
-    // Sprawdz rotacje dobowa — jesli dzien sie zmienil, otworz nowy plik (LOG-02)
-    void _sprawdz_rotacje() {
-        if (!_zegar.czy_dostepny()) return;
-        DateTime teraz = _zegar.odczytaj_czas();
-        if (teraz.day() != _ostatni_dzien) {
-            _otworz_plik_dnia();
-        }
-    }
-};
-
-// ============================================================
-// Globalne instancje — kolejnosc wazna (ZegarRTC i ServoPID i HMI przed MaszynaStanow)
+// Globalne instancje — kolejnosc wazna (DataLogger PRZED MaszynaStanow — referencja)
 // ============================================================
 ZegarRTC zegar;
 ServoPID serwa;
 HMI hmi;
-MaszynaStanow maszyna(serwa, hmi);
-DataLogger logger(zegar);
+DataLogger logger(zegar);              // PRZED maszyna — referencja musi byc wazna (Pitfall 1)
+MaszynaStanow maszyna(serwa, hmi, logger);  // Nowy parametr: DataLogger& (INT-06)
 
 // ============================================================
 // setup() — inicjalizacja sprzetu
@@ -732,7 +784,11 @@ void loop() {
     // --- Parser serial (zachowany z Phase 19) ---
     while (Serial.available() > 0) {
         uint8_t bajt = (uint8_t)Serial.read();
-        maszyna.przetwarzaj_bajt(bajt);
+        if (bajt == 'D') {
+            logger.zrzuc_ostatnie();  // Zrzut diagnostyczny (D-06)
+        } else {
+            maszyna.przetwarzaj_bajt(bajt);
+        }
     }
 
     // --- Watchdog millis() (D-07) ---
@@ -752,7 +808,9 @@ void loop() {
     }
 
     // --- Logowanie telemetrii (LOG-01, co 10 klatek w SLEDZENIE) ---
+    uint16_t latency_ms = (uint16_t)(millis() - maszyna.czas_ostatniej_ramki());  // D-04: czas od ostatniej ramki
     logger.krok(maszyna.stan(), serwa.kat_pan, serwa.kat_tilt,
                 serwa.ostatni_blad_x, serwa.ostatni_blad_y,
-                0, 0);  // face_size i latency_ms — placeholder do Phase 27
+                maszyna.ostatni_face_size,  // D-03: face_size z bajtu 6 ramki 8B
+                latency_ms);               // D-04: latency od ostatniej ramki RPi
 }
