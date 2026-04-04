@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
-status: verifying
-stopped_at: Phase 15 context gathered
-last_updated: "2026-04-04T11:29:43.495Z"
-last_activity: 2026-04-04
+status: executing
+stopped_at: Phase 15.1 context gathered
+last_updated: "2026-04-04T12:40:36.384Z"
+last_activity: 2026-04-04 -- Phase 15 execution started
 progress:
-  total_phases: 23
+  total_phases: 24
   completed_phases: 19
-  total_plans: 32
+  total_plans: 33
   completed_plans: 31
   percent: 0
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Uno R4 WiFi (PID + HMI + DataLogger) polaczone USB Serial
-**Current focus:** Phase 24 — migracja-pinow-i-kompilacja-bazowa
+**Current focus:** Phase 15 — tilt-servo-fix
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-04-04
+Phase: 15 (tilt-servo-fix) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 15
+Last activity: 2026-04-04 -- Phase 15 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -75,6 +75,10 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 14-pid-sign-fix]: PAN_INVERT=+1 i TILT_INVERT=-1 — punkt wyjscia kalibracji empirycznej Plan 02
 - [Phase 14-pid-sign-fix]: TILT_INVERT zmieniony z (-1) na (+1) — kalibracja empiryczna R4 WiFi v2.1.1 (Kroki 3,4 FAIL)
 
+### Roadmap Evolution
+
+- Phase 15.1 inserted after Phase 15: Stabilizacja petli detekcji — DNN skip-frames + histereza stanow SKANOWANIE/SLEDZENIE + resize okna imshow (URGENT) — 2026-04-04
+
 ### Blockers/Concerns
 
 - Orientacja serw: PAN_DIR / TILT_DIR wymaga empirycznej kalibracji na nowym montazu Uno R4
@@ -89,6 +93,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-04T11:29:43.438Z
-Stopped at: Phase 15 context gathered
-Resume file: .planning/phases/15-tilt-servo-fix/15-CONTEXT.md
+Last session: 2026-04-04T12:40:36.177Z
+Stopped at: Phase 15.1 context gathered
+Resume file: .planning/phases/15.1-stabilizacja-petli-detekcji/15.1-CONTEXT.md
