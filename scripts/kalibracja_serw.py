@@ -53,8 +53,26 @@ def wysylaj_petla(
         time.sleep(OPOZNIENIE_TX)
 
 
+def krok_kalibracji(
+    iface: SerialInterface, numer: int, opis: str, oczekiwany: str,
+    error_x: int, error_y: int
+) -> None:
+    """Wykonuje pojedynczy krok kalibracji — wysyla ramki i czeka na obserwacje.
+
+    Tryb nieinteraktywny: nie pyta o wynik, uzytkownik raportuje po zakonczeniu.
+    """
+    print(f"\n=== KROK {numer}: {opis} ===")
+    print(f"Oczekiwany ruch: {oczekiwany}")
+    print(f"Wysylam ramki TRACK error_x={error_x}, error_y={error_y} przez {CZAS_TESTU_S}s...")
+    wysylaj_petla(iface, error_x=error_x, error_y=error_y, czas_s=CZAS_TESTU_S)
+    print(f"--- KROK {numer} ZAKONCZONY --- Obserwuj ruch serwa.\n")
+
+
 def main() -> int:
     """Przeprowadza 4-krokowa kalibracje kierunkow serw.
+
+    Tryb nieinteraktywny: wysyla wszystkie 4 sekwencje testowe z 3s przerwa
+    miedzy krokami. Uzytkownik obserwuje i raportuje wynik po zakonczeniu.
 
     Kroki:
     1. PAN prawo (error_x=+50) — oczekiwany ruch: kamera w PRAWO
@@ -63,86 +81,51 @@ def main() -> int:
     4. TILT gora (error_y=-30) — oczekiwany ruch: kamera kompensuje GORA
 
     Returns:
-        0 — wszystkie kroki PASS (PAN_INVERT i TILT_INVERT poprawne).
-        1 — co najmniej jeden krok FAIL (wymaga zmiany firmware).
+        0 — zawsze (tryb nieinteraktywny, wynik raportowany zewnetrznie).
     """
+    # Parsuj argument --krok N (opcjonalny — uruchamia tylko jeden krok)
+    pojedynczy_krok = None
+    if len(sys.argv) > 1 and sys.argv[1] == "--krok" and len(sys.argv) > 2:
+        pojedynczy_krok = int(sys.argv[2])
+
     iface = SerialInterface(port=PORT, timeout=TIMEOUT)
 
-    print("=== ARIES-LITE Kalibracja kierunkow serw ===")
+    print("=== ARIES-LITE Kalibracja kierunkow serw (tryb nieinteraktywny) ===")
     print(f"Port: {PORT}, Baudrate: 115200")
-    print(f"Czas testu per krok: {CZAS_TESTU_S}s, TX: {1/OPOZNIENIE_TX:.0f} Hz\n")
+    print(f"Czas testu per krok: {CZAS_TESTU_S}s, TX: {1/OPOZNIENIE_TX:.0f} Hz")
+    if pojedynczy_krok:
+        print(f"Tryb: tylko krok {pojedynczy_krok}")
+    print()
+
+    kroki = [
+        (1, "PAN prawo (error_x=+50)", "serwo PAN przesuwa kamere w PRAWO", 50, 0),
+        (2, "PAN lewo (error_x=-50)", "serwo PAN przesuwa kamere w LEWO", -50, 0),
+        (3, "TILT dol (error_y=+30)", "serwo TILT kompensuje DOL (kamera opada)", 0, 30),
+        (4, "TILT gora (error_y=-30)", "serwo TILT kompensuje GORA (kamera unosi sie)", 0, -30),
+    ]
 
     try:
-        # Otworz port szeregowy
         iface.open()
 
-        # Czekaj na pelny rozruch Arduino R4 WiFi — boot + LCD + Soft Start + DataLogger init
         print(f"Czekam {OPOZNIENIE_BOOT:.0f}s na rozruch Arduino (LCD bootscreen + safe_startup)...")
         time.sleep(OPOZNIENIE_BOOT)
-
-        # Wyczysc bufor wejsciowy przed testem — zapobiega desynchronizacji
         iface._ser.reset_input_buffer()
-
         print("Arduino gotowe. Rozpoczynam kalibracje.\n")
 
-        # --- KROK 1: PAN prawo ---
-        print("=== KROK 1: PAN — error_x=+50 (twarz po prawej) ===")
-        print("Oczekiwany ruch: serwo PAN przesuwa kamere w PRAWO")
-        print(f"Wysylam ramki TRACK error_x=+50 przez {CZAS_TESTU_S}s...")
-        wysylaj_petla(iface, error_x=50, error_y=0, czas_s=CZAS_TESTU_S)
-        wynik_1 = input("Serwo pan poruszylo sie w PRAWO? [t/n]: ").strip().lower()
+        for numer, opis, oczekiwany, ex, ey in kroki:
+            if pojedynczy_krok and numer != pojedynczy_krok:
+                continue
+            krok_kalibracji(iface, numer, opis, oczekiwany, error_x=ex, error_y=ey)
+            # Przerwa miedzy krokami — Arduino wroci do SCAN (watchdog 500ms)
+            time.sleep(3.0)
 
-        # Krotka przerwa miedzy krokami — Arduino wroci do SCAN (watchdog)
-        time.sleep(1.0)
-
-        # --- KROK 2: PAN lewo ---
-        print("\n=== KROK 2: PAN — error_x=-50 (twarz po lewej) ===")
-        print("Oczekiwany ruch: serwo PAN przesuwa kamere w LEWO")
-        print(f"Wysylam ramki TRACK error_x=-50 przez {CZAS_TESTU_S}s...")
-        wysylaj_petla(iface, error_x=-50, error_y=0, czas_s=CZAS_TESTU_S)
-        wynik_2 = input("Serwo pan poruszylo sie w LEWO? [t/n]: ").strip().lower()
-
-        time.sleep(1.0)
-
-        # --- KROK 3: TILT dol ---
-        print("\n=== KROK 3: TILT — error_y=+30 (twarz ponizej centrum) ===")
-        print("Oczekiwany ruch: serwo TILT kompensuje DOL (kamera opada)")
-        print(f"Wysylam ramki TRACK error_y=+30 przez {CZAS_TESTU_S}s...")
-        wysylaj_petla(iface, error_x=0, error_y=30, czas_s=CZAS_TESTU_S)
-        wynik_3 = input("Serwo tilt poruszylo sie w DOL? [t/n]: ").strip().lower()
-
-        time.sleep(1.0)
-
-        # --- KROK 4: TILT gora ---
-        print("\n=== KROK 4: TILT — error_y=-30 (twarz powyzej centrum) ===")
-        print("Oczekiwany ruch: serwo TILT kompensuje GORA (kamera unosi sie)")
-        print(f"Wysylam ramki TRACK error_y=-30 przez {CZAS_TESTU_S}s...")
-        wysylaj_petla(iface, error_x=0, error_y=-30, czas_s=CZAS_TESTU_S)
-        wynik_4 = input("Serwo tilt poruszylo sie w GORA? [t/n]: ").strip().lower()
-
-        # --- PODSUMOWANIE ---
-        wyniki = [
-            ("PAN prawo", wynik_1),
-            ("PAN lewo",  wynik_2),
-            ("TILT dol",  wynik_3),
-            ("TILT gora", wynik_4),
-        ]
-
-        print("\n=== PODSUMOWANIE ===")
-        wszystkie_ok = True
-        for nazwa, wynik in wyniki:
-            status = "PASS" if wynik == "t" else "FAIL"
-            print(f"  {nazwa}: {status}")
-            if wynik != "t":
-                wszystkie_ok = False
-
-        if wszystkie_ok:
-            print("\nKalibracja PASS — PAN_INVERT i TILT_INVERT poprawne.")
-            return 0
-        else:
-            print("\nKalibracja FAIL — zmien #define PAN_INVERT/TILT_INVERT w firmware i rekompiluj.")
-            print("  Plik: src/arduino/aries_controller/aries_controller.ino (linia 37-38)")
-            return 1
+        print("=== KALIBRACJA ZAKONCZONA ===")
+        print("Zaraportuj wynik per krok: PASS jesli ruch zgodny z oczekiwanym, FAIL jesli odwrotny.")
+        print("  Krok 1: PAN prawo  — czy serwo poszlo w PRAWO?")
+        print("  Krok 2: PAN lewo   — czy serwo poszlo w LEWO?")
+        print("  Krok 3: TILT dol   — czy serwo poszlo w DOL?")
+        print("  Krok 4: TILT gora  — czy serwo poszlo w GORE?")
+        return 0
 
     finally:
         iface.close()
