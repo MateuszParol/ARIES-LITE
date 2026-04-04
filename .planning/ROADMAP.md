@@ -277,7 +277,11 @@ Plans:
   2. Podczas sesji TRACKING CSV zawiera wiersze co ~10 klatek (~3/s przy 30 Hz RPi input) — ciagla telemetria pozycji serw widoczna
   3. Zadna zmiana stanu MaszynaStanow nie powoduje zauwalnego zawieszenia ruchu serw — PID 100 Hz nie jest przerywany przez zapis SD
   4. Pelna sesja RPi + Arduino z DataLogger: uruchomienie, sledzenie twarzy, zatrzymanie — caly CSV exportowalny i czytelny na PC
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 27-01-PLAN.md — Integracja DataLogger z MaszynaStanow: loguj_zmiane_stanu(), face_size, latency_ms, komenda 'D', bufor diagnostyczny
+- [ ] 27-02-PLAN.md — Flash na Uno R4 WiFi + E2E weryfikacja sprzetowa (CSV, tracking z RPi, komenda 'D')
 
 ## Progress
 
@@ -310,7 +314,7 @@ Plans:
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete    | 2026-04-02 |
 | 26. SD Card + DataLogger CSV | v2.1 | 1/2 | In Progress|  |
-| 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/? | Not started | - |
+| 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/2 | Not started | - |
 
 ### Phase 28: Flash firmware na Uno R4 WiFi
 
