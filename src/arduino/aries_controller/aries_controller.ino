@@ -34,8 +34,8 @@
 #define TILT_MAX        (30.0f)
 
 // --- Kierunek serw — empiryczna kalibracja (D-04, D-12) ---
-#define PAN_INVERT      (1)       // +1 lub -1 — zmien empirycznie
-#define TILT_INVERT     (-1)      // -1 potwierdzony w v1.7 legacy
+#define PAN_INVERT      (1)       // +1 skalibrowany empirycznie R4 WiFi v2.1.1
+#define TILT_INVERT     (-1)      // -1 skalibrowany empirycznie R4 WiFi v2.1.1
 
 // --- Normalizacja bledu (D-01) ---
 #define POLOWA_RAMKI    160.0f    // polowa szerokosci klatki 320px
