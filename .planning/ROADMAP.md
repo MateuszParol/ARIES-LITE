@@ -280,7 +280,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 27-01-PLAN.md — Integracja DataLogger z MaszynaStanow: loguj_zmiane_stanu(), face_size, latency_ms, komenda 'D', bufor diagnostyczny
+- [x] 27-01-PLAN.md — Integracja DataLogger z MaszynaStanow: loguj_zmiane_stanu(), face_size, latency_ms, komenda 'D', bufor diagnostyczny
 - [ ] 27-02-PLAN.md — Flash na Uno R4 WiFi + E2E weryfikacja sprzetowa (CSV, tracking z RPi, komenda 'D')
 
 ## Progress
@@ -314,7 +314,7 @@ Plans:
 | 28. Flash firmware na Uno R4 WiFi | v2.1 | 2/2 | Complete   | 2026-04-02 |
 | 25. RTC DS1307 Izolowana Integracja | v2.1 | 2/2 | Complete    | 2026-04-02 |
 | 26. SD Card + DataLogger CSV | v2.1 | 1/2 | In Progress|  |
-| 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 0/2 | Not started | - |
+| 27. Pelna Integracja DataLogger z MaszynaStanow | v2.1 | 1/2 | In Progress|  |
 
 ### Phase 28: Flash firmware na Uno R4 WiFi
 

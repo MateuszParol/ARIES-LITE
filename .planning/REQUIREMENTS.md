@@ -33,9 +33,9 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 
 ### Integracja (INT)
 
-- [ ] **INT-06**: Klasa DataLogger (OOP) zintegrowana z MaszynaStanow — logowanie zmian stanow
+- [x] **INT-06**: Klasa DataLogger (OOP) zintegrowana z MaszynaStanow — logowanie zmian stanow
 - [x] **INT-07**: Poprawna kolejnosc inicjalizacji w setup(): Wire.begin() -> rtc.begin() -> SD.begin()
-- [ ] **INT-08**: End-to-end: firmware z DataLogger dziala na Uno R4 z pelnym trackingiem RPi
+- [x] **INT-08**: End-to-end: firmware z DataLogger dziala na Uno R4 z pelnym trackingiem RPi
 
 ## v2.2 Requirements (Deferred)
 
@@ -98,8 +98,8 @@ Requirements for Uno R4 WiFi migration + DataLogger Shield milestone. Each maps 
 | LOG-03 | Phase 26 | Complete |
 | LOG-04 | Phase 26 | Complete |
 | LOG-05 | Phase 26 | Complete |
-| INT-06 | Phase 27 | Pending |
-| INT-08 | Phase 27 | Pending |
+| INT-06 | Phase 27 | Complete |
+| INT-08 | Phase 27 | Complete |
 
 **Coverage:**
 - v2.1 requirements: 18 total

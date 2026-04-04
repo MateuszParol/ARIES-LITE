@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: executing
-stopped_at: Phase 27 context gathered
-last_updated: "2026-04-04T07:21:07.081Z"
-last_activity: 2026-04-02
+stopped_at: Completed 27-pelna-integracja-datalogger-z-maszynastanow/27-01-PLAN.md
+last_updated: "2026-04-04T07:51:39.568Z"
+last_activity: 2026-04-04
 progress:
   total_phases: 20
   completed_phases: 17
-  total_plans: 29
-  completed_plans: 27
+  total_plans: 31
+  completed_plans: 28
   percent: 0
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Uno R4 WiFi (PID + HMI + DataLogger) polaczone USB Serial
-**Current focus:** Phase 26 — sd-card-datalogger-csv
+**Current focus:** Phase 27 — pelna-integracja-datalogger-z-maszynastanow
 
 ## Current Position
 
-Phase: 26 (sd-card-datalogger-csv) — EXECUTING
+Phase: 27 (pelna-integracja-datalogger-z-maszynastanow) — EXECUTING
 Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-04-02
+Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -81,6 +81,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 25]: HYBRID mode: ostrzezenie buzzer + LCD FAIL zamiast blokady — system startuje zawsze bez RTC
 - [Phase 25]: Weryfikacja sprzetowa R4 WiFi bez Serial Monitor — ESP32-S3 bridge nie resetuje RA4M1 przy otwarciu portu szeregowego
 - [Phase 26-sd-card-datalogger-csv]: SD library installed via arduino-cli (was missing) — Rule 3 auto-fix. Without RTC, logging disabled entirely (millis() timestamps less useful). face_size and latency_ms are 0 placeholders until Phase 27 MaszynaStanow integration.
+- [Phase 27-pelna-integracja-datalogger-z-maszynastanow]: Reorder klas w .ino (ZegarRTC/DataLogger przed MaszynaStanow) zamiast forward declaration — C++ wymaga pelnej definicji klasy w miejscu wywolania metody
+- [Phase 27-pelna-integracja-datalogger-z-maszynastanow]: loguj_zmiane_stanu() uzywa formatu CSV timestamp,stan,pan,tilt,0,0,0,0 — ten sam format co krok() dla prostego parsingu pandas
+- [Phase 27-pelna-integracja-datalogger-z-maszynastanow]: latency_ms = millis() - maszyna.czas_ostatniej_ramki() — mierzy swiezosc danych z RPi w momencie logger.krok()
 
 ### Blockers/Concerns
 
@@ -101,6 +104,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-04T07:21:07.036Z
-Stopped at: Phase 27 context gathered
-Resume file: .planning/phases/27-pelna-integracja-datalogger-z-maszynastanow/27-CONTEXT.md
+Last session: 2026-04-04T07:51:39.523Z
+Stopped at: Completed 27-pelna-integracja-datalogger-z-maszynastanow/27-01-PLAN.md
+Resume file: None
