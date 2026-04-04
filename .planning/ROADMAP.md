@@ -49,17 +49,17 @@
 
 </details>
 
-### 🚧 v1.9 Stabilizacja Ruchu i Obrazu (In Progress)
+### v1.9 Stabilizacja Ruchu i Obrazu (In Progress)
 
 **Milestone Goal:** System skanuje plynnie w obu osiach, kamera oddaje prawidlowe kolory, a tracking nie powoduje ucieczki serw.
 
 - [x] **Phase 14: AWB/Color Fix** - Naprawa zielonej poswiaty: flaga cvtColor i fallback ColourGains (completed 2026-04-04)
 - [ ] **Phase 15: PID Tracking Fix** - Reset PID przy wejsciu w TRACKING + redukcja output limit
 - [x] **Phase 15.1: Stabilizacja Petli Detekcji** - DNN skip-frames + histereza stanow SKANOWANIE/SLEDZENIE + resize okna imshow (INSERTED) (completed 2026-04-04)
-- [ ] **Phase 16: Tilt Scan Fix** - Sinusoida tilt w _skanuj() — Lissajous 2D z phase-offset continuity
+- [ ] **Phase 16: Tilt Scan Fix** - Phase-offset continuity w firmware Arduino — plynna kontynuacja skanu Lissajous 2D
 - [ ] **Phase 17: Scan Smoothness** - DNN_SKIP_EVERY wzrost + opcjonalne EMA wygladzanie serw
 
-### 📋 v2.0 Architektura Rozproszona (Planned)
+### v2.0 Architektura Rozproszona (Planned)
 
 **Milestone Goal:** Calkowita przebudowa na architekture rozproszona — RPi4 (MediaPipe wizja + serial TX) + Arduino Leonardo (PID 100 Hz + HMI) polaczone USB Serial 115200 baud.
 
@@ -70,7 +70,7 @@
 - [x] **Phase 22: HMI LCD + Buzzer + Przycisk** - LCD 1602 status, buzzer na zmiane stanu, przycisk Abort Track (completed 2026-03-31)
 - [x] **Phase 23: Integracja + Kalibracja** - End-to-end tracking, kalibracja kierunkow serw, modularnosc OOP, komentarze polskie (completed 2026-03-31)
 
-### 📋 v2.1 Migracja na Uno R4 + DataLogger (Planned)
+### v2.1 Migracja na Uno R4 + DataLogger (Planned)
 
 **Milestone Goal:** Port firmware na Arduino Uno R4 WiFi z nowa mapa pinow, integracja DataLogger Shield (RTC DS1307 + SD card logging CSV) i Soft Start — pelna kompatybilnosc z istniejacym protokolem binarnym 8B z RPi.
 
@@ -131,7 +131,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 16-01: SCAN_AMPLITUDE_TILT=15.0 + SCAN_FREQUENCY_TILT=0.07 w _skanuj() + phase-offset dla tilt
+- [ ] 16-01-PLAN.md — Phase-offset continuity w ServoPID (arcsin t_offset) + skrypt analizy CSV
+- [ ] 16-02-PLAN.md — Kompilacja/upload firmware + weryfikacja empiryczna SC #1/#2/#3 na hardware
 
 ### Phase 17: Scan Smoothness
 **Goal**: Ruch serw podczas skanowania jest plynny bez widocznych szarpan powodowanych przez DNN inference
@@ -308,7 +309,7 @@ Plans:
 | 14. AWB/Color Fix | v1.9 | 2/2 | Complete    | 2026-04-04 |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 15.1 Stabilizacja Petli Detekcji | v1.9 | 0/1 | Complete    | 2026-04-04 |
-| 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
+| 16. Tilt Scan Fix | v1.9 | 0/2 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |
