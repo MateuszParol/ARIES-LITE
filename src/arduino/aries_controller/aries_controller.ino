@@ -22,7 +22,7 @@
 #define KP              2.0f      // Wspolczynnik proporcjonalny
 #define KI              0.1f      // Wspolczynnik calkowitowy
 #define KD              0.5f      // Wspolczynnik roznicowy
-#define OUTPUT_LIMIT    5.0f      // +/-5 stopni/tick — D-02
+#define OUTPUT_LIMIT    3.0f      // +/-3 stopni/tick — redukcja agresji PID (D-01, TRK-01)
 #define PID_INTERVAL_MS 10        // 100 Hz — D-03
 
 // --- Konfiguracja serw (D-02, D-10) ---
