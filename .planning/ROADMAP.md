@@ -110,12 +110,15 @@ Plans:
 ### Phase 15.1: Stabilizacja Petli Detekcji
 **Goal**: Petla detekcji DNN dziala stabilnie — skip-frames zmniejsza obciazenie CPU, histereza stanow zapobiega migotaniu SKANOWANIE/SLEDZENIE, okno imshow ma rozsadny rozmiar
 **Depends on**: Phase 15
-**Requirements**: TBD
+**Requirements**: DET-01, DET-02, DET-03
 **Success Criteria** (what must be TRUE):
   1. DNN inference nie wykonuje sie co klatke — skip-frames redukuje wywolania DNN do co N-tej klatki (konfigurowalne)
-  2. Przejscia stanow SKANOWANIE↔SLEDZENIE nie migocza — histereza wymaga M kolejnych klatek z/bez detekcji przed zmiana stanu
+  2. Przejscia stanow SKANOWANIE/SLEDZENIE nie migocza — histereza wymaga M kolejnych klatek z/bez detekcji przed zmiana stanu
   3. Okno imshow ma rozsadny rozmiar dopasowany do wyswietlacza — brak ogromnego okna na calym ekranie
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+- [ ] 15.1-01-PLAN.md — StabilizatorStanow (histereza) + DNN skip-frames (hold-last bbox) + HUD resize 2x
 
 ### Phase 16: Tilt Scan Fix
 **Goal**: Skanowanie pokrywa obie osie — kamera przemieszcza sie w pionie i poziomie podczas stanu SCANNING
@@ -304,6 +307,7 @@ Plans:
 | 13. DNN Detector | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 14. AWB/Color Fix | v1.9 | 2/2 | Complete    | 2026-04-04 |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
+| 15.1 Stabilizacja Petli Detekcji | v1.9 | 0/1 | Planned | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
