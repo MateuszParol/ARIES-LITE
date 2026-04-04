@@ -291,7 +291,7 @@ Plans:
 | 11. AWB Fix | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 12. PID Validation | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 13. DNN Detector | v1.8 | 1/1 | Complete | 2026-03-29 |
-| 14. AWB/Color Fix | v1.9 | 2/2 | Complete   | 2026-04-04 |
+| 14. AWB/Color Fix | v1.9 | 2/2 | Complete    | 2026-04-04 |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
