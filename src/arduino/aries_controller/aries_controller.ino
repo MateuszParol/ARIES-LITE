@@ -5,6 +5,7 @@
 // Faza 26: DataLogger CSV na karcie SD — rotacja dobowa, ring buffer 50 wpisow, benchmark
 // Faza 27: integracja DataLogger z MaszynaStanow — logowanie zmian stanow, face_size, latency_ms, komenda 'D'
 
+#include <math.h>            // asin(), M_PI — phase-offset continuity (D-05, D-06)
 #include <Wire.h>            // I2C master — magistrala dla DS1307 (A4/A5)
 #include <RTClib.h>          // Adafruit RTClib 2.1.4 — DS1307 (D-16)
 #include <SD.h>              // Zapis CSV na karte SD via SPI (D10-D13)
@@ -279,10 +280,11 @@ public:
     // Skan sinusoidalny Lissajous 2D — autonomiczne skanowanie (D-09)
     // f_pan=0.05 Hz, f_tilt=0.073 Hz — irracjonalny stosunek (D-11)
     // PAN=70 deg, TILT=25 deg (D-10)
+    // Phase-offset continuity: t + _t_offset_pan/tilt zapewnia plynna kontynuacje z aktualnej pozycji (D-05, D-06)
     void skan_krok(unsigned long teraz) {
         float t = (teraz - _czas_startowy_skanu) / 1000.0f;  // sekundy
-        kat_pan  = SCAN_AMP_PAN  * sin(2.0f * M_PI * SCAN_FREQ_PAN  * t);
-        kat_tilt = SCAN_AMP_TILT * sin(2.0f * M_PI * SCAN_FREQ_TILT * t);
+        kat_pan  = SCAN_AMP_PAN  * sin(2.0f * (float)M_PI * SCAN_FREQ_PAN  * (t + _t_offset_pan));
+        kat_tilt = SCAN_AMP_TILT * sin(2.0f * (float)M_PI * SCAN_FREQ_TILT * (t + _t_offset_tilt));
         // Clamp dla bezpieczenstwa (obrona w glab)
         kat_pan  = constrain(kat_pan,  PAN_MIN,  PAN_MAX);
         kat_tilt = constrain(kat_tilt, TILT_MIN, TILT_MAX);
@@ -304,9 +306,16 @@ public:
         _pid_tilt.Reset();
     }
 
-    // Reset czasu skanu — wywolywany przy przejsciu do SKANOWANIE
-    void resetuj_czas_skanu() {
+    // Reset czasu skanu z phase-offset continuity (D-05, D-06, D-07)
+    // Oblicza t_offset z aktualnej pozycji serwa przez arcsin — eliminacja skoku przy SLEDZENIE→SKANOWANIE
+    // asin() zwraca [-pi/2, +pi/2] — pozycyjnie poprawne, moze odwrocic kierunek predkosci (RESEARCH.md)
+    // constrain ratio do [-1,1] zapobiega NaN (Pitfall 1 z RESEARCH.md)
+    void resetuj_czas_skanu(float aktualny_pan, float aktualny_tilt) {
         _czas_startowy_skanu = millis();
+        float ratio_pan  = constrain(aktualny_pan  / SCAN_AMP_PAN,  -1.0f, 1.0f);
+        float ratio_tilt = constrain(aktualny_tilt / SCAN_AMP_TILT, -1.0f, 1.0f);
+        _t_offset_pan  = asin(ratio_pan)  / (2.0f * (float)M_PI * SCAN_FREQ_PAN);
+        _t_offset_tilt = asin(ratio_tilt) / (2.0f * (float)M_PI * SCAN_FREQ_TILT);
     }
 
 private:
@@ -322,6 +331,9 @@ private:
     // Liczniki czasu
     unsigned long _czas_ostatniego_pid;
     unsigned long _czas_startowy_skanu;
+    // Phase-offset continuity — offsety fazowe dla plynnej kontynuacji skanu (D-05, D-06)
+    float _t_offset_pan  = 0.0f;   // sekundy — offset fazowy pan
+    float _t_offset_tilt = 0.0f;   // sekundy — offset fazowy tilt
 
     // Bezpieczny startup — lagodna rampa writeMicroseconds() 1400→1500us w 1000ms
     // Start blisko centrum — brak szarpniecia serw (D-04)
@@ -698,7 +710,7 @@ private:
         _stan_systemu = nowy;
         _logger.loguj_zmiane_stanu(stary, nowy, _serwa.kat_pan, _serwa.kat_tilt);  // INT-06: logowanie zmiany stanu
         if (nowy == SKANOWANIE) {
-            _serwa.resetuj_czas_skanu();  // reset czasu skanu
+            _serwa.resetuj_czas_skanu(_serwa.kat_pan, _serwa.kat_tilt);  // phase-offset continuity (D-05, D-06)
             _serwa.pid_reset();           // reset integratora PID
         } else if (nowy == SLEDZENIE) {
             _hmi.buzzer_beep();           // sygnał "Target Lock" (HMI-02)
