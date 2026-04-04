@@ -10,7 +10,7 @@ Cel: Weryfikacja ze PAN_INVERT i TILT_INVERT w firmware Arduino sa poprawne
 #define PAN_INVERT / TILT_INVERT w src/arduino/aries_controller/aries_controller.ino,
 rekompiluj i wgraj firmware, a nastepnie powtorz kalibracje.
 
-Wymaga: Arduino Leonardo z firmware Phase 22, polaczone przez USB Serial.
+Wymaga: Arduino Uno R4 WiFi z firmware v2.1+, polaczone przez USB Serial.
 """
 
 import sys
@@ -23,9 +23,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.vision.serial_interface import SerialInterface  # noqa: E402
 
 # --- Stale modulowe ---
-PORT = "/dev/ttyACM0"          # Domyslny port Arduino Leonardo na RPi
+PORT = "/dev/ttyACM0"          # Domyslny port Arduino Uno R4 WiFi na RPi
 TIMEOUT = 2.0                   # Timeout odczytu TX w sekundach
-OPOZNIENIE_BOOT = 4.0          # Leonardo boot delay: 2s LCD bootscreen + 1s safe_startup + 1s margines
+OPOZNIENIE_BOOT = 5.0          # R4 WiFi boot delay: LCD bootscreen 500ms + Soft Start rampa 1000ms + CDC enum ~500ms + DataLogger/RTC init + margines
 CZAS_TESTU_S = 3.0             # Czas wysylania ramek w kazdym kroku kalibracji
 OPOZNIENIE_TX = 0.05           # 50ms = 20 Hz — utrzymuje Arduino w trybie TRACK, watchdog (500ms) nie odpali
 TRYB_TRACK = 2                  # MODE_TRACK per PROTOCOL_SPEC.md
@@ -73,10 +73,10 @@ def main() -> int:
     print(f"Czas testu per krok: {CZAS_TESTU_S}s, TX: {1/OPOZNIENIE_TX:.0f} Hz\n")
 
     try:
-        # Otworz port szeregowy (DTR=False zapobiega resetowi Leonardo per D-19)
+        # Otworz port szeregowy
         iface.open()
 
-        # Czekaj na peny rozruch Arduino — LCD bootscreen 2s + safe_startup 1s + margines 1s
+        # Czekaj na pelny rozruch Arduino R4 WiFi — boot + LCD + Soft Start + DataLogger init
         print(f"Czekam {OPOZNIENIE_BOOT:.0f}s na rozruch Arduino (LCD bootscreen + safe_startup)...")
         time.sleep(OPOZNIENIE_BOOT)
 
@@ -141,7 +141,7 @@ def main() -> int:
             return 0
         else:
             print("\nKalibracja FAIL — zmien #define PAN_INVERT/TILT_INVERT w firmware i rekompiluj.")
-            print("  Plik: src/arduino/aries_controller/aries_controller.ino (linia 30-31)")
+            print("  Plik: src/arduino/aries_controller/aries_controller.ino (linia 37-38)")
             return 1
 
     finally:
