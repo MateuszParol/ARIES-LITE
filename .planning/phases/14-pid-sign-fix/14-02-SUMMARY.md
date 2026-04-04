@@ -6,7 +6,7 @@ tags: [firmware, kalibracja, pid, servo, arduino, r4-wifi]
 dependency_graph:
   requires: ["14-01"]
   provides: ["TILT_INVERT skalibrowany", "PAN_INVERT potwierdzony"]
-  affects: ["src/arduino/aries_controller/aries_controller.ino"]
+  affects: ["src/arduino/aries_controller/aries_controller.ino", "scripts/kalibracja_serw.py"]
 tech_stack:
   added: []
   patterns: ["empiryczna kalibracja INVERT przez test otwarty petli", "arduino-cli compile+upload workflow"]
@@ -14,75 +14,62 @@ key_files:
   created: []
   modified:
     - src/arduino/aries_controller/aries_controller.ino
+    - scripts/kalibracja_serw.py
 decisions:
-  - "TILT_INVERT zmieniony z (-1) na (+1) — wynik empirycznej kalibracji na R4 WiFi v2.1.1 (Kroki 3,4 FAIL)"
-  - "PAN_INVERT pozostaje (+1) — potwierdzony kalibracją (Kroki 1,2 PASS)"
+  - "PAN_INVERT=(+1) potwierdzony kalibracją (Kroki 1,2 PASS)"
+  - "TILT_INVERT=(-1) potwierdzony kalibracją (Kroki 3,4 PASS) — oryginalna wartosc poprawna"
   - "Fix WYLACZNIE w firmware Arduino INVERT constants — nie w brain.py (per D-09)"
+  - "Pierwsza kalibracja TILT FAIL spowodowana czesciowo rozpietym kablem serwa"
 metrics:
-  duration: "~20 min"
+  duration: "~40 min"
   completed_date: "2026-04-04"
-  tasks_completed: 2
+  tasks_completed: 3
   tasks_total: 3
-  files_modified: 1
+  files_modified: 2
 ---
 
-# Phase 14 Plan 02: Kalibracja TILT_INVERT — Korekta Firmware Summary
+# Phase 14 Plan 02: Kalibracja PAN_INVERT/TILT_INVERT — Summary
 
-**One-liner:** TILT_INVERT zmieniony z (-1) na (+1) na podstawie empirycznej kalibracji open-loop na R4 WiFi v2.1.1 — firmware skompilowane i zaflashowane.
+**One-liner:** PAN_INVERT=+1 i TILT_INVERT=-1 potwierdzone empirycznie na R4 WiFi v2.1.1 — oryginalne wartosci poprawne, pierwszy FAIL tilt spowodowany rozpietym kablem.
 
 ## What Was Built
 
-Firmware Arduino Uno R4 WiFi zaktualizowany o poprawne wartosci kierunku serw po empirycznej kalibracji:
+Firmware Arduino Uno R4 WiFi z potwierdzonymi wartosciami kierunku serw:
 
 - `PAN_INVERT = (1)` — potwierdzony PASS (krok 1: pan prawo, krok 2: pan lewo)
-- `TILT_INVERT = (1)` — skorygowany z (-1) na (+1), poprzednia wartosc powodowala odwrotny ruch tilt (krok 3 FAIL: tilt szedl w gore zamiast w dol, krok 4 FAIL: tilt szedl w dol zamiast w gore)
+- `TILT_INVERT = (-1)` — potwierdzony PASS (krok 3: tilt dol, krok 4: tilt gora)
 
-Komentarze przy obu definicjach zaktualizowane z "zmien empirycznie" na "skalibrowany empirycznie R4 WiFi v2.1.1".
+Skrypt kalibracyjny zmieniony na tryb nieinteraktywny (input() nie dziala w Claude Code Bash). Dodano opcje --krok N.
 
 ## Tasks Completed
 
 | Task | Name | Commit | Files |
 |------|------|--------|-------|
-| 1 | Kalibracja empiryczna | (checkpoint — brak kodu) | scripts/kalibracja_serw.py |
-| 2 | Korekta firmware TILT_INVERT | 38e9e56 | src/arduino/aries_controller/aries_controller.ino |
-| 3 | Weryfikacja negative feedback | CHECKPOINT — awaiting user | scripts/kalibracja_serw.py |
+| 1 | Kalibracja empiryczna | (checkpoint — obserwacja) | scripts/kalibracja_serw.py |
+| 2 | Korekta firmware | 1204d90 | src/arduino/aries_controller/aries_controller.ino |
+| 3 | Weryfikacja negative feedback | (checkpoint — potwierdzone) | scripts/kalibracja_serw.py |
 
-## Firmware Changes
+## Firmware State
 
-**Plik:** `src/arduino/aries_controller/aries_controller.ino` linie 29-30
+**Plik:** `src/arduino/aries_controller/aries_controller.ino` linie 37-38
 
-Przed:
-```c
-#define PAN_INVERT      (1)       // +1 lub -1 — zmien empirycznie
-#define TILT_INVERT     (-1)      // -1 potwierdzony w v1.7 legacy
-```
-
-Po:
 ```c
 #define PAN_INVERT      (1)       // +1 skalibrowany empirycznie R4 WiFi v2.1.1
-#define TILT_INVERT     (1)       // +1 skalibrowany empirycznie R4 WiFi v2.1.1
+#define TILT_INVERT     (-1)      // -1 skalibrowany empirycznie R4 WiFi v2.1.1
 ```
 
-**Kompilacja:** 64172B (24% flash), 7432B (22% RAM) — OK
-**Upload:** /dev/ttyACM0 — 16 stron, 3.958s — OK
+**Kompilacja:** 83596B (31% flash), 11268B (34% RAM) — OK (pelna wersja z Phase 25-27)
+**Upload:** /dev/ttyACM0 — 21 stron, 5.050s — OK
 
 ## Deviations from Plan
 
-None — plan executed exactly as written (Scenariusz C — tylko TILT FAIL).
+1. **Kabel tilt czesciowo rozpiety** — pierwsza kalibracja dala FAIL na krokach 3-4, co blednie sugerowalo zmiane TILT_INVERT z -1 na +1. Po naprawie kabla i powrocie do -1, wszystkie kroki PASS.
+2. **Worktree regression** — agent flashowal firmware z worktree (503 linii, brak Phase 25-27). Naprawione flash z main (816 linii).
+3. **Skrypt zmieniony na nieinteraktywny** — Claude Code Bash nie obsluguje stdin/input().
 
-## Known Stubs
+## Self-Check: PASSED
 
-None — wszystkie wartosci INVERT sa teraz skalibrowane empirycznie, nie sa placeholderami.
-
-## Verification Status
-
-Task 3 (checkpoint:human-verify) awaiting user confirmation:
-- Uruchomienie `python3 scripts/kalibracja_serw.py` po flashu nowego firmware
-- Oczekiwany wynik: 4/4 krokow PASS (exit code 0)
-
-## Self-Check: PENDING (checkpoint not yet resolved)
-
-Firmware change verified:
-- [x] `grep "TILT_INVERT" aries_controller.ino` zwraca `(1)` — FOUND
-- [x] `git log --oneline | grep 38e9e56` — FOUND
-- [ ] Task 3 checkpoint — awaiting user verification
+- [x] PAN_INVERT=+1, krok 1 PASS, krok 2 PASS
+- [x] TILT_INVERT=-1, krok 3 PASS, krok 4 PASS
+- [x] Firmware zaflashowany z pelna wersja (Phase 25-27, 83596B)
+- [x] Kalibracja 4/4 PASS na R4 WiFi z naprawionym kablem
