@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: verifying
-stopped_at: Phase 25 context gathered
-last_updated: "2026-04-01T18:24:39.386Z"
+stopped_at: "Checkpoint 15.1-01 Task 3: human-verify na RPi4"
+last_updated: "2026-04-04T13:19:23.349Z"
 last_activity: 2026-04-01
 progress:
-  total_phases: 17
+  total_phases: 18
   completed_phases: 15
-  total_plans: 23
-  completed_plans: 22
+  total_plans: 25
+  completed_plans: 23
   percent: 0
 ---
 
@@ -71,6 +71,9 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Serial CDC wait 500ms zamiast 3000ms — R4 uzywa ESP32-S3 bridge nie natywnego USB CDC
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Rampa Soft Start 1400->1500us zamiast 500->1500us — breadboard z zewnetrznym zasilaniem 6V wymaga lagodniejszej rampy PWM
 - [Phase 24-migracja-pinow-i-kompilacja-bazowa]: Weryfikacja sprzetowa na Uno R3 jako proxy dla R4 WiFi — pinout identyczny D6/D9/A0/A1, wyniki wazne dla obu plyt
+- [Phase 15.1-01]: DNN_SKIP_EVERY=5 w WykrywaczTwarzy — pelny forward pass co 5 klatek, hold-last bbox miedzy nimi
+- [Phase 15.1-01]: LOST_THRESHOLD=12 w StabilizatorStanow — 12 klatek bez detekcji przed SLEDZENIE->SKANOWANIE (~0.8s bufor)
+- [Phase 15.1-01]: HUD_SCALE=2 w brain.py — imshow resize do 640x480 dla czytelnego debugowania
 
 ### Blockers/Concerns
 
@@ -86,6 +89,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-01T18:24:39.327Z
-Stopped at: Phase 25 context gathered
-Resume file: .planning/phases/25-rtc-ds1307-izolowana-integracja/25-CONTEXT.md
+Last session: 2026-04-04T13:19:23.285Z
+Stopped at: Checkpoint 15.1-01 Task 3: human-verify na RPi4
+Resume file: None
