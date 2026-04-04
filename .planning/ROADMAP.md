@@ -131,7 +131,7 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 16-01-PLAN.md — Phase-offset continuity w ServoPID (arcsin t_offset) + skrypt analizy CSV
+- [x] 16-01-PLAN.md — Phase-offset continuity w ServoPID (arcsin t_offset) + skrypt analizy CSV
 - [ ] 16-02-PLAN.md — Kompilacja/upload firmware + weryfikacja empiryczna SC #1/#2/#3 na hardware
 
 ### Phase 17: Scan Smoothness
@@ -309,7 +309,7 @@ Plans:
 | 14. AWB/Color Fix | v1.9 | 2/2 | Complete    | 2026-04-04 |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
 | 15.1 Stabilizacja Petli Detekcji | v1.9 | 0/1 | Complete    | 2026-04-04 |
-| 16. Tilt Scan Fix | v1.9 | 0/2 | Not started | - |
+| 16. Tilt Scan Fix | v1.9 | 1/2 | In Progress|  |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
 | 19. Serial Link + Echo Test | v2.0 | 2/2 | Complete    | 2026-03-31 |

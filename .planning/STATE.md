@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: Stabilizacja Ruchu i Obrazu
 status: executing
-stopped_at: Phase 16 context gathered
-last_updated: "2026-04-04T14:14:21.752Z"
+stopped_at: Completed 16-camera-color-fix-01-PLAN.md
+last_updated: "2026-04-04T14:49:37.335Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 24
   completed_phases: 20
-  total_plans: 34
-  completed_plans: 32
+  total_plans: 36
+  completed_plans: 33
   percent: 0
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-01)
 
 **Core value:** Rozproszona architektura — RPi4 (wizja) + Arduino Uno R4 WiFi (PID + HMI + DataLogger) polaczone USB Serial
-**Current focus:** Phase 15.1 — stabilizacja-petli-detekcji
+**Current focus:** Phase 16 — camera-color-fix
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
-Status: Executing Phase 15.1
+Phase: 16 (camera-color-fix) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
 Last activity: 2026-04-04
 
 Progress: [░░░░░░░░░░] 0%
@@ -74,6 +74,8 @@ Progress: [░░░░░░░░░░] 0%
 - [Phase 14-pid-sign-fix]: OPOZNIENIE_BOOT 4.0s -> 5.0s dla R4 WiFi: CDC enumeration + DataLogger/RTC init wymaga wiecej czasu niz legacy Leonardo
 - [Phase 14-pid-sign-fix]: PAN_INVERT=+1 i TILT_INVERT=-1 — punkt wyjscia kalibracji empirycznej Plan 02
 - [Phase 14-pid-sign-fix]: TILT_INVERT zmieniony z (-1) na (+1) — kalibracja empiryczna R4 WiFi v2.1.1 (Kroki 3,4 FAIL)
+- [Phase 16-camera-color-fix]: Phase-offset continuity: obliczenie t_offset przez asin(ratio) / (2*pi*f) — eliminuje skok serw przy SLEDZENIE→SKANOWANIE
+- [Phase 16-camera-color-fix]: constrain ratio do [-1,1] przed asin() — obrona przed NaN gdy kat_pan > SCAN_AMP_PAN
 
 ### Roadmap Evolution
 
@@ -93,6 +95,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-04T14:14:21.690Z
-Stopped at: Phase 16 context gathered
-Resume file: .planning/phases/16-camera-color-fix/16-CONTEXT.md
+Last session: 2026-04-04T14:49:37.263Z
+Stopped at: Completed 16-camera-color-fix-01-PLAN.md
+Resume file: None
