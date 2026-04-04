@@ -55,7 +55,7 @@
 
 - [x] **Phase 14: AWB/Color Fix** - Naprawa zielonej poswiaty: flaga cvtColor i fallback ColourGains (completed 2026-04-04)
 - [ ] **Phase 15: PID Tracking Fix** - Reset PID przy wejsciu w TRACKING + redukcja output limit
-- [ ] **Phase 15.1: Stabilizacja Petli Detekcji** - DNN skip-frames + histereza stanow SKANOWANIE/SLEDZENIE + resize okna imshow (INSERTED)
+- [x] **Phase 15.1: Stabilizacja Petli Detekcji** - DNN skip-frames + histereza stanow SKANOWANIE/SLEDZENIE + resize okna imshow (INSERTED) (completed 2026-04-04)
 - [ ] **Phase 16: Tilt Scan Fix** - Sinusoida tilt w _skanuj() — Lissajous 2D z phase-offset continuity
 - [ ] **Phase 17: Scan Smoothness** - DNN_SKIP_EVERY wzrost + opcjonalne EMA wygladzanie serw
 
@@ -307,7 +307,7 @@ Plans:
 | 13. DNN Detector | v1.8 | 1/1 | Complete | 2026-03-29 |
 | 14. AWB/Color Fix | v1.9 | 2/2 | Complete    | 2026-04-04 |
 | 15. PID Tracking Fix | v1.9 | 0/1 | Not started | - |
-| 15.1 Stabilizacja Petli Detekcji | v1.9 | 0/1 | Planned | - |
+| 15.1 Stabilizacja Petli Detekcji | v1.9 | 0/1 | Complete    | 2026-04-04 |
 | 16. Tilt Scan Fix | v1.9 | 0/1 | Not started | - |
 | 17. Scan Smoothness | v1.9 | 0/1 | Not started | - |
 | 18. Srodowisko + Protokol + Migracja | v2.0 | 2/2 | Complete    | 2026-03-30 |
